@@ -1,0 +1,21 @@
+[package]
+name = "irasu-illustrator"
+version = "0.1.0"
+edition = "2021"
+description = "Adobe Illustrator alternative — Rust + egui vector graphics editor"
+
+[dependencies]
+eframe = { version = "0.31", default-features = false, features = [
+    "default_fonts",
+    "glow",
+    "persistence",
+] }
+egui = "0.31"
+egui_extras = { version = "0.31", features = ["svg", "image"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+rfd = "0.15"
+kurbo = "0.11"
+uuid = { version = "1.0", features = ["v4"] }
+log = "0.4"
+env_logger = "0.11"
