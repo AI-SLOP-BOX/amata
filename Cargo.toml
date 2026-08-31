@@ -2,7 +2,7 @@
 name = "irasu-illustrator"
 version = "0.1.0"
 edition = "2021"
-description = "Adobe Illustrator alternative — Rust + egui vector graphics editor"
+description = "Adobe Illustrator alternative — Rust + egui vector graphics editor with VFX pipeline integration"
 
 [dependencies]
 eframe = { version = "0.31", default-features = false, features = [
@@ -19,3 +19,4 @@ kurbo = "0.11"
 uuid = { version = "1.0", features = ["v4"] }
 log = "0.4"
 env_logger = "0.11"
+clap = { version = "4.5", features = ["derive"] }

@@ -1,5 +1,7 @@
+use clap::Parser;
 use eframe::egui;
 use egui::Vec2;
+use irasu_illustrator::cli::{Cli, run_cli};
 use irasu_illustrator::core::boolean::{execute_pathfinder, BooleanOp};
 use irasu_illustrator::core::document::Object;
 use irasu_illustrator::core::state::{AppState, Tool};
@@ -100,20 +102,23 @@ impl eframe::App for IrasuApp {
             }
 
             // Group (Ctrl+G)
-            if (i.modifiers.ctrl || i.modifiers.mac_cmd) && !i.modifiers.shift && i.key_pressed(egui::Key::G)
-                && self.state.selected_ids.len() >= 2 {
-                    let mut objs = Vec::new();
-                    for id in &self.state.selected_ids {
-                        if let Some(o) = self.state.document.remove_object(id) {
-                            objs.push(o);
-                        }
+            if (i.modifiers.ctrl || i.modifiers.mac_cmd)
+                && !i.modifiers.shift
+                && i.key_pressed(egui::Key::G)
+                && self.state.selected_ids.len() >= 2
+            {
+                let mut objs = Vec::new();
+                for id in &self.state.selected_ids {
+                    if let Some(o) = self.state.document.remove_object(id) {
+                        objs.push(o);
                     }
-                    let group = Object::new_group("Group", objs);
-                    let gid = group.id.clone();
-                    let cmd = Box::new(irasu_illustrator::core::history::AddObjectCommand::new(group));
-                    self.state.undo_manager.execute(cmd, &mut self.state.document);
-                    self.state.selected_ids = vec![gid];
                 }
+                let group = Object::new_group("Group", objs);
+                let gid = group.id.clone();
+                let cmd = Box::new(irasu_illustrator::core::history::AddObjectCommand::new(group));
+                self.state.undo_manager.execute(cmd, &mut self.state.document);
+                self.state.selected_ids = vec![gid];
+            }
 
             // Zoom to fit all (Ctrl+0)
             if (i.modifiers.ctrl || i.modifiers.mac_cmd) && i.key_pressed(egui::Key::Num0) {
@@ -266,6 +271,42 @@ impl eframe::App for IrasuApp {
                         }
                         ui.close_menu();
                     }
+                    ui.separator();
+                    ui.menu_button("🎬 VFX Pipeline", |ui| {
+                        if ui.button("Export for AEVFX Studio Comp (.json)...").clicked() {
+                            if let Some(path) = rfd::FileDialog::new()
+                                .add_filter("AEVFX Comp", &["json", "aevfx"])
+                                .save_file()
+                            {
+                                let comp = irasu_illustrator::io::vfx::doc_to_aevfx_comp(&self.state.document, 60.0, 5.0);
+                                if let Ok(json) = serde_json::to_string_pretty(&comp) {
+                                    let _ = std::fs::write(&path, json);
+                                }
+                            }
+                            ui.close_menu();
+                        }
+                        if ui.button("Export Motion Path Keyframes (.json)...").clicked() {
+                            if let Some(path) = rfd::FileDialog::new()
+                                .add_filter("Motion Path", &["json"])
+                                .save_file()
+                            {
+                                let mut paths = Vec::new();
+                                for (_, obj) in self.state.document.all_objects() {
+                                    let kfs = irasu_illustrator::io::vfx::object_to_motion_path_keyframes(obj, 60, 5.0, 60.0);
+                                    if !kfs.is_empty() {
+                                        paths.push(serde_json::json!({
+                                            "name": obj.name,
+                                            "keyframes": kfs
+                                        }));
+                                    }
+                                }
+                                if let Ok(json) = serde_json::to_string_pretty(&paths) {
+                                    let _ = std::fs::write(&path, json);
+                                }
+                            }
+                            ui.close_menu();
+                        }
+                    });
                     ui.separator();
                     if ui.button("Quit").clicked() {
                         ctx.send_viewport_cmd(egui::ViewportCommand::Close);
@@ -566,11 +607,26 @@ fn zoom_to_fit(state: &mut AppState) {
 fn main() -> eframe::Result<()> {
     env_logger::init();
 
+    let cli = Cli::parse();
+    match run_cli(cli) {
+        Ok(false) => {
+            // CLI command ran and finished
+            return Ok(());
+        }
+        Err(err) => {
+            eprintln!("❌ Error: {err}");
+            std::process::exit(1);
+        }
+        Ok(true) => {
+            // Launch GUI
+        }
+    }
+
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([1440.0, 920.0])
             .with_min_inner_size([800.0, 600.0])
-            .with_title("IRASU Illustrator — Pro Vector Studio"),
+            .with_title("IRASU Illustrator — Pro Vector Studio & VFX Pipeline"),
         ..Default::default()
     };
 
