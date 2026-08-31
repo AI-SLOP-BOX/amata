@@ -2,7 +2,9 @@
 name = "irasu-illustrator"
 version = "0.1.0"
 edition = "2021"
-description = "Adobe Illustrator alternative — Rust + egui vector graphics editor with VFX pipeline integration"
+description = "Adobe Illustrator alternative — Pure Rust + egui vector graphics editor with VFX pipeline integration"
+license = "MIT"
+authors = ["IRASU Contributors"]
 
 [dependencies]
 eframe = { version = "0.31", default-features = false, features = [
@@ -11,7 +13,6 @@ eframe = { version = "0.31", default-features = false, features = [
     "persistence",
 ] }
 egui = "0.31"
-egui_extras = { version = "0.31", features = ["svg", "image"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 rfd = "0.15"
