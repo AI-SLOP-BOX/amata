@@ -1048,3 +1048,145 @@ impl VfxTrailPanel {
         }
     }
 }
+
+pub struct HalftonePanel;
+
+impl HalftonePanel {
+    pub fn show(ui: &mut Ui, state: &mut AppState) {
+        ui.heading(RichText::new("🏁 Halftone & Dot Matrix").strong());
+        ui.add_space(4.0);
+
+        let has_sel = !state.selected_ids.is_empty();
+
+        if let Some(id) = state.selected_ids.first().cloned() {
+            let target_obj = state.document.all_objects().find(|(_, o)| o.id == id).map(|(_, o)| o.clone());
+            ui.horizontal(|ui| {
+                if ui.add_enabled(has_sel, egui::Button::new("Grid Dots")).clicked() {
+                    if let Some(obj) = &target_obj {
+                        let path = obj.to_path_data();
+                        let ht = crate::core::halftone::generate_halftone_from_path(
+                            &path,
+                            10.0,
+                            4.5,
+                            crate::core::halftone::HalftonePattern::CircularGrid,
+                        );
+                        let mut new_obj = Object::new_path(&format!("{} (Halftone)", obj.name), ht);
+                        new_obj.transform = obj.transform.clone();
+                        let new_id = new_obj.id.clone();
+                        let cmd = Box::new(crate::core::history::AddObjectCommand::new(new_obj));
+                        state.undo_manager.execute(cmd, &mut state.document);
+                        state.selected_ids = vec![new_id];
+                    }
+                }
+
+                if ui.add_enabled(has_sel, egui::Button::new("Hex Dots")).clicked() {
+                    if let Some(obj) = &target_obj {
+                        let path = obj.to_path_data();
+                        let ht = crate::core::halftone::generate_halftone_from_path(
+                            &path,
+                            10.0,
+                            4.5,
+                            crate::core::halftone::HalftonePattern::HexagonalGrid,
+                        );
+                        let mut new_obj = Object::new_path(&format!("{} (Hex Halftone)", obj.name), ht);
+                        new_obj.transform = obj.transform.clone();
+                        let new_id = new_obj.id.clone();
+                        let cmd = Box::new(crate::core::history::AddObjectCommand::new(new_obj));
+                        state.undo_manager.execute(cmd, &mut state.document);
+                        state.selected_ids = vec![new_id];
+                    }
+                }
+            });
+        } else {
+            ui.label(RichText::new("Select an object to generate halftone dots").weak().size(11.0));
+        }
+    }
+}
+
+pub struct IsometricPanel;
+
+impl IsometricPanel {
+    pub fn show(ui: &mut Ui, state: &mut AppState) {
+        ui.heading(RichText::new("📐 2.5D Isometric Transformer").strong());
+        ui.add_space(4.0);
+
+        let has_sel = !state.selected_ids.is_empty();
+
+        if let Some(id) = state.selected_ids.first().cloned() {
+            let target_obj = state.document.all_objects().find(|(_, o)| o.id == id).map(|(_, o)| o.clone());
+            ui.horizontal(|ui| {
+                if ui.add_enabled(has_sel, egui::Button::new("Top Plane")).clicked() {
+                    if let Some(obj) = &target_obj {
+                        let iso = crate::core::isometric::apply_isometric_transform(obj, crate::core::isometric::IsometricPlane::Top);
+                        let new_id = iso.id.clone();
+                        let cmd = Box::new(crate::core::history::AddObjectCommand::new(iso));
+                        state.undo_manager.execute(cmd, &mut state.document);
+                        state.selected_ids = vec![new_id];
+                    }
+                }
+
+                if ui.add_enabled(has_sel, egui::Button::new("Left Plane")).clicked() {
+                    if let Some(obj) = &target_obj {
+                        let iso = crate::core::isometric::apply_isometric_transform(obj, crate::core::isometric::IsometricPlane::Left);
+                        let new_id = iso.id.clone();
+                        let cmd = Box::new(crate::core::history::AddObjectCommand::new(iso));
+                        state.undo_manager.execute(cmd, &mut state.document);
+                        state.selected_ids = vec![new_id];
+                    }
+                }
+
+                if ui.add_enabled(has_sel, egui::Button::new("Right Plane")).clicked() {
+                    if let Some(obj) = &target_obj {
+                        let iso = crate::core::isometric::apply_isometric_transform(obj, crate::core::isometric::IsometricPlane::Right);
+                        let new_id = iso.id.clone();
+                        let cmd = Box::new(crate::core::history::AddObjectCommand::new(iso));
+                        state.undo_manager.execute(cmd, &mut state.document);
+                        state.selected_ids = vec![new_id];
+                    }
+                }
+            });
+        } else {
+            ui.label(RichText::new("Select an object to project into isometric plane").weak().size(11.0));
+        }
+    }
+}
+
+pub struct SymmetryPanel;
+
+impl SymmetryPanel {
+    pub fn show(ui: &mut Ui, state: &mut AppState) {
+        ui.heading(RichText::new("☸️ Radial Symmetry & Mandala").strong());
+        ui.add_space(4.0);
+
+        let has_sel = !state.selected_ids.is_empty();
+
+        if let Some(id) = state.selected_ids.first().cloned() {
+            ui.horizontal(|ui| {
+                if ui.add_enabled(has_sel, egui::Button::new("4-Fold")).clicked() {
+                    Self::apply_sym(state, &id, 4, false);
+                }
+                if ui.add_enabled(has_sel, egui::Button::new("6-Fold")).clicked() {
+                    Self::apply_sym(state, &id, 6, false);
+                }
+                if ui.add_enabled(has_sel, egui::Button::new("8-Fold Mirror")).clicked() {
+                    Self::apply_sym(state, &id, 8, true);
+                }
+            });
+        } else {
+            ui.label(RichText::new("Select an object to create symmetry mandala").weak().size(11.0));
+        }
+    }
+
+    fn apply_sym(state: &mut AppState, id: &str, folds: usize, mirror: bool) {
+        let cx = state.document.width * 0.5;
+        let cy = state.document.height * 0.5;
+        let target_obj = state.document.all_objects().find(|(_, o)| o.id == id).map(|(_, o)| o.clone());
+        if let Some(obj) = target_obj {
+            let clones = crate::core::symmetry::create_radial_symmetry(&obj, cx, cy, folds, mirror);
+            for clone in clones {
+                let cmd = Box::new(crate::core::history::AddObjectCommand::new(clone));
+                state.undo_manager.execute(cmd, &mut state.document);
+            }
+        }
+    }
+}

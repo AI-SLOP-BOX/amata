@@ -197,6 +197,59 @@ pub enum Commands {
         count: usize,
     },
 
+    /// Convert vector artwork into vector halftone dots (Circular, Hexagonal, Scanline)
+    Halftone {
+        /// Input vector file (.svg or .json)
+        #[arg(short, long)]
+        input: PathBuf,
+
+        /// Output SVG file
+        #[arg(short, long)]
+        output: PathBuf,
+
+        /// Dot spacing in pixels (default: 10.0)
+        #[arg(short, long, default_value_t = 10.0)]
+        spacing: f64,
+
+        /// Maximum dot radius (default: 4.5)
+        #[arg(short, long, default_value_t = 4.5)]
+        radius: f64,
+
+        /// Pattern type (circular, hex, scanline)
+        #[arg(value_enum, short, long, default_value_t = CliHalftonePattern::Circular)]
+        pattern: CliHalftonePattern,
+    },
+
+    /// Simplify and smooth vector paths using Visvalingam-Whyatt algorithm
+    Simplify {
+        /// Input vector file (.svg or .json)
+        #[arg(short, long)]
+        input: PathBuf,
+
+        /// Output SVG file
+        #[arg(short, long)]
+        output: PathBuf,
+
+        /// Minimum effective area tolerance (default: 4.0)
+        #[arg(short, long, default_value_t = 4.0)]
+        tolerance: f64,
+    },
+
+    /// Project 2D vector artwork into 2.5D Isometric space (Top, Left, Right)
+    Isometric {
+        /// Input vector file (.svg or .json)
+        #[arg(short, long)]
+        input: PathBuf,
+
+        /// Output SVG file
+        #[arg(short, long)]
+        output: PathBuf,
+
+        /// Isometric plane (top, left, right)
+        #[arg(value_enum, short, long, default_value_t = CliIsoPlane::Top)]
+        plane: CliIsoPlane,
+    },
+
     /// Execute headless Pathfinder (Boolean Operations) on two vector files
     Boolean {
         /// First vector file (Subject)
@@ -238,6 +291,20 @@ pub enum CliCurveType {
     Lissajous,
     Spirograph,
     Rose,
+}
+
+#[derive(ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CliHalftonePattern {
+    Circular,
+    Hex,
+    Scanline,
+}
+
+#[derive(ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CliIsoPlane {
+    Top,
+    Left,
+    Right,
 }
 
 pub fn run_cli(cli: Cli) -> Result<bool, Box<dyn std::error::Error>> {
@@ -397,6 +464,69 @@ pub fn run_cli(cli: Cli) -> Result<bool, Box<dyn std::error::Error>> {
             let json = serde_json::to_string_pretty(&all_particles)?;
             std::fs::write(&output, json)?;
             println!("✅ Exported {} VFX particles to {:?}", all_particles.len(), output);
+            Ok(false)
+        }
+        Some(Commands::Halftone { input, output, spacing, radius, pattern }) => {
+            println!("🏁 Generating halftone dots from '{:?}' (spacing: {}, radius: {})...", input, spacing, radius);
+            let doc = load_any_document(&input)?;
+            let ht_pat = match pattern {
+                CliHalftonePattern::Circular => crate::core::halftone::HalftonePattern::CircularGrid,
+                CliHalftonePattern::Hex => crate::core::halftone::HalftonePattern::HexagonalGrid,
+                CliHalftonePattern::Scanline => crate::core::halftone::HalftonePattern::ScanlineMatrix,
+            };
+            let mut out_doc = crate::core::document::Document {
+                width: doc.width,
+                height: doc.height,
+                ..Default::default()
+            };
+            for (_, obj) in doc.all_objects() {
+                let mut path = obj.to_path_data();
+                path.transform(&obj.transform.matrix());
+                let ht_path = crate::core::halftone::generate_halftone_from_path(&path, spacing, radius, ht_pat);
+                out_doc.add_object(crate::core::document::Object::new_path(&format!("{} (Halftone)", obj.name), ht_path));
+            }
+            save_any_document(&out_doc, &output)?;
+            println!("✅ Halftone vector saved to {:?}", output);
+            Ok(false)
+        }
+        Some(Commands::Simplify { input, output, tolerance }) => {
+            println!("🪄 Simplifying paths in '{:?}' (tolerance: {})...", input, tolerance);
+            let doc = load_any_document(&input)?;
+            let mut out_doc = crate::core::document::Document {
+                width: doc.width,
+                height: doc.height,
+                ..Default::default()
+            };
+            for (_, obj) in doc.all_objects() {
+                let path = obj.to_path_data();
+                let simplified = crate::core::simplify::simplify_path_visvalingam(&path, tolerance);
+                let mut new_obj = crate::core::document::Object::new_path(&format!("{} (Simplified)", obj.name), simplified);
+                new_obj.transform = obj.transform.clone();
+                out_doc.add_object(new_obj);
+            }
+            save_any_document(&out_doc, &output)?;
+            println!("✅ Simplified vector saved to {:?}", output);
+            Ok(false)
+        }
+        Some(Commands::Isometric { input, output, plane }) => {
+            println!("📐 Projecting '{:?}' to Isometric {:?}...", input, plane);
+            let doc = load_any_document(&input)?;
+            let iso_plane = match plane {
+                CliIsoPlane::Top => crate::core::isometric::IsometricPlane::Top,
+                CliIsoPlane::Left => crate::core::isometric::IsometricPlane::Left,
+                CliIsoPlane::Right => crate::core::isometric::IsometricPlane::Right,
+            };
+            let mut out_doc = crate::core::document::Document {
+                width: doc.width,
+                height: doc.height,
+                ..Default::default()
+            };
+            for (_, obj) in doc.all_objects() {
+                let iso_obj = crate::core::isometric::apply_isometric_transform(obj, iso_plane);
+                out_doc.add_object(iso_obj);
+            }
+            save_any_document(&out_doc, &output)?;
+            println!("✅ Isometric vector saved to {:?}", output);
             Ok(false)
         }
         Some(Commands::MotionPath { input, output, samples, duration, fps }) => {
