@@ -1,7 +1,9 @@
 pub mod barcode;
 pub mod boolean;
+pub mod brush;
 pub mod document;
 pub mod effects;
+pub mod flowfield;
 pub mod formula;
 pub mod geometry;
 pub mod halftone;
@@ -10,6 +12,7 @@ pub mod isometric;
 pub mod lsystem;
 pub mod mesh3d;
 pub mod morph;
+pub mod noise;
 pub mod offset;
 pub mod path;
 pub mod presets;

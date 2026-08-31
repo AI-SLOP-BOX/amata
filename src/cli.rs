@@ -291,6 +291,63 @@ pub enum Commands {
         output: PathBuf,
     },
 
+    /// Deform vector paths using procedural wave, noise, or glitch
+    Deform {
+        /// Input vector file (.svg or .json)
+        #[arg(short, long)]
+        input: PathBuf,
+
+        /// Output SVG file
+        #[arg(short, long)]
+        output: PathBuf,
+
+        /// Deformation type (wave, noise, glitch)
+        #[arg(value_enum, short, long, default_value_t = CliDeformType::Noise)]
+        deform_type: CliDeformType,
+
+        /// Deformation amplitude in pixels (default: 12.0)
+        #[arg(short, long, default_value_t = 12.0)]
+        amplitude: f64,
+
+        /// Frequency scale (default: 0.05)
+        #[arg(short, long, default_value_t = 0.05)]
+        frequency: f64,
+    },
+
+    /// Generate vector streamlines from a 2D vector flow field
+    Flowfield {
+        /// Flow field preset (vortex, magnetic, cyber)
+        #[arg(value_enum, short, long, default_value_t = CliFlowFieldPreset::Vortex)]
+        preset: CliFlowFieldPreset,
+
+        /// Number of streamlines (default: 60)
+        #[arg(short, long, default_value_t = 60)]
+        lines: usize,
+
+        /// Output SVG file
+        #[arg(short, long)]
+        output: PathBuf,
+    },
+
+    /// Scatter a motif object along a trajectory path
+    BrushStroke {
+        /// Trajectory vector file (.svg or .json)
+        #[arg(short, long)]
+        path: PathBuf,
+
+        /// Motif vector file (.svg or .json)
+        #[arg(short, long)]
+        motif: PathBuf,
+
+        /// Spacing between instances (default: 25.0)
+        #[arg(short, long, default_value_t = 25.0)]
+        spacing: f64,
+
+        /// Output SVG file
+        #[arg(short, long)]
+        output: PathBuf,
+    },
+
     /// Execute headless Pathfinder (Boolean Operations) on two vector files
     Boolean {
         /// First vector file (Subject)
@@ -354,6 +411,20 @@ pub enum CliLSystemPreset {
     Dragon,
     Snowflake,
     Hilbert,
+}
+
+#[derive(ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CliDeformType {
+    Wave,
+    Noise,
+    Glitch,
+}
+
+#[derive(ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CliFlowFieldPreset {
+    Vortex,
+    Magnetic,
+    Cyber,
 }
 
 pub fn run_cli(cli: Cli) -> Result<bool, Box<dyn std::error::Error>> {
@@ -631,6 +702,74 @@ pub fn run_cli(cli: Cli) -> Result<bool, Box<dyn std::error::Error>> {
             out_doc.add_object(crate::core::document::Object::new_path("Vector QR Code", path));
             save_any_document(&out_doc, &output)?;
             println!("✅ Vector QR code saved to {:?}", output);
+            Ok(false)
+        }
+        Some(Commands::Deform { input, output, deform_type, amplitude, frequency }) => {
+            println!("🌊 Deforming '{:?}' ({:?}, amp: {}, freq: {})...", input, deform_type, amplitude, frequency);
+            let doc = load_any_document(&input)?;
+            let dtype = match deform_type {
+                CliDeformType::Wave => crate::core::noise::DeformType::SineWave,
+                CliDeformType::Noise => crate::core::noise::DeformType::TurbulentNoise,
+                CliDeformType::Glitch => crate::core::noise::DeformType::JitterGlitch,
+            };
+            let mut out_doc = crate::core::document::Document {
+                width: doc.width,
+                height: doc.height,
+                ..Default::default()
+            };
+            for (_, obj) in doc.all_objects() {
+                let path = obj.to_path_data();
+                let def_path = crate::core::noise::deform_path(&path, dtype, amplitude, frequency, 0.0);
+                let mut new_obj = crate::core::document::Object::new_path(&format!("{} (Deformed)", obj.name), def_path);
+                new_obj.transform = obj.transform.clone();
+                out_doc.add_object(new_obj);
+            }
+            save_any_document(&out_doc, &output)?;
+            println!("✅ Deformed vector saved to {:?}", output);
+            Ok(false)
+        }
+        Some(Commands::Flowfield { preset, lines, output }) => {
+            println!("🌌 Generating Flow Field Streamlines ({:?}, {} lines)...", preset, lines);
+            let fpreset = match preset {
+                CliFlowFieldPreset::Vortex => crate::core::flowfield::FlowFieldPreset::Vortex,
+                CliFlowFieldPreset::Magnetic => crate::core::flowfield::FlowFieldPreset::MagneticDipole,
+                CliFlowFieldPreset::Cyber => crate::core::flowfield::FlowFieldPreset::CyberChaos,
+            };
+            let mut out_doc = crate::core::document::Document {
+                width: 800.0,
+                height: 600.0,
+                ..Default::default()
+            };
+            let streamlines = crate::core::flowfield::generate_flowfield_streamlines(fpreset, 800.0, 600.0, lines, 80, 5.0);
+            for line in streamlines {
+                out_doc.add_object(line);
+            }
+            save_any_document(&out_doc, &output)?;
+            println!("✅ Flow field streamlines saved to {:?}", output);
+            Ok(false)
+        }
+        Some(Commands::BrushStroke { path, motif, spacing, output }) => {
+            println!("🖌️ Scattering motif '{:?}' along path '{:?}' (spacing: {})...", motif, path, spacing);
+            let path_doc = load_any_document(&path)?;
+            let motif_doc = load_any_document(&motif)?;
+
+            let path_obj = path_doc.all_objects().next().map(|(_, o)| o).ok_or("Path document is empty")?;
+            let motif_obj = motif_doc.all_objects().next().map(|(_, o)| o).ok_or("Motif document is empty")?;
+
+            let mut traj = path_obj.to_path_data();
+            traj.transform(&path_obj.transform.matrix());
+
+            let clones = crate::core::brush::scatter_brush_along_path(&traj, motif_obj, spacing, 0.2, true);
+            let mut out_doc = crate::core::document::Document {
+                width: path_doc.width.max(motif_doc.width),
+                height: path_doc.height.max(motif_doc.height),
+                ..Default::default()
+            };
+            for clone in clones {
+                out_doc.add_object(clone);
+            }
+            save_any_document(&out_doc, &output)?;
+            println!("✅ Scattered brush stroke saved to {:?}", output);
             Ok(false)
         }
         Some(Commands::MotionPath { input, output, samples, duration, fps }) => {

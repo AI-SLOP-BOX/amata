@@ -1286,3 +1286,139 @@ impl QrCodePanel {
         });
     }
 }
+
+pub struct DeformPanel;
+
+impl DeformPanel {
+    pub fn show(ui: &mut Ui, state: &mut AppState) {
+        ui.heading(RichText::new("🌊 Noise & Wave Deformer").strong());
+        ui.add_space(4.0);
+
+        let has_sel = !state.selected_ids.is_empty();
+
+        if let Some(id) = state.selected_ids.first().cloned() {
+            let target_obj = state.document.all_objects().find(|(_, o)| o.id == id).map(|(_, o)| o.clone());
+            ui.horizontal(|ui| {
+                if ui.add_enabled(has_sel, egui::Button::new("🌊 Wave")).clicked() {
+                    if let Some(obj) = &target_obj {
+                        let path = obj.to_path_data();
+                        let def = crate::core::noise::deform_path(&path, crate::core::noise::DeformType::SineWave, 10.0, 0.08, 0.0);
+                        let mut new_obj = Object::new_path(&format!("{} (Wave)", obj.name), def);
+                        new_obj.transform = obj.transform.clone();
+                        let new_id = new_obj.id.clone();
+                        let cmd = Box::new(crate::core::history::AddObjectCommand::new(new_obj));
+                        state.undo_manager.execute(cmd, &mut state.document);
+                        state.selected_ids = vec![new_id];
+                    }
+                }
+
+                if ui.add_enabled(has_sel, egui::Button::new("🌪️ Noise")).clicked() {
+                    if let Some(obj) = &target_obj {
+                        let path = obj.to_path_data();
+                        let def = crate::core::noise::deform_path(&path, crate::core::noise::DeformType::TurbulentNoise, 12.0, 0.05, 1.23);
+                        let mut new_obj = Object::new_path(&format!("{} (Noise)", obj.name), def);
+                        new_obj.transform = obj.transform.clone();
+                        let new_id = new_obj.id.clone();
+                        let cmd = Box::new(crate::core::history::AddObjectCommand::new(new_obj));
+                        state.undo_manager.execute(cmd, &mut state.document);
+                        state.selected_ids = vec![new_id];
+                    }
+                }
+
+                if ui.add_enabled(has_sel, egui::Button::new("⚡ Glitch")).clicked() {
+                    if let Some(obj) = &target_obj {
+                        let path = obj.to_path_data();
+                        let def = crate::core::noise::deform_path(&path, crate::core::noise::DeformType::JitterGlitch, 8.0, 0.2, 5.67);
+                        let mut new_obj = Object::new_path(&format!("{} (Glitch)", obj.name), def);
+                        new_obj.transform = obj.transform.clone();
+                        let new_id = new_obj.id.clone();
+                        let cmd = Box::new(crate::core::history::AddObjectCommand::new(new_obj));
+                        state.undo_manager.execute(cmd, &mut state.document);
+                        state.selected_ids = vec![new_id];
+                    }
+                }
+            });
+        } else {
+            ui.label(RichText::new("Select an object to deform").weak().size(11.0));
+        }
+    }
+}
+
+pub struct FlowFieldPanel;
+
+impl FlowFieldPanel {
+    pub fn show(ui: &mut Ui, state: &mut AppState) {
+        ui.heading(RichText::new("🌌 Vector Flow Field").strong());
+        ui.add_space(4.0);
+
+        let w = state.document.width;
+        let h = state.document.height;
+
+        ui.horizontal(|ui| {
+            if ui.button("🌀 Vortex").clicked() {
+                let lines = crate::core::flowfield::generate_flowfield_streamlines(
+                    crate::core::flowfield::FlowFieldPreset::Vortex,
+                    w, h, 60, 80, 5.0,
+                );
+                for line in lines {
+                    let cmd = Box::new(crate::core::history::AddObjectCommand::new(line));
+                    state.undo_manager.execute(cmd, &mut state.document);
+                }
+            }
+
+            if ui.button("🧲 Magnetic").clicked() {
+                let lines = crate::core::flowfield::generate_flowfield_streamlines(
+                    crate::core::flowfield::FlowFieldPreset::MagneticDipole,
+                    w, h, 60, 80, 5.0,
+                );
+                for line in lines {
+                    let cmd = Box::new(crate::core::history::AddObjectCommand::new(line));
+                    state.undo_manager.execute(cmd, &mut state.document);
+                }
+            }
+
+            if ui.button("⚡ Cyber").clicked() {
+                let lines = crate::core::flowfield::generate_flowfield_streamlines(
+                    crate::core::flowfield::FlowFieldPreset::CyberChaos,
+                    w, h, 60, 80, 5.0,
+                );
+                for line in lines {
+                    let cmd = Box::new(crate::core::history::AddObjectCommand::new(line));
+                    state.undo_manager.execute(cmd, &mut state.document);
+                }
+            }
+        });
+    }
+}
+
+pub struct ScatterBrushPanel;
+
+impl ScatterBrushPanel {
+    pub fn show(ui: &mut Ui, state: &mut AppState) {
+        ui.heading(RichText::new("🖌️ Scatter & Pattern Brush").strong());
+        ui.add_space(4.0);
+
+        let has_sel = state.selected_ids.len() >= 2;
+
+        if ui.add_enabled(has_sel, egui::Button::new("Scatter 1st (Motif) along 2nd (Path)")).clicked() {
+            let id_motif = state.selected_ids[0].clone();
+            let id_path = state.selected_ids[1].clone();
+
+            let target_motif = state.document.all_objects().find(|(_, o)| o.id == id_motif).map(|(_, o)| o.clone());
+            let target_path = state.document.all_objects().find(|(_, o)| o.id == id_path).map(|(_, o)| o.clone());
+
+            if let (Some(motif), Some(path_obj)) = (target_motif, target_path) {
+                let mut traj = path_obj.to_path_data();
+                traj.transform(&path_obj.transform.matrix());
+
+                let clones = crate::core::brush::scatter_brush_along_path(&traj, &motif, 30.0, 0.3, true);
+                for clone in clones {
+                    let cmd = Box::new(crate::core::history::AddObjectCommand::new(clone));
+                    state.undo_manager.execute(cmd, &mut state.document);
+                }
+            }
+        } else if !has_sel {
+            ui.label(RichText::new("Select 2 objects (Motif + Curve)").weak().size(11.0));
+        }
+    }
+}
