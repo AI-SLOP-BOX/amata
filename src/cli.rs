@@ -171,6 +171,32 @@ pub enum Commands {
         duration: f64,
     },
 
+    /// Generate a mathematical or parametric vector curve (Spiral, Lissajous, Spirograph, Rose)
+    Formula {
+        /// Curve type (spiral, lissajous, spirograph, rose)
+        #[arg(value_enum, short = 't', long)]
+        curve_type: CliCurveType,
+
+        /// Output SVG file
+        #[arg(short, long)]
+        output: PathBuf,
+    },
+
+    /// Generate VFX particle bursts along a vector curve for AEVFX Studio
+    VfxTrail {
+        /// Input vector file (.svg or .json)
+        #[arg(short, long)]
+        input: PathBuf,
+
+        /// Output particle payload file (.json)
+        #[arg(short, long)]
+        output: PathBuf,
+
+        /// Particle count (default: 200)
+        #[arg(short, long, default_value_t = 200)]
+        count: usize,
+    },
+
     /// Execute headless Pathfinder (Boolean Operations) on two vector files
     Boolean {
         /// First vector file (Subject)
@@ -204,6 +230,14 @@ pub enum CliBooleanOp {
     Subtract,
     Intersect,
     Exclude,
+}
+
+#[derive(ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CliCurveType {
+    Spiral,
+    Lissajous,
+    Spirograph,
+    Rose,
 }
 
 pub fn run_cli(cli: Cli) -> Result<bool, Box<dyn std::error::Error>> {
@@ -328,6 +362,41 @@ pub fn run_cli(cli: Cli) -> Result<bool, Box<dyn std::error::Error>> {
             let json = serde_json::to_string_pretty(&vfx_comp)?;
             std::fs::write(&output, json)?;
             println!("✅ Animated composition saved to {:?}", output);
+            Ok(false)
+        }
+        Some(Commands::Formula { curve_type, output }) => {
+            println!("🌀 Generating mathematical curve ({:?}) -> '{:?}'...", curve_type, output);
+            let cx = 400.0;
+            let cy = 300.0;
+            let path = match curve_type {
+                CliCurveType::Spiral => crate::core::formula::FormulaCurves::spiral(cx, cy, 4.0, 10.0, 4.0, 200),
+                CliCurveType::Lissajous => crate::core::formula::FormulaCurves::lissajous(cx, cy, 3.0, 2.0, 0.5, 300.0, 200.0, 240),
+                CliCurveType::Spirograph => crate::core::formula::FormulaCurves::spirograph(cx, cy, 140.0, 60.0, 80.0, 8, 48),
+                CliCurveType::Rose => crate::core::formula::FormulaCurves::rose_curve(cx, cy, 4.0, 120.0, 200),
+            };
+            let mut doc = crate::core::document::Document {
+                width: 800.0,
+                height: 600.0,
+                ..Default::default()
+            };
+            doc.add_object(crate::core::document::Object::new_path("Formula Curve", path));
+            save_any_document(&doc, &output)?;
+            println!("✅ Formula curve saved to {:?}", output);
+            Ok(false)
+        }
+        Some(Commands::VfxTrail { input, output, count }) => {
+            println!("⚡ Generating {} VFX particle trails from '{:?}'...", count, input);
+            let doc = load_any_document(&input)?;
+            let mut all_particles = Vec::new();
+            for (_, obj) in doc.all_objects() {
+                let mut path = obj.to_path_data();
+                path.transform(&obj.transform.matrix());
+                let p = crate::core::vfx_particles::generate_particle_trail(&path, count, 60.0, 12.0);
+                all_particles.extend(p);
+            }
+            let json = serde_json::to_string_pretty(&all_particles)?;
+            std::fs::write(&output, json)?;
+            println!("✅ Exported {} VFX particles to {:?}", all_particles.len(), output);
             Ok(false)
         }
         Some(Commands::MotionPath { input, output, samples, duration, fps }) => {

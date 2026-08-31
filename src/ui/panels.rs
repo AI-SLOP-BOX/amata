@@ -966,3 +966,85 @@ impl TracePanel {
         }
     }
 }
+
+pub struct FormulaPanel;
+
+impl FormulaPanel {
+    pub fn show(ui: &mut Ui, state: &mut AppState) {
+        ui.heading(RichText::new("🌀 Math & Formula Curves").strong());
+        ui.add_space(4.0);
+
+        let cx = state.document.width * 0.5;
+        let cy = state.document.height * 0.5;
+
+        ui.horizontal_wrapped(|ui| {
+            if ui.button("🌀 Spiral").on_hover_text("Archimedean Spiral").clicked() {
+                let path = crate::core::formula::FormulaCurves::spiral(cx, cy, 4.0, 5.0, 3.0, 180);
+                let obj = Object::new_path("Spiral", path);
+                let id = obj.id.clone();
+                let cmd = Box::new(crate::core::history::AddObjectCommand::new(obj));
+                state.undo_manager.execute(cmd, &mut state.document);
+                state.selected_ids = vec![id];
+            }
+
+            if ui.button("〰️ Lissajous").on_hover_text("Oscilloscope Waveform").clicked() {
+                let path = crate::core::formula::FormulaCurves::lissajous(cx, cy, 3.0, 2.0, 0.5, 200.0, 160.0, 240);
+                let obj = Object::new_path("Lissajous", path);
+                let id = obj.id.clone();
+                let cmd = Box::new(crate::core::history::AddObjectCommand::new(obj));
+                state.undo_manager.execute(cmd, &mut state.document);
+                state.selected_ids = vec![id];
+            }
+
+            if ui.button("💮 Spirograph").on_hover_text("Geometric Spirograph Pattern").clicked() {
+                let path = crate::core::formula::FormulaCurves::spirograph(cx, cy, 100.0, 42.0, 60.0, 8, 48);
+                let obj = Object::new_path("Spirograph", path);
+                let id = obj.id.clone();
+                let cmd = Box::new(crate::core::history::AddObjectCommand::new(obj));
+                state.undo_manager.execute(cmd, &mut state.document);
+                state.selected_ids = vec![id];
+            }
+
+            if ui.button("🌸 Rose Curve").on_hover_text("Rhodonea Mathematical Flower").clicked() {
+                let path = crate::core::formula::FormulaCurves::rose_curve(cx, cy, 4.0, 90.0, 200);
+                let obj = Object::new_path("Rose Curve", path);
+                let id = obj.id.clone();
+                let cmd = Box::new(crate::core::history::AddObjectCommand::new(obj));
+                state.undo_manager.execute(cmd, &mut state.document);
+                state.selected_ids = vec![id];
+            }
+        });
+    }
+}
+
+pub struct VfxTrailPanel;
+
+impl VfxTrailPanel {
+    pub fn show(ui: &mut Ui, state: &mut AppState) {
+        ui.heading(RichText::new("⚡ VFX Particle Trails").strong());
+        ui.add_space(4.0);
+
+        let has_sel = !state.selected_ids.is_empty();
+
+        if let Some(id) = state.selected_ids.first().cloned() {
+            if ui.add_enabled(has_sel, egui::Button::new("Export Particle Trails (.json)...")).clicked() {
+                if let Some((_, obj)) = state.document.all_objects().find(|(_, o)| o.id == id) {
+                    let mut path = obj.to_path_data();
+                    path.transform(&obj.transform.matrix());
+                    let particles = crate::core::vfx_particles::generate_particle_trail(&path, 200, 50.0, 10.0);
+
+                    if let Some(save_path) = rfd::FileDialog::new()
+                        .add_filter("JSON", &["json"])
+                        .save_file()
+                    {
+                        if let Ok(json) = serde_json::to_string_pretty(&particles) {
+                            let _ = std::fs::write(&save_path, json);
+                        }
+                    }
+                }
+            }
+        } else {
+            ui.label(RichText::new("Select a path to generate particle trails").weak().size(11.0));
+        }
+    }
+}

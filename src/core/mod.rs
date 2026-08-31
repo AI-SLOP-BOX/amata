@@ -1,6 +1,7 @@
 pub mod boolean;
 pub mod document;
 pub mod effects;
+pub mod formula;
 pub mod geometry;
 pub mod history;
 pub mod mesh3d;
@@ -9,5 +10,7 @@ pub mod offset;
 pub mod path;
 pub mod presets;
 pub mod state;
+pub mod text_path;
 pub mod timeline;
 pub mod trace;
+pub mod vfx_particles;
