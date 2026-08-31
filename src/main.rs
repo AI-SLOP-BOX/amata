@@ -6,7 +6,9 @@ use irasu_illustrator::core::boolean::{execute_pathfinder, BooleanOp};
 use irasu_illustrator::core::document::Object;
 use irasu_illustrator::core::state::{AppState, Tool};
 use irasu_illustrator::ui::canvas::CanvasWidget;
-use irasu_illustrator::ui::panels::{AlignPanel, LayerPanel, PathfinderPanel, PropertyPanel};
+use irasu_illustrator::ui::panels::{
+    AlignPanel, EffectsPanel, LayerPanel, MorphPanel, OffsetPanel, PathfinderPanel, PropertyPanel,
+};
 
 struct IrasuApp {
     state: AppState,
@@ -306,6 +308,16 @@ impl eframe::App for IrasuApp {
                             }
                             ui.close_menu();
                         }
+                        if ui.button("Export 3D Mesh (.obj)...").clicked() {
+                            if let Some(path) = rfd::FileDialog::new()
+                                .add_filter("Wavefront OBJ", &["obj"])
+                                .save_file()
+                            {
+                                let obj_str = irasu_illustrator::io::vfx::export_doc_to_obj(&self.state.document, 20.0, 2.0);
+                                let _ = std::fs::write(&path, obj_str);
+                            }
+                            ui.close_menu();
+                        }
                     });
                     ui.separator();
                     if ui.button("Quit").clicked() {
@@ -526,6 +538,15 @@ impl eframe::App for IrasuApp {
             .show(ctx, |ui| {
                 egui::ScrollArea::vertical().show(ui, |ui| {
                     PropertyPanel::show(ui, &mut self.state);
+                    ui.add_space(8.0);
+                    ui.separator();
+                    EffectsPanel::show(ui, &mut self.state);
+                    ui.add_space(8.0);
+                    ui.separator();
+                    OffsetPanel::show(ui, &mut self.state);
+                    ui.add_space(8.0);
+                    ui.separator();
+                    MorphPanel::show(ui, &mut self.state);
                     ui.add_space(8.0);
                     ui.separator();
                     PathfinderPanel::show(ui, &mut self.state);

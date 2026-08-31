@@ -246,3 +246,59 @@ pub fn object_to_motion_path_keyframes(
 
     keyframes
 }
+
+/// Export all visible objects in a document as a combined 3D OBJ mesh file
+pub fn export_doc_to_obj(doc: &Document, depth: f64, bevel: f64) -> String {
+    let mut out = String::new();
+    out.push_str(&format!("# IRASU Illustrator 3D Mesh Export: {}\n\n", doc.name));
+
+    let mut total_verts: Vec<[f64; 3]> = Vec::new();
+    let mut total_normals: Vec<[f64; 3]> = Vec::new();
+    let mut total_faces: Vec<[usize; 3]> = Vec::new();
+
+    for (layer_idx, layer) in doc.layers.iter().enumerate() {
+        if !layer.visible {
+            continue;
+        }
+
+        for obj in &layer.objects {
+            if !obj.visible {
+                continue;
+            }
+
+            let poly = obj.to_world_polygon();
+            if poly.len() < 3 {
+                continue;
+            }
+
+            let mesh = crate::core::mesh3d::extrude_polygon_3d(&poly, depth, bevel);
+            let v_offset = total_verts.len();
+
+            for v in &mesh.vertices {
+                total_verts.push([v[0], -v[1], v[2] - (layer_idx as f64 * depth)]);
+            }
+            for n in &mesh.normals {
+                total_normals.push([n[0], -n[1], n[2]]);
+            }
+            for f in &mesh.faces {
+                total_faces.push([f[0] + v_offset, f[1] + v_offset, f[2] + v_offset]);
+            }
+        }
+    }
+
+    for v in &total_verts {
+        out.push_str(&format!("v {:.4} {:.4} {:.4}\n", v[0], v[1], v[2]));
+    }
+    out.push('\n');
+
+    for n in &total_normals {
+        out.push_str(&format!("vn {:.4} {:.4} {:.4}\n", n[0], n[1], n[2]));
+    }
+    out.push('\n');
+
+    for f in &total_faces {
+        out.push_str(&format!("f {}//{} {}//{} {}//{}\n", f[0], f[0], f[1], f[1], f[2], f[2]));
+    }
+
+    out
+}

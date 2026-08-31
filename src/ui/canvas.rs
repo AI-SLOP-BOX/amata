@@ -609,6 +609,27 @@ impl CanvasWidget {
             Stroke::new((s.width as f32 * state.zoom).max(1.0_f32), stroke_c)
         });
 
+        if let Some(ref sh) = obj.shadow {
+            let sh_c = Color32::from_rgba_unmultiplied(
+                (sh.color[0] * 255.0_f32) as u8,
+                (sh.color[1] * 255.0_f32) as u8,
+                (sh.color[2] * 255.0_f32) as u8,
+                ((sh.color[3] * sh.opacity * opacity) * 255.0_f32) as u8,
+            );
+            let sh_to_screen = |lx: f64, ly: f64| -> Pos2 {
+                let (wx, wy) = obj.transform.transform_point(lx + sh.offset_x, ly + sh.offset_y);
+                Pos2::new(
+                    origin.x + (wx as f32 * state.zoom),
+                    origin.y + (wy as f32 * state.zoom),
+                )
+            };
+            let poly = obj.to_path_data().to_polygon(16);
+            if poly.len() >= 3 {
+                let sh_pts: Vec<Pos2> = poly.iter().map(|p| sh_to_screen(p.x, p.y)).collect();
+                painter.add(egui::epaint::PathShape::convex_polygon(sh_pts, sh_c, Stroke::NONE));
+            }
+        }
+
         match &obj.object_type {
             ObjectType::Path(path) => {
                 let poly = path.to_polygon(16);

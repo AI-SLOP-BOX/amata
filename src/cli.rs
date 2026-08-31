@@ -46,6 +46,74 @@ pub enum Commands {
         duration: f64,
     },
 
+    /// Export vector artwork into a 3D Wavefront OBJ mesh (for VFX / Blender / Cinema 4D)
+    Export3d {
+        /// Input vector file (.svg or .json)
+        #[arg(short, long)]
+        input: PathBuf,
+
+        /// Output 3D mesh file (.obj)
+        #[arg(short, long)]
+        output: PathBuf,
+
+        /// 3D Extrusion depth (default: 20.0)
+        #[arg(short, long, default_value_t = 20.0)]
+        depth: f64,
+
+        /// Bevel radius (default: 2.0)
+        #[arg(short, long, default_value_t = 2.0)]
+        bevel: f64,
+    },
+
+    /// Morph / interpolate between two vector shapes at factor t (0.0 to 1.0)
+    Morph {
+        /// First vector shape file (t = 0.0)
+        #[arg(short = '1', long)]
+        input1: PathBuf,
+
+        /// Second vector shape file (t = 1.0)
+        #[arg(short = '2', long)]
+        input2: PathBuf,
+
+        /// Interpolation factor (0.0 to 1.0)
+        #[arg(short, long, default_value_t = 0.5)]
+        t: f64,
+
+        /// Output morphed SVG file
+        #[arg(short, long)]
+        output: PathBuf,
+    },
+
+    /// Offset path outward (positive delta) or inward (negative delta)
+    Offset {
+        /// Input vector file (.svg or .json)
+        #[arg(short, long)]
+        input: PathBuf,
+
+        /// Offset distance in pixels (e.g. 10.0 or -5.0)
+        #[arg(short, long, default_value_t = 10.0)]
+        delta: f64,
+
+        /// Output offset SVG file
+        #[arg(short, long)]
+        output: PathBuf,
+    },
+
+    /// Outline stroked paths into filled ribbon polygons
+    OutlineStroke {
+        /// Input vector file (.svg or .json)
+        #[arg(short, long)]
+        input: PathBuf,
+
+        /// Stroke width to expand (default: 4.0)
+        #[arg(short, long, default_value_t = 4.0)]
+        width: f64,
+
+        /// Output outlined SVG file
+        #[arg(short, long)]
+        output: PathBuf,
+    },
+
     /// Extract vector curves as 3D Camera / Particle Motion Path Keyframes
     MotionPath {
         /// Input vector file (.svg or .json)
@@ -124,6 +192,82 @@ pub fn run_cli(cli: Cli) -> Result<bool, Box<dyn std::error::Error>> {
             let json = serde_json::to_string_pretty(&vfx_comp)?;
             std::fs::write(&output, json)?;
             println!("✅ Exported {} VFX layers to {:?}", vfx_comp.layers.len(), output);
+            Ok(false)
+        }
+        Some(Commands::Export3d { input, output, depth, bevel }) => {
+            println!("🧱 Exporting to 3D OBJ Mesh (depth: {}, bevel: {}): '{:?}'...", depth, bevel, output);
+            let doc = load_any_document(&input)?;
+            let obj_str = crate::io::vfx::export_doc_to_obj(&doc, depth, bevel);
+            std::fs::write(&output, obj_str)?;
+            println!("✅ 3D OBJ Mesh exported to {:?}", output);
+            Ok(false)
+        }
+        Some(Commands::Morph { input1, input2, t, output }) => {
+            println!("🧬 Morphing '{:?}' and '{:?}' at t = {} -> '{:?}'...", input1, input2, t, output);
+            let doc1 = load_any_document(&input1)?;
+            let doc2 = load_any_document(&input2)?;
+
+            let obj1 = doc1.all_objects().next().map(|(_, o)| o).ok_or("Input 1 contains no objects")?;
+            let obj2 = doc2.all_objects().next().map(|(_, o)| o).ok_or("Input 2 contains no objects")?;
+
+            let mut p1 = obj1.to_path_data();
+            p1.transform(&obj1.transform.matrix());
+            let mut p2 = obj2.to_path_data();
+            p2.transform(&obj2.transform.matrix());
+
+            let morphed_path = crate::core::morph::morph_paths(&p1, &p2, t);
+            let morphed_obj = crate::core::document::Object::new_path("Morphed Shape", morphed_path);
+
+            let mut out_doc = crate::core::document::Document {
+                width: doc1.width.max(doc2.width),
+                height: doc1.height.max(doc2.height),
+                ..Default::default()
+            };
+            out_doc.add_object(morphed_obj);
+            save_any_document(&out_doc, &output)?;
+            println!("✅ Morphed shape saved to {:?}", output);
+            Ok(false)
+        }
+        Some(Commands::Offset { input, delta, output }) => {
+            println!("📐 Offsetting path in '{:?}' by {}px -> '{:?}'...", input, delta, output);
+            let doc = load_any_document(&input)?;
+            let mut out_doc = crate::core::document::Document {
+                width: doc.width,
+                height: doc.height,
+                ..Default::default()
+            };
+
+            for (_, obj) in doc.all_objects() {
+                let path = obj.to_path_data();
+                let off_path = crate::core::offset::offset_path(&path, delta);
+                let mut new_obj = crate::core::document::Object::new_path(&format!("{} (Offset)", obj.name), off_path);
+                new_obj.transform = obj.transform.clone();
+                out_doc.add_object(new_obj);
+            }
+
+            save_any_document(&out_doc, &output)?;
+            println!("✅ Offset path saved to {:?}", output);
+            Ok(false)
+        }
+        Some(Commands::OutlineStroke { input, width, output }) => {
+            println!("🖋 Outlining strokes in '{:?}' (width: {}px) -> '{:?}'...", input, width, output);
+            let doc = load_any_document(&input)?;
+            let mut out_doc = crate::core::document::Document {
+                width: doc.width,
+                height: doc.height,
+                ..Default::default()
+            };
+
+            for (_, obj) in doc.all_objects() {
+                let path = obj.to_path_data();
+                let outlined = crate::core::offset::outline_stroke(&path, width);
+                let mut new_obj = crate::core::document::Object::new_path(&format!("{} (Outlined)", obj.name), outlined);
+                new_obj.transform = obj.transform.clone();
+                out_doc.add_object(new_obj);
+            }
+
+            save_any_document(&out_doc, &output)?;
+            println!("✅ Outlined stroke saved to {:?}", output);
             Ok(false)
         }
         Some(Commands::MotionPath { input, output, samples, duration, fps }) => {

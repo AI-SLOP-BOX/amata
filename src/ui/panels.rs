@@ -1,5 +1,7 @@
 use crate::core::boolean::{execute_pathfinder, BooleanOp};
 use crate::core::document::{ObjectType, Object};
+use crate::core::morph::morph_paths;
+use crate::core::offset::{offset_path, outline_stroke};
 use crate::core::path::{FillStyle, StrokeStyle};
 use crate::core::state::{AppState, Tool};
 use egui::{Color32, RichText, Ui, Vec2};
@@ -240,6 +242,161 @@ impl PropertyPanel {
     }
 }
 
+pub struct EffectsPanel;
+
+impl EffectsPanel {
+    pub fn show(ui: &mut Ui, state: &mut AppState) {
+        ui.heading(RichText::new("✨ Effects & Shadows").strong());
+        ui.add_space(4.0);
+
+        if let Some(id) = state.selected_ids.first().cloned() {
+            let mut shadow = None;
+            let mut glow = None;
+
+            for (_, obj) in state.document.all_objects() {
+                if obj.id == id {
+                    shadow = obj.shadow.clone();
+                    glow = obj.glow.clone();
+                    break;
+                }
+            }
+
+            let mut has_shadow = shadow.is_some();
+            let mut current_shadow = shadow.unwrap_or_default();
+
+            ui.checkbox(&mut has_shadow, "Drop Shadow");
+            if has_shadow {
+                ui.horizontal(|ui| {
+                    ui.label("Offset X:");
+                    ui.add(egui::DragValue::new(&mut current_shadow.offset_x).speed(1.0));
+                    ui.label("Y:");
+                    ui.add(egui::DragValue::new(&mut current_shadow.offset_y).speed(1.0));
+                });
+                ui.horizontal(|ui| {
+                    ui.label("Blur:");
+                    ui.add(egui::DragValue::new(&mut current_shadow.blur_radius).speed(0.5).range(0.0..=100.0));
+                    ui.label("Opacity:");
+                    ui.add(egui::Slider::new(&mut current_shadow.opacity, 0.0..=1.0));
+                });
+                ui.horizontal(|ui| {
+                    ui.label("Color:");
+                    ui.color_edit_button_rgba_premultiplied(&mut current_shadow.color);
+                });
+            }
+
+            let mut has_glow = glow.is_some();
+            let mut current_glow = glow.unwrap_or_default();
+
+            ui.checkbox(&mut has_glow, "Outer Glow");
+            if has_glow {
+                ui.horizontal(|ui| {
+                    ui.label("Radius:");
+                    ui.add(egui::DragValue::new(&mut current_glow.radius).speed(1.0).range(1.0..=100.0));
+                    ui.label("Intensity:");
+                    ui.add(egui::Slider::new(&mut current_glow.intensity, 0.0..=1.0));
+                });
+                ui.horizontal(|ui| {
+                    ui.label("Glow Color:");
+                    ui.color_edit_button_rgba_premultiplied(&mut current_glow.color);
+                });
+            }
+
+            for (_, obj) in state.document.all_objects_mut() {
+                if obj.id == id {
+                    obj.shadow = if has_shadow { Some(current_shadow) } else { None };
+                    obj.glow = if has_glow { Some(current_glow) } else { None };
+                    break;
+                }
+            }
+        } else {
+            ui.label(RichText::new("Select an object to add effects").weak());
+        }
+    }
+}
+
+pub struct OffsetPanel;
+
+impl OffsetPanel {
+    pub fn show(ui: &mut Ui, state: &mut AppState) {
+        ui.heading(RichText::new("📐 Path Tools").strong());
+        ui.add_space(4.0);
+
+        let has_sel = !state.selected_ids.is_empty();
+
+        ui.horizontal(|ui| {
+            if ui.add_enabled(has_sel, egui::Button::new("Outline Stroke")).clicked() {
+                let targets: Vec<crate::core::document::Object> = state
+                    .selected_ids
+                    .iter()
+                    .filter_map(|id| state.document.all_objects().find(|(_, o)| &o.id == id).map(|(_, o)| o.clone()))
+                    .collect();
+
+                for obj in targets {
+                    let stroke_w = obj.stroke.as_ref().map(|s| s.width).unwrap_or(2.0);
+                    let path = obj.to_path_data();
+                    let outlined = outline_stroke(&path, stroke_w);
+                    let mut new_obj = Object::new_path(&format!("{} (Outlined)", obj.name), outlined);
+                    new_obj.transform = obj.transform.clone();
+                    let cmd = Box::new(crate::core::history::AddObjectCommand::new(new_obj));
+                    state.undo_manager.execute(cmd, &mut state.document);
+                }
+            }
+
+            if ui.add_enabled(has_sel, egui::Button::new("Offset Path (+10px)")).clicked() {
+                let targets: Vec<crate::core::document::Object> = state
+                    .selected_ids
+                    .iter()
+                    .filter_map(|id| state.document.all_objects().find(|(_, o)| &o.id == id).map(|(_, o)| o.clone()))
+                    .collect();
+
+                for obj in targets {
+                    let path = obj.to_path_data();
+                    let offset = offset_path(&path, 10.0);
+                    let mut new_obj = Object::new_path(&format!("{} (Offset)", obj.name), offset);
+                    new_obj.transform = obj.transform.clone();
+                    let cmd = Box::new(crate::core::history::AddObjectCommand::new(new_obj));
+                    state.undo_manager.execute(cmd, &mut state.document);
+                }
+            }
+        });
+    }
+}
+
+pub struct MorphPanel;
+
+impl MorphPanel {
+    pub fn show(ui: &mut Ui, state: &mut AppState) {
+        ui.heading(RichText::new("🧬 Shape Morphing").strong());
+        ui.add_space(4.0);
+
+        let sel_count = state.selected_ids.len();
+        if sel_count == 2 {
+            ui.label("Select 2 shapes to interpolate/morph between them:");
+            let mut t = 0.5;
+            ui.add(egui::Slider::new(&mut t, 0.0..=1.0).text("Morph (t)").step_by(0.05));
+
+            if ui.button("Create Morphed In-between Shape").clicked() {
+                let obj1 = state.document.all_objects().find(|(_, o)| o.id == state.selected_ids[0]).map(|(_, o)| o.clone());
+                let obj2 = state.document.all_objects().find(|(_, o)| o.id == state.selected_ids[1]).map(|(_, o)| o.clone());
+
+                if let (Some(o1), Some(o2)) = (obj1, obj2) {
+                    let mut path1 = o1.to_path_data();
+                    path1.transform(&o1.transform.matrix());
+                    let mut path2 = o2.to_path_data();
+                    path2.transform(&o2.transform.matrix());
+
+                    let morphed = morph_paths(&path1, &path2, t);
+                    let new_obj = Object::new_path("Morph In-Between", morphed);
+                    let cmd = Box::new(crate::core::history::AddObjectCommand::new(new_obj));
+                    state.undo_manager.execute(cmd, &mut state.document);
+                }
+            }
+        } else {
+            ui.label(RichText::new("Select exactly 2 objects to morph").weak());
+        }
+    }
+}
+
 pub struct PathfinderPanel;
 
 impl PathfinderPanel {
@@ -286,7 +443,6 @@ impl PathfinderPanel {
 
         let obj_refs: Vec<&Object> = selected_objs.iter().collect();
         if let Some(result_obj) = execute_pathfinder(&obj_refs, op) {
-            // Remove old selected objects
             for id in &state.selected_ids {
                 state.document.remove_object(id);
             }
@@ -504,7 +660,7 @@ fn align_bottom(state: &mut AppState, sel: &[String]) {
 }
 
 fn distribute_h(state: &mut AppState, sel: &[String]) {
-    let mut items: Vec<(String, f64, f64)> = Vec::new(); // (id, min_x, width)
+    let mut items: Vec<(String, f64, f64)> = Vec::new();
     for id in sel {
         if let Some((_, obj)) = state.document.all_objects().find(|(_, o)| &o.id == id) {
             if let Some((bb_min, bb_max)) = obj.bounding_box() {
@@ -537,7 +693,7 @@ fn distribute_h(state: &mut AppState, sel: &[String]) {
 }
 
 fn distribute_v(state: &mut AppState, sel: &[String]) {
-    let mut items: Vec<(String, f64, f64)> = Vec::new(); // (id, min_y, height)
+    let mut items: Vec<(String, f64, f64)> = Vec::new();
     for id in sel {
         if let Some((_, obj)) = state.document.all_objects().find(|(_, o)| &o.id == id) {
             if let Some((bb_min, bb_max)) = obj.bounding_box() {
