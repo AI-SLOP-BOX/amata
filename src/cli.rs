@@ -137,6 +137,40 @@ pub enum Commands {
         fps: f64,
     },
 
+    /// Vectorize / auto-trace a bitmap image into clean vector paths
+    Trace {
+        /// Input image file (PNG/JPG/BMP)
+        #[arg(short, long)]
+        input: PathBuf,
+
+        /// Grayscale binarization threshold (0..=255, default: 128)
+        #[arg(short, long, default_value_t = 128)]
+        threshold: u8,
+
+        /// Output SVG vector file
+        #[arg(short, long)]
+        output: PathBuf,
+    },
+
+    /// Export keyframed animation as AEVFX Studio Comp with animated transforms
+    Animate {
+        /// Input vector project file (.json)
+        #[arg(short, long)]
+        input: PathBuf,
+
+        /// Output animated AEVFX Comp file (.aevfx / .json)
+        #[arg(short, long)]
+        output: PathBuf,
+
+        /// Frame rate (default: 60.0)
+        #[arg(long, default_value_t = 60.0)]
+        fps: f64,
+
+        /// Duration in seconds (default: 3.0)
+        #[arg(long, default_value_t = 3.0)]
+        duration: f64,
+    },
+
     /// Execute headless Pathfinder (Boolean Operations) on two vector files
     Boolean {
         /// First vector file (Subject)
@@ -268,6 +302,32 @@ pub fn run_cli(cli: Cli) -> Result<bool, Box<dyn std::error::Error>> {
 
             save_any_document(&out_doc, &output)?;
             println!("✅ Outlined stroke saved to {:?}", output);
+            Ok(false)
+        }
+        Some(Commands::Trace { input, threshold, output }) => {
+            println!("🖼️ Auto-tracing image '{:?}' (threshold: {}) -> '{:?}'...", input, threshold, output);
+            let img = image::open(&input)?;
+            let gray = img.to_luma8();
+            let w = gray.width() as usize;
+            let h = gray.height() as usize;
+            let path_data = crate::core::trace::trace_bitmap_to_path(w, h, gray.as_raw(), threshold);
+            let mut doc = crate::core::document::Document {
+                width: w as f64,
+                height: h as f64,
+                ..Default::default()
+            };
+            doc.add_object(crate::core::document::Object::new_path("Traced Image", path_data));
+            save_any_document(&doc, &output)?;
+            println!("✅ Auto-traced vector saved to {:?}", output);
+            Ok(false)
+        }
+        Some(Commands::Animate { input, output, fps, duration }) => {
+            println!("🎬 Generating animated AEVFX Studio Comp from '{:?}' ({} fps, {}s)...", input, fps, duration);
+            let doc = load_any_document(&input)?;
+            let vfx_comp = crate::io::vfx::doc_to_aevfx_comp(&doc, fps, duration);
+            let json = serde_json::to_string_pretty(&vfx_comp)?;
+            std::fs::write(&output, json)?;
+            println!("✅ Animated composition saved to {:?}", output);
             Ok(false)
         }
         Some(Commands::MotionPath { input, output, samples, duration, fps }) => {

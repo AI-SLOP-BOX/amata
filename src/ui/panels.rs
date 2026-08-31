@@ -881,3 +881,88 @@ impl LayerPanel {
         }
     }
 }
+
+pub struct PresetPanel;
+
+impl PresetPanel {
+    pub fn show(ui: &mut Ui, state: &mut AppState) {
+        ui.heading(RichText::new("📦 Asset Library & Presets").strong());
+        ui.add_space(4.0);
+
+        let cx = state.document.width * 0.5;
+        let cy = state.document.height * 0.5;
+
+        ui.horizontal_wrapped(|ui| {
+            if ui.button("❤️ Heart").on_hover_text("Add Heart shape").clicked() {
+                let obj = crate::core::presets::PresetLibrary::heart("Heart", cx, cy, 120.0);
+                let id = obj.id.clone();
+                let cmd = Box::new(crate::core::history::AddObjectCommand::new(obj));
+                state.undo_manager.execute(cmd, &mut state.document);
+                state.selected_ids = vec![id];
+            }
+
+            if ui.button("➡️ Arrow").on_hover_text("Add Arrow symbol").clicked() {
+                let obj = crate::core::presets::PresetLibrary::arrow("Arrow", cx, cy, 160.0, 40.0);
+                let id = obj.id.clone();
+                let cmd = Box::new(crate::core::history::AddObjectCommand::new(obj));
+                state.undo_manager.execute(cmd, &mut state.document);
+                state.selected_ids = vec![id];
+            }
+
+            if ui.button("⚙️ Gear").on_hover_text("Add Cog / Gear").clicked() {
+                let obj = crate::core::presets::PresetLibrary::gear("Gear", cx, cy, 8, 40.0, 60.0);
+                let id = obj.id.clone();
+                let cmd = Box::new(crate::core::history::AddObjectCommand::new(obj));
+                state.undo_manager.execute(cmd, &mut state.document);
+                state.selected_ids = vec![id];
+            }
+
+            if ui.button("💬 Speech").on_hover_text("Add Speech Bubble").clicked() {
+                let obj = crate::core::presets::PresetLibrary::speech_bubble("Speech Bubble", cx, cy, 150.0, 100.0);
+                let id = obj.id.clone();
+                let cmd = Box::new(crate::core::history::AddObjectCommand::new(obj));
+                state.undo_manager.execute(cmd, &mut state.document);
+                state.selected_ids = vec![id];
+            }
+
+            if ui.button("🌀 VFX Portal").on_hover_text("Add Sci-Fi Hexagonal VFX Ring").clicked() {
+                let obj = crate::core::presets::PresetLibrary::vfx_portal("VFX Portal", cx, cy, 80.0);
+                let id = obj.id.clone();
+                let cmd = Box::new(crate::core::history::AddObjectCommand::new(obj));
+                state.undo_manager.execute(cmd, &mut state.document);
+                state.selected_ids = vec![id];
+            }
+        });
+    }
+}
+
+pub struct TracePanel;
+
+impl TracePanel {
+    pub fn show(ui: &mut Ui, state: &mut AppState) {
+        ui.heading(RichText::new("🖼️ Live Auto-Trace").strong());
+        ui.label(RichText::new("Vectorize bitmap into paths").weak().size(11.0));
+        ui.add_space(4.0);
+
+        if ui.button("Open Image to Trace (PNG/JPG)...").clicked() {
+            if let Some(path) = rfd::FileDialog::new()
+                .add_filter("Image", &["png", "jpg", "jpeg", "bmp"])
+                .pick_file()
+            {
+                if let Ok(img) = image::open(&path) {
+                    let gray = img.to_luma8();
+                    let w = gray.width() as usize;
+                    let h = gray.height() as usize;
+                    let path_data = crate::core::trace::trace_bitmap_to_path(w, h, gray.as_raw(), 128);
+                    let mut obj = Object::new_path(&format!("Traced {}", path.file_stem().and_then(|s| s.to_str()).unwrap_or("Image")), path_data);
+                    obj.transform.x = 50.0;
+                    obj.transform.y = 50.0;
+                    let id = obj.id.clone();
+                    let cmd = Box::new(crate::core::history::AddObjectCommand::new(obj));
+                    state.undo_manager.execute(cmd, &mut state.document);
+                    state.selected_ids = vec![id];
+                }
+            }
+        }
+    }
+}

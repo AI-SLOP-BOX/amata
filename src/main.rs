@@ -7,8 +7,10 @@ use irasu_illustrator::core::document::Object;
 use irasu_illustrator::core::state::{AppState, Tool};
 use irasu_illustrator::ui::canvas::CanvasWidget;
 use irasu_illustrator::ui::panels::{
-    AlignPanel, EffectsPanel, LayerPanel, MorphPanel, OffsetPanel, PathfinderPanel, PropertyPanel,
+    AlignPanel, EffectsPanel, LayerPanel, MorphPanel, OffsetPanel, PathfinderPanel, PresetPanel,
+    PropertyPanel, TracePanel,
 };
+use irasu_illustrator::ui::timeline_widget::TimelineWidget;
 
 struct IrasuApp {
     state: AppState,
@@ -26,6 +28,13 @@ impl Default for IrasuApp {
 
 impl eframe::App for IrasuApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Timeline animation playback tick
+        if self.state.timeline.is_playing {
+            self.state.timeline.advance_frame();
+            self.state.timeline.apply_to_document(&mut self.state.document);
+            ctx.request_repaint();
+        }
+
         // Keyboard shortcuts
         ctx.input(|i| {
             if !i.modifiers.ctrl && !i.modifiers.mac_cmd && !i.modifiers.alt {
@@ -460,6 +469,7 @@ impl eframe::App for IrasuApp {
                     ui.checkbox(&mut self.state.snap_to_grid, "Snap to Grid");
                     ui.checkbox(&mut self.state.show_rulers, "Show Rulers");
                     ui.checkbox(&mut self.state.show_smart_guides, "Smart Guides");
+                    ui.checkbox(&mut self.state.show_timeline, "Show Timeline");
                     ui.add(egui::DragValue::new(&mut self.state.grid_size).speed(10.0).prefix("Grid Size: ").range(5.0..=500.0));
                     ui.separator();
                     if ui.button("Zoom to Fit  (Ctrl+0)").clicked() {
@@ -540,6 +550,12 @@ impl eframe::App for IrasuApp {
                     PropertyPanel::show(ui, &mut self.state);
                     ui.add_space(8.0);
                     ui.separator();
+                    PresetPanel::show(ui, &mut self.state);
+                    ui.add_space(8.0);
+                    ui.separator();
+                    TracePanel::show(ui, &mut self.state);
+                    ui.add_space(8.0);
+                    ui.separator();
                     EffectsPanel::show(ui, &mut self.state);
                     ui.add_space(8.0);
                     ui.separator();
@@ -558,6 +574,16 @@ impl eframe::App for IrasuApp {
                     LayerPanel::show(ui, &mut self.state);
                 });
             });
+
+        // Bottom Timeline Panel
+        if self.state.show_timeline {
+            egui::TopBottomPanel::bottom("timeline_panel")
+                .resizable(true)
+                .default_height(70.0)
+                .show(ctx, |ui| {
+                    TimelineWidget::show(ui, &mut self.state);
+                });
+        }
 
         // Bottom Status Bar
         egui::TopBottomPanel::bottom("status_bar").show(ctx, |ui| {

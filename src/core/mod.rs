@@ -7,4 +7,7 @@ pub mod mesh3d;
 pub mod morph;
 pub mod offset;
 pub mod path;
+pub mod presets;
 pub mod state;
+pub mod timeline;
+pub mod trace;

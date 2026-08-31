@@ -111,6 +111,8 @@ pub struct AppState {
     pub is_panning: bool,
     pub drag_start: Option<(f32, f32)>,
     pub clipboard: Vec<crate::core::document::Object>,
+    pub timeline: super::timeline::Timeline,
+    pub show_timeline: bool,
 }
 
 impl Default for AppState {
@@ -143,6 +145,8 @@ impl Default for AppState {
             is_panning: false,
             drag_start: None,
             clipboard: Vec::new(),
+            timeline: super::timeline::Timeline::default(),
+            show_timeline: true,
         }
     }
 }
