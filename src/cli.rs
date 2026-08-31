@@ -250,6 +250,47 @@ pub enum Commands {
         plane: CliIsoPlane,
     },
 
+    /// Generate procedural Voronoi diagram mosaic cells
+    Voronoi {
+        /// Number of seed cells (default: 40)
+        #[arg(short, long, default_value_t = 40)]
+        cells: usize,
+
+        /// Cell margin padding (default: 2.5)
+        #[arg(short, long, default_value_t = 2.5)]
+        padding: f64,
+
+        /// Output SVG file
+        #[arg(short, long)]
+        output: PathBuf,
+    },
+
+    /// Generate organic L-System fractal curves (Tree, Dragon, Snowflake, Hilbert)
+    Lsystem {
+        /// Fractal preset (tree, dragon, snowflake, hilbert)
+        #[arg(value_enum, short, long, default_value_t = CliLSystemPreset::Tree)]
+        preset: CliLSystemPreset,
+
+        /// Iterations (default: 4)
+        #[arg(short, long, default_value_t = 4)]
+        iterations: usize,
+
+        /// Output SVG file
+        #[arg(short, long)]
+        output: PathBuf,
+    },
+
+    /// Generate pure scalable vector QR Code
+    Qr {
+        /// Text or URL to encode
+        #[arg(short, long)]
+        text: String,
+
+        /// Output SVG file
+        #[arg(short, long)]
+        output: PathBuf,
+    },
+
     /// Execute headless Pathfinder (Boolean Operations) on two vector files
     Boolean {
         /// First vector file (Subject)
@@ -305,6 +346,14 @@ pub enum CliIsoPlane {
     Top,
     Left,
     Right,
+}
+
+#[derive(ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CliLSystemPreset {
+    Tree,
+    Dragon,
+    Snowflake,
+    Hilbert,
 }
 
 pub fn run_cli(cli: Cli) -> Result<bool, Box<dyn std::error::Error>> {
@@ -527,6 +576,61 @@ pub fn run_cli(cli: Cli) -> Result<bool, Box<dyn std::error::Error>> {
             }
             save_any_document(&out_doc, &output)?;
             println!("✅ Isometric vector saved to {:?}", output);
+            Ok(false)
+        }
+        Some(Commands::Voronoi { cells, padding, output }) => {
+            println!("🔷 Generating Voronoi mosaic ({} cells, {}px padding)...", cells, padding);
+            let w = 800.0;
+            let h = 600.0;
+            let mut seeds = Vec::with_capacity(cells);
+            for i in 0..cells {
+                let hx = ((i as f64 * 37.123 + 12.34).sin() * 43758.5453).fract().abs();
+                let hy = ((i as f64 * 91.567 + 84.12).sin() * 43758.5453).fract().abs();
+                seeds.push(crate::core::path::AnchorPoint::new(hx * w, hy * h));
+            }
+            let cell_objs = crate::core::voronoi::generate_voronoi_cells(w, h, &seeds, padding);
+            let mut out_doc = crate::core::document::Document {
+                width: w,
+                height: h,
+                ..Default::default()
+            };
+            for obj in cell_objs {
+                out_doc.add_object(obj);
+            }
+            save_any_document(&out_doc, &output)?;
+            println!("✅ Voronoi mosaic saved to {:?}", output);
+            Ok(false)
+        }
+        Some(Commands::Lsystem { preset, iterations, output }) => {
+            println!("🌿 Generating L-System {:?} ({} iterations)...", preset, iterations);
+            let lpreset = match preset {
+                CliLSystemPreset::Tree => crate::core::lsystem::LSystemPreset::Tree,
+                CliLSystemPreset::Dragon => crate::core::lsystem::LSystemPreset::Dragon,
+                CliLSystemPreset::Snowflake => crate::core::lsystem::LSystemPreset::Snowflake,
+                CliLSystemPreset::Hilbert => crate::core::lsystem::LSystemPreset::Hilbert,
+            };
+            let path = crate::core::lsystem::generate_lsystem(lpreset, iterations, 400.0, 400.0, 10.0);
+            let mut out_doc = crate::core::document::Document {
+                width: 800.0,
+                height: 800.0,
+                ..Default::default()
+            };
+            out_doc.add_object(crate::core::document::Object::new_path("L-System Fractal", path));
+            save_any_document(&out_doc, &output)?;
+            println!("✅ L-System fractal saved to {:?}", output);
+            Ok(false)
+        }
+        Some(Commands::Qr { text, output }) => {
+            println!("📱 Generating Vector QR Code for '{}'...", text);
+            let path = crate::core::barcode::generate_vector_qr(&text, 200.0, 200.0, 360.0)?;
+            let mut out_doc = crate::core::document::Document {
+                width: 400.0,
+                height: 400.0,
+                ..Default::default()
+            };
+            out_doc.add_object(crate::core::document::Object::new_path("Vector QR Code", path));
+            save_any_document(&out_doc, &output)?;
+            println!("✅ Vector QR code saved to {:?}", output);
             Ok(false)
         }
         Some(Commands::MotionPath { input, output, samples, duration, fps }) => {

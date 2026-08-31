@@ -1190,3 +1190,99 @@ impl SymmetryPanel {
         }
     }
 }
+
+pub struct VoronoiPanel;
+
+impl VoronoiPanel {
+    pub fn show(ui: &mut Ui, state: &mut AppState) {
+        ui.heading(RichText::new("🔷 Voronoi & Mosaic Shatter").strong());
+        ui.add_space(4.0);
+
+        if ui.button("Generate Voronoi Mosaic (40 Cells)").clicked() {
+            let w = state.document.width;
+            let h = state.document.height;
+            let mut seeds = Vec::with_capacity(40);
+            for i in 0..40 {
+                let hx = ((i as f64 * 37.123 + 12.34).sin() * 43758.5453).fract().abs();
+                let hy = ((i as f64 * 91.567 + 84.12).sin() * 43758.5453).fract().abs();
+                seeds.push(crate::core::path::AnchorPoint::new(hx * w, hy * h));
+            }
+            let cells = crate::core::voronoi::generate_voronoi_cells(w, h, &seeds, 2.5);
+            for cell in cells {
+                let cmd = Box::new(crate::core::history::AddObjectCommand::new(cell));
+                state.undo_manager.execute(cmd, &mut state.document);
+            }
+        }
+    }
+}
+
+pub struct LSystemPanel;
+
+impl LSystemPanel {
+    pub fn show(ui: &mut Ui, state: &mut AppState) {
+        ui.heading(RichText::new("🌿 L-System Fractals").strong());
+        ui.add_space(4.0);
+
+        let cx = state.document.width * 0.5;
+        let cy = state.document.height * 0.5;
+
+        ui.horizontal_wrapped(|ui| {
+            if ui.button("🌲 Tree").clicked() {
+                let path = crate::core::lsystem::generate_lsystem(crate::core::lsystem::LSystemPreset::Tree, 4, cx, cy + 150.0, 12.0);
+                let obj = Object::new_path("Fractal Tree", path);
+                let cmd = Box::new(crate::core::history::AddObjectCommand::new(obj));
+                state.undo_manager.execute(cmd, &mut state.document);
+            }
+
+            if ui.button("🐉 Dragon").clicked() {
+                let path = crate::core::lsystem::generate_lsystem(crate::core::lsystem::LSystemPreset::Dragon, 10, cx - 100.0, cy, 6.0);
+                let obj = Object::new_path("Dragon Curve", path);
+                let cmd = Box::new(crate::core::history::AddObjectCommand::new(obj));
+                state.undo_manager.execute(cmd, &mut state.document);
+            }
+
+            if ui.button("❄️ Snowflake").clicked() {
+                let path = crate::core::lsystem::generate_lsystem(crate::core::lsystem::LSystemPreset::Snowflake, 3, cx - 100.0, cy - 50.0, 5.0);
+                let obj = Object::new_path("Koch Snowflake", path);
+                let cmd = Box::new(crate::core::history::AddObjectCommand::new(obj));
+                state.undo_manager.execute(cmd, &mut state.document);
+            }
+
+            if ui.button("🔲 Hilbert").clicked() {
+                let path = crate::core::lsystem::generate_lsystem(crate::core::lsystem::LSystemPreset::Hilbert, 4, cx - 100.0, cy - 100.0, 14.0);
+                let obj = Object::new_path("Hilbert Curve", path);
+                let cmd = Box::new(crate::core::history::AddObjectCommand::new(obj));
+                state.undo_manager.execute(cmd, &mut state.document);
+            }
+        });
+    }
+}
+
+pub struct QrCodePanel;
+
+impl QrCodePanel {
+    pub fn show(ui: &mut Ui, state: &mut AppState) {
+        ui.heading(RichText::new("📱 Vector QR & Barcode").strong());
+        ui.add_space(4.0);
+
+        let cx = state.document.width * 0.5;
+        let cy = state.document.height * 0.5;
+
+        ui.horizontal(|ui| {
+            if ui.button("Generate QR Code...").clicked() {
+                if let Ok(path) = crate::core::barcode::generate_vector_qr("https://github.com/AI-SLOP-BOX/amata", cx, cy, 160.0) {
+                    let obj = Object::new_path("Vector QR Code", path);
+                    let cmd = Box::new(crate::core::history::AddObjectCommand::new(obj));
+                    state.undo_manager.execute(cmd, &mut state.document);
+                }
+            }
+
+            if ui.button("Barcode (Code-128)").clicked() {
+                let path = crate::core::barcode::generate_vector_barcode("IRASU-AEVFX-2026", cx, cy, 200.0, 60.0);
+                let obj = Object::new_path("Vector Barcode", path);
+                let cmd = Box::new(crate::core::history::AddObjectCommand::new(obj));
+                state.undo_manager.execute(cmd, &mut state.document);
+            }
+        });
+    }
+}

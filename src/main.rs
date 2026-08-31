@@ -7,9 +7,9 @@ use irasu_illustrator::core::document::Object;
 use irasu_illustrator::core::state::{AppState, Tool};
 use irasu_illustrator::ui::canvas::CanvasWidget;
 use irasu_illustrator::ui::panels::{
-    AlignPanel, EffectsPanel, FormulaPanel, HalftonePanel, IsometricPanel, LayerPanel, MorphPanel,
-    OffsetPanel, PathfinderPanel, PresetPanel, PropertyPanel, SymmetryPanel, TracePanel,
-    VfxTrailPanel,
+    AlignPanel, EffectsPanel, FormulaPanel, HalftonePanel, IsometricPanel, LSystemPanel,
+    LayerPanel, MorphPanel, OffsetPanel, PathfinderPanel, PresetPanel, PropertyPanel, QrCodePanel,
+    SymmetryPanel, TracePanel, VfxTrailPanel, VoronoiPanel,
 };
 use irasu_illustrator::ui::timeline_widget::TimelineWidget;
 
@@ -564,6 +564,15 @@ impl eframe::App for IrasuApp {
                     ui.add_space(8.0);
                     ui.separator();
                     SymmetryPanel::show(ui, &mut self.state);
+                    ui.add_space(8.0);
+                    ui.separator();
+                    VoronoiPanel::show(ui, &mut self.state);
+                    ui.add_space(8.0);
+                    ui.separator();
+                    LSystemPanel::show(ui, &mut self.state);
+                    ui.add_space(8.0);
+                    ui.separator();
+                    QrCodePanel::show(ui, &mut self.state);
                     ui.add_space(8.0);
                     ui.separator();
                     VfxTrailPanel::show(ui, &mut self.state);

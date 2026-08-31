@@ -1,3 +1,4 @@
+pub mod barcode;
 pub mod boolean;
 pub mod document;
 pub mod effects;
@@ -6,6 +7,7 @@ pub mod geometry;
 pub mod halftone;
 pub mod history;
 pub mod isometric;
+pub mod lsystem;
 pub mod mesh3d;
 pub mod morph;
 pub mod offset;
@@ -18,3 +20,4 @@ pub mod text_path;
 pub mod timeline;
 pub mod trace;
 pub mod vfx_particles;
+pub mod voronoi;
