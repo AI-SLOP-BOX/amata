@@ -179,7 +179,7 @@ impl CanvasWidget {
             self.draw_rulers(&painter, rect, origin, state);
         }
 
-        // Mouse Wheel Zoom
+        // Mouse Wheel Zoom (Ctrl+scroll or trackpad pinch)
         let scroll = ui.input(|i| i.raw_scroll_delta.y);
         if scroll != 0.0_f32 {
             let old_zoom = state.zoom;
@@ -193,11 +193,146 @@ impl CanvasWidget {
             }
         }
 
+        // Right-Click Context Menu (Illustrator style)
+        response.context_menu(|ui| {
+            let has_sel = !state.selected_ids.is_empty();
+            let multi_sel = state.selected_ids.len() >= 2;
+
+            if has_sel {
+                ui.label(egui::RichText::new("Selection").weak().size(10.0));
+                ui.separator();
+
+                if ui.button("Duplicate   Cmd+D").clicked() {
+                    let ids = state.selected_ids.clone();
+                    let mut new_objs = Vec::new();
+                    for id in &ids {
+                        if let Some((_, obj)) = state.document.all_objects().find(|(_, o)| &o.id == id) {
+                            let mut c = obj.clone();
+                            c.id = uuid::Uuid::new_v4().to_string();
+                            c.transform.x += 10.0;
+                            c.transform.y += 10.0;
+                            new_objs.push(c);
+                        }
+                    }
+                    let mut new_ids = Vec::new();
+                    for obj in new_objs {
+                        new_ids.push(obj.id.clone());
+                        let cmd = Box::new(crate::core::history::AddObjectCommand::new(obj));
+                        state.undo_manager.execute(cmd, &mut state.document);
+                    }
+                    state.selected_ids = new_ids;
+                    ui.close_menu();
+                }
+
+                if ui.button("Delete   Del").clicked() {
+                    for id in state.selected_ids.drain(..) {
+                        state.document.remove_object(&id);
+                    }
+                    ui.close_menu();
+                }
+
+                ui.separator();
+                ui.menu_button("Arrange", |ui| {
+                    if ui.button("Bring to Front   Cmd+Shift+]").clicked() {
+                        let sel = state.selected_ids.clone();
+                        for id in &sel {
+                            for layer in state.document.layers.iter_mut() {
+                                if let Some(pos) = layer.objects.iter().position(|o| &o.id == id) {
+                                    let obj = layer.objects.remove(pos);
+                                    layer.objects.push(obj);
+                                    break;
+                                }
+                            }
+                        }
+                        ui.close_menu();
+                    }
+                    if ui.button("Bring Forward   Cmd+]").clicked() {
+                        let sel = state.selected_ids.clone();
+                        for id in &sel {
+                            for layer in state.document.layers.iter_mut() {
+                                if let Some(pos) = layer.objects.iter().position(|o| &o.id == id) {
+                                    if pos + 1 < layer.objects.len() {
+                                        layer.objects.swap(pos, pos + 1);
+                                    }
+                                    break;
+                                }
+                            }
+                        }
+                        ui.close_menu();
+                    }
+                    if ui.button("Send Backward   Cmd+[").clicked() {
+                        let sel = state.selected_ids.clone();
+                        for id in &sel {
+                            for layer in state.document.layers.iter_mut() {
+                                if let Some(pos) = layer.objects.iter().position(|o| &o.id == id) {
+                                    if pos > 0 {
+                                        layer.objects.swap(pos, pos - 1);
+                                    }
+                                    break;
+                                }
+                            }
+                        }
+                        ui.close_menu();
+                    }
+                    if ui.button("Send to Back   Cmd+Shift+[").clicked() {
+                        let sel = state.selected_ids.clone();
+                        for id in &sel {
+                            for layer in state.document.layers.iter_mut() {
+                                if let Some(pos) = layer.objects.iter().position(|o| &o.id == id) {
+                                    let obj = layer.objects.remove(pos);
+                                    layer.objects.insert(0, obj);
+                                    break;
+                                }
+                            }
+                        }
+                        ui.close_menu();
+                    }
+                });
+
+                if multi_sel {
+                    ui.separator();
+                    if ui.button("Group   Cmd+G").clicked() {
+                        // collect selected objects into a group
+                        let sel = state.selected_ids.clone();
+                        let mut children = Vec::new();
+                        for id in &sel {
+                            if let Some((_, obj)) = state.document.all_objects().find(|(_, o)| &o.id == id) {
+                                children.push(obj.clone());
+                            }
+                        }
+                        for id in &sel {
+                            state.document.remove_object(id);
+                        }
+                        let grp = crate::core::document::Object::new_group("Group", children);
+                        let new_id = grp.id.clone();
+                        let cmd = Box::new(crate::core::history::AddObjectCommand::new(grp));
+                        state.undo_manager.execute(cmd, &mut state.document);
+                        state.selected_ids = vec![new_id];
+                        ui.close_menu();
+                    }
+                }
+            } else {
+                ui.label(egui::RichText::new("Canvas").weak().size(10.0));
+                ui.separator();
+                if ui.button("Zoom to Fit   Cmd+0").clicked() {
+                    ui.close_menu();
+                }
+                if ui.button("Zoom 100%   Cmd+1").clicked() {
+                    state.zoom = 1.0;
+                    ui.close_menu();
+                }
+                ui.separator();
+                ui.checkbox(&mut state.show_grid, "Show Grid");
+                ui.checkbox(&mut state.show_rulers, "Show Rulers");
+                ui.checkbox(&mut state.show_smart_guides, "Smart Guides");
+            }
+        });
+
         let space_down = ui.input(|i| i.key_down(egui::Key::Space));
         let shift_down = ui.input(|i| i.modifiers.shift);
         let alt_down = ui.input(|i| i.modifiers.alt);
 
-        // Secondary / Middle Click Pan or Spacebar Pan
+
         if (response.secondary_clicked() || (space_down && response.clicked())) && !response.dragged() {
             self.drag = Some(DragState::new(DragMode::Pan, 0.0, 0.0));
         }
@@ -234,9 +369,13 @@ impl CanvasWidget {
                 cursor = egui::CursorIcon::Crosshair;
             } else if state.current_tool == Tool::Text {
                 cursor = egui::CursorIcon::Text;
+            } else if state.current_tool == Tool::Pen {
+                cursor = egui::CursorIcon::Crosshair;
             } else if state.current_tool == Tool::Node {
                 if self.hit_test_nodes(state, screen_pos, origin).is_some() {
-                    cursor = egui::CursorIcon::PointingHand;
+                    cursor = egui::CursorIcon::Move;
+                } else {
+                    cursor = egui::CursorIcon::Crosshair;
                 }
             } else {
                 cursor = egui::CursorIcon::Crosshair;
