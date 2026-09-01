@@ -157,8 +157,8 @@ impl CanvasWidget {
             }
         }
 
-        // Pen Preview
-        if state.current_tool == Tool::Pen && self.pen_state.is_drawing {
+        // Pen Preview (show even before first anchor when hovering)
+        if state.current_tool == Tool::Pen {
             self.draw_pen_preview(&painter, origin, state);
         }
 
@@ -775,10 +775,17 @@ impl CanvasWidget {
             let max_p = Pos2::new(origin.x + bb_max.x as f32 * state.zoom, origin.y + bb_max.y as f32 * state.zoom);
             let rect = Rect::from_min_max(min_p, max_p);
 
-            let sel_stroke = Stroke::new(1.5_f32, Color32::from_rgb(0, 120, 255));
+            let sel_stroke = Stroke::new(1.0_f32, Color32::from_rgb(20, 115, 230));
             painter.rect_stroke(rect, 0.0_f32, sel_stroke, StrokeKind::Outside);
 
-            // 8 handles
+            // Center target crosshair (+)
+            let cp = rect.center();
+            let c_size = 4.0_f32;
+            let c_stroke = Stroke::new(1.0_f32, Color32::from_rgb(20, 115, 230));
+            painter.line_segment([Pos2::new(cp.x - c_size, cp.y), Pos2::new(cp.x + c_size, cp.y)], c_stroke);
+            painter.line_segment([Pos2::new(cp.x, cp.y - c_size), Pos2::new(cp.x, cp.y + c_size)], c_stroke);
+
+            // 8 handles (Hollow white square with blue border)
             let corners = [
                 rect.left_top(),
                 rect.right_top(),
@@ -793,12 +800,12 @@ impl CanvasWidget {
             for p in corners {
                 let h_rect = Rect::from_center_size(p, Vec2::splat(HANDLE_SIZE));
                 painter.rect_filled(h_rect, 0.0_f32, Color32::WHITE);
-                painter.rect_stroke(h_rect, 0.0_f32, Stroke::new(1.0_f32, Color32::from_rgb(0, 120, 255)), StrokeKind::Outside);
+                painter.rect_stroke(h_rect, 0.0_f32, Stroke::new(1.0_f32, Color32::from_rgb(20, 115, 230)), StrokeKind::Outside);
             }
 
-            // Rotation handle circle above right_top
+            // Top Rotation handle circle above right_top
             let rot_p = Pos2::new(rect.right_top().x + 12.0_f32, rect.right_top().y - 12.0_f32);
-            painter.circle_filled(rot_p, 4.0_f32, Color32::from_rgb(0, 180, 255));
+            painter.circle_filled(rot_p, 4.0_f32, Color32::from_rgb(20, 115, 230));
             painter.circle_stroke(rot_p, 4.0_f32, Stroke::new(1.0_f32, Color32::WHITE));
         }
     }
@@ -971,19 +978,25 @@ impl CanvasWidget {
         for p in self.pen_state.preview_points() {
             let sp = Pos2::new(origin.x + p.x as f32 * state.zoom, origin.y + p.y as f32 * state.zoom);
             screen_pts.push(sp);
-            painter.circle_filled(sp, 4.0_f32, Color32::WHITE);
-            painter.circle_stroke(sp, 4.0_f32, Stroke::new(1.0_f32, Color32::from_rgb(0, 120, 255)));
+
+            // Anchor point square
+            let a_rect = Rect::from_center_size(sp, Vec2::splat(6.0));
+            painter.rect_filled(a_rect, 0.0_f32, Color32::WHITE);
+            painter.rect_stroke(a_rect, 0.0_f32, Stroke::new(1.0_f32, Color32::from_rgb(20, 115, 230)), StrokeKind::Outside);
         }
 
-        if let Some((lx, ly)) = self.pen_state.last_point {
-            let lp = Pos2::new(origin.x + lx as f32 * state.zoom, origin.y + ly as f32 * state.zoom);
+        // Live Illustrator Rubberband Line from last anchor to mouse hover
+        if let Some((hx, hy)) = self.pen_state.hover_pos {
+            let hp = Pos2::new(origin.x + hx as f32 * state.zoom, origin.y + hy as f32 * state.zoom);
             if let Some(last_sp) = screen_pts.last() {
-                painter.line_segment([*last_sp, lp], Stroke::new(1.5_f32, Color32::from_rgb(0, 120, 255)));
+                painter.line_segment([*last_sp, hp], Stroke::new(1.0_f32, Color32::from_rgb(20, 115, 230)));
             }
+            // Mouse cursor anchor circle
+            painter.circle_filled(hp, 3.0_f32, Color32::from_rgb(20, 115, 230));
         }
 
         if screen_pts.len() >= 2 {
-            painter.add(egui::epaint::PathShape::line(screen_pts, Stroke::new(1.5_f32, Color32::from_rgb(0, 120, 255))));
+            painter.add(egui::epaint::PathShape::line(screen_pts, Stroke::new(1.5_f32, Color32::from_rgb(20, 115, 230))));
         }
     }
 }

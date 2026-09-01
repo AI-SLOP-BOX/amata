@@ -7,7 +7,7 @@ use irasu_illustrator::core::document::Object;
 use irasu_illustrator::core::state::{AppState, Tool};
 use irasu_illustrator::ui::canvas::CanvasWidget;
 use irasu_illustrator::ui::panels::{
-    AlignPanel, AudioWavePanel, AxonometricPanel, DeformPanel, EffectsPanel, EnvelopePanel,
+    AlignPanel, AudioWavePanel, DeformPanel, EffectsPanel, EnvelopePanel,
     FlowFieldPanel, FormulaPanel, GradientMeshPanel, HalftonePanel, IsometricPanel, KnifePanel,
     LSystemPanel, LayerPanel, MeshWarpPanel, MorphPanel, NeonGlowPanel, OffsetPanel,
     PathfinderPanel, PolarPanel, PresetPanel, PropertyPanel, QrCodePanel, RevolvePanel,
@@ -15,9 +15,19 @@ use irasu_illustrator::ui::panels::{
 };
 use irasu_illustrator::ui::timeline_widget::TimelineWidget;
 
+#[derive(Debug, Clone, PartialEq)]
+enum ActiveTab {
+    Properties,
+    Pathfinder,
+    ThreeDAndVfx,
+    Generative,
+    Layers,
+}
+
 struct IrasuApp {
     state: AppState,
     canvas: CanvasWidget,
+    active_tab: ActiveTab,
 }
 
 impl Default for IrasuApp {
@@ -25,12 +35,16 @@ impl Default for IrasuApp {
         Self {
             state: AppState::default(),
             canvas: CanvasWidget::new(),
+            active_tab: ActiveTab::Properties,
         }
     }
 }
 
 impl eframe::App for IrasuApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Apply Authentic Adobe CC Charcoal Theme
+        irasu_illustrator::ui::apply_adobe_theme(ctx);
+
         // Timeline animation playback tick
         if self.state.timeline.is_playing {
             self.state.timeline.advance_frame();
@@ -642,59 +656,57 @@ impl eframe::App for IrasuApp {
                 });
             });
 
-        // Left Vertical Toolbar with Overlapping Fill/Stroke Swatch Widget
+        // Left Vertical Toolbar (Classic 2-Column Illustrator Grid)
         egui::SidePanel::left("toolbar")
             .resizable(false)
-            .default_width(58.0)
+            .default_width(74.0)
             .show(ctx, |ui| {
                 ui.vertical_centered(|ui| {
                     ui.add_space(4.0);
 
-                    let tools = [
-                        Tool::Select,
-                        Tool::Node,
-                        Tool::Pen,
-                        Tool::Pencil,
-                        Tool::Rectangle,
-                        Tool::Ellipse,
-                        Tool::Star,
-                        Tool::Polygon,
-                        Tool::Line,
-                        Tool::Text,
-                        Tool::Eyedropper,
-                        Tool::Hand,
+                    let tool_pairs = [
+                        (Tool::Select, Tool::Node),
+                        (Tool::Pen, Tool::Pencil),
+                        (Tool::Rectangle, Tool::Ellipse),
+                        (Tool::Star, Tool::Polygon),
+                        (Tool::Line, Tool::Text),
+                        (Tool::Eyedropper, Tool::Hand),
                     ];
 
-                    for tool in tools {
-                        let is_active = self.state.current_tool == tool;
-                        let btn = if is_active {
-                            egui::Button::new(
-                                egui::RichText::new(tool.icon()).size(19.0).strong().color(egui::Color32::WHITE),
-                            )
-                            .fill(egui::Color32::from_rgb(0, 120, 255))
-                            .min_size(Vec2::new(42.0, 32.0))
-                        } else {
-                            egui::Button::new(egui::RichText::new(tool.icon()).size(19.0))
-                                .min_size(Vec2::new(42.0, 32.0))
-                        };
+                    for (t1, t2) in tool_pairs {
+                        ui.horizontal(|ui| {
+                            for tool in [t1, t2] {
+                                let is_active = self.state.current_tool == tool;
+                                let btn = if is_active {
+                                    egui::Button::new(
+                                        egui::RichText::new(tool.icon()).size(17.0).strong().color(egui::Color32::WHITE),
+                                    )
+                                    .fill(egui::Color32::from_rgb(20, 115, 230))
+                                    .min_size(Vec2::new(32.0, 30.0))
+                                } else {
+                                    egui::Button::new(egui::RichText::new(tool.icon()).size(17.0))
+                                        .min_size(Vec2::new(32.0, 30.0))
+                                };
 
-                        if ui
-                            .add(btn)
-                            .on_hover_text(format!("{} ({})", tool.name(), tool.shortcut()))
-                            .clicked()
-                        {
-                            if self.state.current_tool == Tool::Pen && self.canvas.pen_state.is_drawing {
-                                if let Some(obj) = self.canvas.pen_state.finish_path(
-                                    self.state.fill_color,
-                                    self.state.stroke_color,
-                                    self.state.stroke_width,
-                                ) {
-                                    let cmd = Box::new(irasu_illustrator::core::history::AddObjectCommand::new(obj));
-                                    self.state.undo_manager.execute(cmd, &mut self.state.document);
+                                if ui
+                                    .add(btn)
+                                    .on_hover_text(format!("{} ({})", tool.name(), tool.shortcut()))
+                                    .clicked()
+                                {
+                                    if self.state.current_tool == Tool::Pen && self.canvas.pen_state.is_drawing {
+                                        if let Some(obj) = self.canvas.pen_state.finish_path(
+                                            self.state.fill_color,
+                                            self.state.stroke_color,
+                                            self.state.stroke_width,
+                                        ) {
+                                            let cmd = Box::new(irasu_illustrator::core::history::AddObjectCommand::new(obj));
+                                            self.state.undo_manager.execute(cmd, &mut self.state.document);
+                                        }
+                                    }
+                                    self.state.current_tool = tool;
                                 }
                             }
-                            self.state.current_tool = tool;
-                        }
+                        });
                     }
 
                     ui.add_space(8.0);
@@ -703,7 +715,7 @@ impl eframe::App for IrasuApp {
 
                     // Overlapping Fill & Stroke Swatches (Illustrator Signature Widget)
                     ui.label(egui::RichText::new("Color").size(10.0).weak());
-                    
+
                     let mut fill_c = [
                         (self.state.fill_color[0] * 255.0) as u8,
                         (self.state.fill_color[1] * 255.0) as u8,
@@ -747,97 +759,120 @@ impl eframe::App for IrasuApp {
                 });
             });
 
-        // Right Sidebar Panels
+        // Right Tabbed Sidebar Panels
         egui::SidePanel::right("properties")
             .resizable(true)
-            .default_width(260.0)
+            .default_width(280.0)
             .show(ctx, |ui| {
+                ui.add_space(4.0);
+
+                // Adobe CC Tab Headers
+                ui.horizontal_wrapped(|ui| {
+                    if ui.selectable_label(self.active_tab == ActiveTab::Properties, "🎨 Properties").clicked() {
+                        self.active_tab = ActiveTab::Properties;
+                    }
+                    if ui.selectable_label(self.active_tab == ActiveTab::Pathfinder, "✂ Pathfinder").clicked() {
+                        self.active_tab = ActiveTab::Pathfinder;
+                    }
+                    if ui.selectable_label(self.active_tab == ActiveTab::ThreeDAndVfx, "🏺 3D & VFX").clicked() {
+                        self.active_tab = ActiveTab::ThreeDAndVfx;
+                    }
+                    if ui.selectable_label(self.active_tab == ActiveTab::Generative, "🌈 Generative").clicked() {
+                        self.active_tab = ActiveTab::Generative;
+                    }
+                    if ui.selectable_label(self.active_tab == ActiveTab::Layers, "📄 Layers").clicked() {
+                        self.active_tab = ActiveTab::Layers;
+                    }
+                });
+                ui.separator();
+
                 egui::ScrollArea::vertical().show(ui, |ui| {
-                    PropertyPanel::show(ui, &mut self.state);
-                    ui.add_space(8.0);
-                    ui.separator();
-                    PresetPanel::show(ui, &mut self.state);
-                    ui.add_space(8.0);
-                    ui.separator();
-                    FormulaPanel::show(ui, &mut self.state);
-                    ui.add_space(8.0);
-                    ui.separator();
-                    HalftonePanel::show(ui, &mut self.state);
-                    ui.add_space(8.0);
-                    ui.separator();
-                    IsometricPanel::show(ui, &mut self.state);
-                    ui.add_space(8.0);
-                    ui.separator();
-                    SymmetryPanel::show(ui, &mut self.state);
-                    ui.add_space(8.0);
-                    ui.separator();
-                    VoronoiPanel::show(ui, &mut self.state);
-                    ui.add_space(8.0);
-                    ui.separator();
-                    LSystemPanel::show(ui, &mut self.state);
-                    ui.add_space(8.0);
-                    ui.separator();
-                    QrCodePanel::show(ui, &mut self.state);
-                    ui.add_space(8.0);
-                    ui.separator();
-                    DeformPanel::show(ui, &mut self.state);
-                    ui.add_space(8.0);
-                    ui.separator();
-                    FlowFieldPanel::show(ui, &mut self.state);
-                    ui.add_space(8.0);
-                    ui.separator();
-                    ScatterBrushPanel::show(ui, &mut self.state);
-                    ui.add_space(8.0);
-                    ui.separator();
-                    AudioWavePanel::show(ui, &mut self.state);
-                    ui.add_space(8.0);
-                    ui.separator();
-                    MeshWarpPanel::show(ui, &mut self.state);
-                    ui.add_space(8.0);
-                    ui.separator();
-                    GradientMeshPanel::show(ui, &mut self.state);
-                    ui.add_space(8.0);
-                    ui.separator();
-                    AxonometricPanel::show(ui, &mut self.state);
-                    ui.add_space(8.0);
-                    ui.separator();
-                    NeonGlowPanel::show(ui, &mut self.state);
-                    ui.add_space(8.0);
-                    ui.separator();
-                    RevolvePanel::show(ui, &mut self.state);
-                    ui.add_space(8.0);
-                    ui.separator();
-                    EnvelopePanel::show(ui, &mut self.state);
-                    ui.add_space(8.0);
-                    ui.separator();
-                    PolarPanel::show(ui, &mut self.state);
-                    ui.add_space(8.0);
-                    ui.separator();
-                    KnifePanel::show(ui, &mut self.state);
-                    ui.add_space(8.0);
-                    ui.separator();
-                    VfxTrailPanel::show(ui, &mut self.state);
-                    ui.add_space(8.0);
-                    ui.separator();
-                    TracePanel::show(ui, &mut self.state);
-                    ui.add_space(8.0);
-                    ui.separator();
-                    EffectsPanel::show(ui, &mut self.state);
-                    ui.add_space(8.0);
-                    ui.separator();
-                    OffsetPanel::show(ui, &mut self.state);
-                    ui.add_space(8.0);
-                    ui.separator();
-                    MorphPanel::show(ui, &mut self.state);
-                    ui.add_space(8.0);
-                    ui.separator();
-                    PathfinderPanel::show(ui, &mut self.state);
-                    ui.add_space(8.0);
-                    ui.separator();
-                    AlignPanel::show(ui, &mut self.state);
-                    ui.add_space(8.0);
-                    ui.separator();
-                    LayerPanel::show(ui, &mut self.state);
+                    match self.active_tab {
+                        ActiveTab::Properties => {
+                            PropertyPanel::show(ui, &mut self.state);
+                            ui.add_space(8.0);
+                            ui.separator();
+                            AlignPanel::show(ui, &mut self.state);
+                            ui.add_space(8.0);
+                            ui.separator();
+                            PresetPanel::show(ui, &mut self.state);
+                        }
+                        ActiveTab::Pathfinder => {
+                            PathfinderPanel::show(ui, &mut self.state);
+                            ui.add_space(8.0);
+                            ui.separator();
+                            KnifePanel::show(ui, &mut self.state);
+                            ui.add_space(8.0);
+                            ui.separator();
+                            EnvelopePanel::show(ui, &mut self.state);
+                            ui.add_space(8.0);
+                            ui.separator();
+                            OffsetPanel::show(ui, &mut self.state);
+                            ui.add_space(8.0);
+                            ui.separator();
+                            MorphPanel::show(ui, &mut self.state);
+                        }
+                        ActiveTab::ThreeDAndVfx => {
+                            RevolvePanel::show(ui, &mut self.state);
+                            ui.add_space(8.0);
+                            ui.separator();
+                            NeonGlowPanel::show(ui, &mut self.state);
+                            ui.add_space(8.0);
+                            ui.separator();
+                            VfxTrailPanel::show(ui, &mut self.state);
+                            ui.add_space(8.0);
+                            ui.separator();
+                            EffectsPanel::show(ui, &mut self.state);
+                            ui.add_space(8.0);
+                            ui.separator();
+                            TracePanel::show(ui, &mut self.state);
+                        }
+                        ActiveTab::Generative => {
+                            GradientMeshPanel::show(ui, &mut self.state);
+                            ui.add_space(8.0);
+                            ui.separator();
+                            PolarPanel::show(ui, &mut self.state);
+                            ui.add_space(8.0);
+                            ui.separator();
+                            AudioWavePanel::show(ui, &mut self.state);
+                            ui.add_space(8.0);
+                            ui.separator();
+                            FlowFieldPanel::show(ui, &mut self.state);
+                            ui.add_space(8.0);
+                            ui.separator();
+                            DeformPanel::show(ui, &mut self.state);
+                            ui.add_space(8.0);
+                            ui.separator();
+                            ScatterBrushPanel::show(ui, &mut self.state);
+                            ui.add_space(8.0);
+                            ui.separator();
+                            MeshWarpPanel::show(ui, &mut self.state);
+                            ui.add_space(8.0);
+                            ui.separator();
+                            VoronoiPanel::show(ui, &mut self.state);
+                            ui.add_space(8.0);
+                            ui.separator();
+                            LSystemPanel::show(ui, &mut self.state);
+                            ui.add_space(8.0);
+                            ui.separator();
+                            HalftonePanel::show(ui, &mut self.state);
+                            ui.add_space(8.0);
+                            ui.separator();
+                            IsometricPanel::show(ui, &mut self.state);
+                            ui.add_space(8.0);
+                            ui.separator();
+                            SymmetryPanel::show(ui, &mut self.state);
+                            ui.add_space(8.0);
+                            ui.separator();
+                            FormulaPanel::show(ui, &mut self.state);
+                            ui.add_space(8.0);
+                            ui.separator();
+                            QrCodePanel::show(ui, &mut self.state);
+                        }
+                        ActiveTab::Layers => {
+                            LayerPanel::show(ui, &mut self.state);
+                        }
+                    }
                 });
             });
 

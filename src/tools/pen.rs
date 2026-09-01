@@ -5,6 +5,7 @@ pub struct PenState {
     pub points: Vec<PenPoint>,
     pub is_drawing: bool,
     pub last_point: Option<(f64, f64)>,
+    pub hover_pos: Option<(f64, f64)>,
 }
 
 #[derive(Debug, Clone)]
@@ -20,6 +21,7 @@ impl PenState {
             points: Vec::new(),
             is_drawing: false,
             last_point: None,
+            hover_pos: None,
         }
     }
 
@@ -49,6 +51,7 @@ impl PenState {
     }
 
     pub fn update_hover(&mut self, x: f64, y: f64) {
+        self.hover_pos = Some((x, y));
         if self.is_drawing && !self.points.is_empty() {
             self.last_point = Some((x, y));
         }
