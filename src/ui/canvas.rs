@@ -95,15 +95,15 @@ impl CanvasWidget {
         state.canvas_width = rect.width();
         state.canvas_height = rect.height();
 
-        // Dark Canvas Background
-        painter.rect_filled(rect, 0.0_f32, Color32::from_rgb(32, 33, 36));
+        // Dark Pasteboard Canvas Background (#1e1e1e)
+        painter.rect_filled(rect, 0.0_f32, Color32::from_rgb(30, 30, 30));
 
         // Grid
         if state.show_grid {
             self.draw_grid(&painter, rect, origin, state);
         }
 
-        // Artboard White Paper
+        // Artboard Dimensions & Realistic Drop Shadow
         let artboard = Rect::from_min_size(
             origin,
             Vec2::new(
@@ -111,8 +111,24 @@ impl CanvasWidget {
                 state.document.height as f32 * state.zoom,
             ),
         );
+        let shadow_rect1 = artboard.translate(Vec2::new(5.0, 5.0));
+        painter.rect_filled(shadow_rect1, 0.0_f32, Color32::from_black_alpha(60));
+        let shadow_rect2 = artboard.translate(Vec2::new(2.0, 2.0));
+        painter.rect_filled(shadow_rect2, 0.0_f32, Color32::from_black_alpha(100));
+
+        // Crisp White Artboard Paper
         painter.rect_filled(artboard, 0.0_f32, Color32::WHITE);
-        painter.rect_stroke(artboard, 0.0_f32, Stroke::new(1.5_f32, Color32::from_rgb(180, 180, 180)), StrokeKind::Inside);
+        painter.rect_stroke(artboard, 0.0_f32, Stroke::new(1.0_f32, Color32::from_rgb(80, 80, 80)), StrokeKind::Inside);
+
+        // Artboard Header Tab Label
+        let tab_pos = Pos2::new(artboard.min.x, artboard.min.y - 18.0);
+        painter.text(
+            tab_pos,
+            egui::Align2::LEFT_TOP,
+            format!("Artboard 1 ({} × {} px)", state.document.width as i32, state.document.height as i32),
+            FontId::proportional(11.0),
+            Color32::from_rgb(170, 170, 170),
+        );
 
         // Render Objects
         for (_, obj) in state.document.all_objects() {
@@ -869,13 +885,26 @@ impl CanvasWidget {
     }
 
     fn draw_node_edit(&self, painter: &egui::Painter, origin: Pos2, state: &AppState) {
+        let active_node_idx = self.node_edit_state.selected_anchor_idx;
+        let active_obj_id = self.node_edit_state.selected_object_id.as_deref();
+
         for id in &state.selected_ids {
             if let Some((_, obj)) = state.document.all_objects().find(|(_, o)| &o.id == id) {
                 let poly = obj.to_world_polygon();
-                for p in poly {
+                for (idx, p) in poly.iter().enumerate() {
                     let sp = Pos2::new(origin.x + p.x as f32 * state.zoom, origin.y + p.y as f32 * state.zoom);
-                    painter.circle_filled(sp, 4.0_f32, Color32::from_rgb(0, 120, 255));
-                    painter.circle_stroke(sp, 4.0_f32, Stroke::new(1.0_f32, Color32::WHITE));
+                    let is_active = active_obj_id == Some(id.as_str()) && active_node_idx == Some(idx);
+
+                    let anchor_rect = Rect::from_center_size(sp, Vec2::splat(6.0));
+                    if is_active {
+                        // Selected anchor: Solid blue square with white outline
+                        painter.rect_filled(anchor_rect, 0.0_f32, Color32::from_rgb(0, 140, 255));
+                        painter.rect_stroke(anchor_rect, 0.0_f32, Stroke::new(1.0_f32, Color32::WHITE), StrokeKind::Outside);
+                    } else {
+                        // Unselected anchor: Hollow white square with blue outline
+                        painter.rect_filled(anchor_rect, 0.0_f32, Color32::WHITE);
+                        painter.rect_stroke(anchor_rect, 0.0_f32, Stroke::new(1.2_f32, Color32::from_rgb(0, 140, 255)), StrokeKind::Outside);
+                    }
                 }
             }
         }

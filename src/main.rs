@@ -535,13 +535,120 @@ impl eframe::App for IrasuApp {
             });
         });
 
-        // Left Vertical Toolbar
+        // Top Horizontal Control / Options Bar (Illustrator Signature Bar)
+        egui::TopBottomPanel::top("control_bar")
+            .resizable(false)
+            .show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    let has_sel = !self.state.selected_ids.is_empty();
+                    if has_sel {
+                        ui.label(egui::RichText::new("Selection:").strong().color(egui::Color32::from_rgb(0, 150, 255)));
+                        ui.label(format!("{} items", self.state.selected_ids.len()));
+                        ui.separator();
+
+                        // Fill Color
+                        ui.label("Fill:");
+                        let mut fill_c = [
+                            (self.state.fill_color[0] * 255.0) as u8,
+                            (self.state.fill_color[1] * 255.0) as u8,
+                            (self.state.fill_color[2] * 255.0) as u8,
+                            (self.state.fill_color[3] * 255.0) as u8,
+                        ];
+                        if ui.color_edit_button_srgba_unmultiplied(&mut fill_c).changed() {
+                            self.state.fill_color = [fill_c[0] as f32 / 255.0, fill_c[1] as f32 / 255.0, fill_c[2] as f32 / 255.0, fill_c[3] as f32 / 255.0];
+                            for id in &self.state.selected_ids {
+                                for (_, obj) in self.state.document.all_objects_mut() {
+                                    if &obj.id == id {
+                                        obj.fill = Some(irasu_illustrator::core::path::FillStyle::solid(self.state.fill_color));
+                                    }
+                                }
+                            }
+                        }
+
+                        // Stroke Color
+                        ui.label("Stroke:");
+                        let mut stroke_c = [
+                            (self.state.stroke_color[0] * 255.0) as u8,
+                            (self.state.stroke_color[1] * 255.0) as u8,
+                            (self.state.stroke_color[2] * 255.0) as u8,
+                            (self.state.stroke_color[3] * 255.0) as u8,
+                        ];
+                        if ui.color_edit_button_srgba_unmultiplied(&mut stroke_c).changed() {
+                            self.state.stroke_color = [stroke_c[0] as f32 / 255.0, stroke_c[1] as f32 / 255.0, stroke_c[2] as f32 / 255.0, stroke_c[3] as f32 / 255.0];
+                            for id in &self.state.selected_ids {
+                                for (_, obj) in self.state.document.all_objects_mut() {
+                                    if &obj.id == id {
+                                        if let Some(ref mut s) = obj.stroke {
+                                            s.color = self.state.stroke_color;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // Stroke Width
+                        ui.add(egui::DragValue::new(&mut self.state.stroke_width).speed(0.2).range(0.1..=100.0).suffix(" pt"));
+
+                        // Opacity
+                        ui.separator();
+                        ui.label("Opacity:");
+                        ui.add(egui::Slider::new(&mut self.state.opacity, 0.0..=1.0).custom_formatter(|n, _| format!("{:.0}%", n * 100.0)));
+                    } else {
+                        ui.label(egui::RichText::new("No Selection").weak());
+                        ui.separator();
+                        ui.label(format!("Doc: {} × {} px", self.state.document.width as i32, self.state.document.height as i32));
+                        ui.separator();
+                        ui.label(format!("Zoom: {:.0}%", self.state.zoom * 100.0));
+                        ui.separator();
+                        ui.checkbox(&mut self.state.show_grid, "Grid");
+                        ui.checkbox(&mut self.state.snap_to_grid, "Snap");
+                        ui.checkbox(&mut self.state.show_rulers, "Rulers");
+                    }
+                });
+            });
+
+        // Bottom Status Bar
+        egui::TopBottomPanel::bottom("status_bar")
+            .resizable(false)
+            .show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    // Zoom Presets
+                    egui::ComboBox::from_id_salt("zoom_select")
+                        .selected_text(format!("{:.0}%", self.state.zoom * 100.0))
+                        .show_ui(ui, |ui| {
+                            if ui.selectable_label(self.state.zoom == 0.25, "25%").clicked() { self.state.zoom = 0.25; }
+                            if ui.selectable_label(self.state.zoom == 0.5, "50%").clicked() { self.state.zoom = 0.5; }
+                            if ui.selectable_label(self.state.zoom == 1.0, "100%").clicked() { self.state.zoom = 1.0; }
+                            if ui.selectable_label(self.state.zoom == 2.0, "200%").clicked() { self.state.zoom = 2.0; }
+                            if ui.selectable_label(self.state.zoom == 4.0, "400%").clicked() { self.state.zoom = 4.0; }
+                            if ui.button("Fit on Screen (Cmd+0)").clicked() { zoom_to_fit(&mut self.state); }
+                        });
+
+                    ui.separator();
+                    ui.label(egui::RichText::new(format!("Tool: {} ({})", self.state.current_tool.name(), self.state.current_tool.shortcut())).strong());
+
+                    ui.separator();
+                    let hint = match self.state.current_tool {
+                        Tool::Select => "Click to select. Drag to move. Alt+Drag to duplicate.",
+                        Tool::Node => "Click or drag anchor points to edit shape contour.",
+                        Tool::Pen => "Click to add corner points. Drag to pull bezier curve handles.",
+                        Tool::Rectangle => "Drag to create. Shift for square. Alt from center.",
+                        Tool::Ellipse => "Drag to create. Shift for circle. Alt from center.",
+                        Tool::Line => "Drag to draw line. Shift snaps to 45° increments.",
+                        Tool::Hand => "Drag to pan the artboard canvas viewport.",
+                        _ => "Click or drag on canvas to use tool.",
+                    };
+                    ui.label(egui::RichText::new(hint).weak().size(11.0));
+                });
+            });
+
+        // Left Vertical Toolbar with Overlapping Fill/Stroke Swatch Widget
         egui::SidePanel::left("toolbar")
             .resizable(false)
-            .default_width(52.0)
+            .default_width(58.0)
             .show(ctx, |ui| {
                 ui.vertical_centered(|ui| {
-                    ui.add_space(6.0);
+                    ui.add_space(4.0);
 
                     let tools = [
                         Tool::Select,
@@ -565,10 +672,10 @@ impl eframe::App for IrasuApp {
                                 egui::RichText::new(tool.icon()).size(19.0).strong().color(egui::Color32::WHITE),
                             )
                             .fill(egui::Color32::from_rgb(0, 120, 255))
-                            .min_size(Vec2::new(38.0, 34.0))
+                            .min_size(Vec2::new(42.0, 32.0))
                         } else {
                             egui::Button::new(egui::RichText::new(tool.icon()).size(19.0))
-                                .min_size(Vec2::new(38.0, 34.0))
+                                .min_size(Vec2::new(42.0, 32.0))
                         };
 
                         if ui
@@ -589,6 +696,54 @@ impl eframe::App for IrasuApp {
                             self.state.current_tool = tool;
                         }
                     }
+
+                    ui.add_space(8.0);
+                    ui.separator();
+                    ui.add_space(4.0);
+
+                    // Overlapping Fill & Stroke Swatches (Illustrator Signature Widget)
+                    ui.label(egui::RichText::new("Color").size(10.0).weak());
+                    
+                    let mut fill_c = [
+                        (self.state.fill_color[0] * 255.0) as u8,
+                        (self.state.fill_color[1] * 255.0) as u8,
+                        (self.state.fill_color[2] * 255.0) as u8,
+                        (self.state.fill_color[3] * 255.0) as u8,
+                    ];
+                    let mut stroke_c = [
+                        (self.state.stroke_color[0] * 255.0) as u8,
+                        (self.state.stroke_color[1] * 255.0) as u8,
+                        (self.state.stroke_color[2] * 255.0) as u8,
+                        (self.state.stroke_color[3] * 255.0) as u8,
+                    ];
+
+                    ui.horizontal(|ui| {
+                        ui.label("Fill");
+                        if ui.color_edit_button_srgba_unmultiplied(&mut fill_c).changed() {
+                            self.state.fill_color = [fill_c[0] as f32 / 255.0, fill_c[1] as f32 / 255.0, fill_c[2] as f32 / 255.0, fill_c[3] as f32 / 255.0];
+                        }
+                    });
+
+                    ui.horizontal(|ui| {
+                        ui.label("Line");
+                        if ui.color_edit_button_srgba_unmultiplied(&mut stroke_c).changed() {
+                            self.state.stroke_color = [stroke_c[0] as f32 / 255.0, stroke_c[1] as f32 / 255.0, stroke_c[2] as f32 / 255.0, stroke_c[3] as f32 / 255.0];
+                        }
+                    });
+
+                    ui.horizontal(|ui| {
+                        if ui.small_button("⇄").on_hover_text("Swap Fill and Stroke (Shift+X)").clicked() {
+                            std::mem::swap(&mut self.state.fill_color, &mut self.state.stroke_color);
+                        }
+                        if ui.small_button("◻").on_hover_text("Default Colors (D)").clicked() {
+                            self.state.fill_color = [1.0, 1.0, 1.0, 1.0];
+                            self.state.stroke_color = [0.0, 0.0, 0.0, 1.0];
+                            self.state.stroke_width = 1.0;
+                        }
+                        if ui.small_button("⊘").on_hover_text("None / Transparent (/)").clicked() {
+                            self.state.fill_color = [0.0, 0.0, 0.0, 0.0];
+                        }
+                    });
                 });
             });
 
