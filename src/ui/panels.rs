@@ -1422,3 +1422,93 @@ impl ScatterBrushPanel {
         }
     }
 }
+
+pub struct AudioWavePanel;
+
+impl AudioWavePanel {
+    pub fn show(ui: &mut Ui, state: &mut AppState) {
+        ui.heading(RichText::new("🎵 Audio Waveform (LogicPro DSP)").strong());
+        ui.add_space(4.0);
+
+        let w = state.document.width;
+        let h = state.document.height;
+
+        ui.horizontal_wrapped(|ui| {
+            if ui.button("〰️ Sine Wave").clicked() {
+                let path = crate::core::audio_curve::generate_audio_waveform(crate::core::audio_curve::WaveformType::Sine, 4.0, 1, w, h, 200);
+                let obj = Object::new_path("Audio Sine Wave", path);
+                let cmd = Box::new(crate::core::history::AddObjectCommand::new(obj));
+                state.undo_manager.execute(cmd, &mut state.document);
+            }
+
+            if ui.button("📐 Sawtooth").clicked() {
+                let path = crate::core::audio_curve::generate_audio_waveform(crate::core::audio_curve::WaveformType::Sawtooth, 4.0, 1, w, h, 200);
+                let obj = Object::new_path("Audio Saw Wave", path);
+                let cmd = Box::new(crate::core::history::AddObjectCommand::new(obj));
+                state.undo_manager.execute(cmd, &mut state.document);
+            }
+
+            if ui.button("🎹 Harmonics").clicked() {
+                let path = crate::core::audio_curve::generate_audio_waveform(crate::core::audio_curve::WaveformType::Harmonics, 3.0, 5, w, h, 250);
+                let obj = Object::new_path("Audio Harmonics", path);
+                let cmd = Box::new(crate::core::history::AddObjectCommand::new(obj));
+                state.undo_manager.execute(cmd, &mut state.document);
+            }
+
+            if ui.button("⚡ FM Synth").clicked() {
+                let path = crate::core::audio_curve::generate_audio_waveform(crate::core::audio_curve::WaveformType::FM, 3.0, 1, w, h, 300);
+                let obj = Object::new_path("Audio FM Synth Wave", path);
+                let cmd = Box::new(crate::core::history::AddObjectCommand::new(obj));
+                state.undo_manager.execute(cmd, &mut state.document);
+            }
+        });
+    }
+}
+
+pub struct MeshWarpPanel;
+
+impl MeshWarpPanel {
+    pub fn show(ui: &mut Ui, state: &mut AppState) {
+        ui.heading(RichText::new("🦴 2D Mesh Warp (Live2D FFD)").strong());
+        ui.add_space(4.0);
+
+        let has_sel = !state.selected_ids.is_empty();
+
+        if let Some(id) = state.selected_ids.first().cloned() {
+            let target_obj = state.document.all_objects().find(|(_, o)| o.id == id).map(|(_, o)| o.clone());
+            ui.horizontal(|ui| {
+                if ui.add_enabled(has_sel, egui::Button::new("⭕ Bulge")).clicked() {
+                    if let Some(obj) = &target_obj {
+                        let warped = crate::core::mesh_warp::apply_lattice_warp(obj, 4, 4, crate::core::mesh_warp::WarpPreset::Bulge, 1.0);
+                        let new_id = warped.id.clone();
+                        let cmd = Box::new(crate::core::history::AddObjectCommand::new(warped));
+                        state.undo_manager.execute(cmd, &mut state.document);
+                        state.selected_ids = vec![new_id];
+                    }
+                }
+
+                if ui.add_enabled(has_sel, egui::Button::new("🌀 Twist")).clicked() {
+                    if let Some(obj) = &target_obj {
+                        let warped = crate::core::mesh_warp::apply_lattice_warp(obj, 4, 4, crate::core::mesh_warp::WarpPreset::TwistS, 1.0);
+                        let new_id = warped.id.clone();
+                        let cmd = Box::new(crate::core::history::AddObjectCommand::new(warped));
+                        state.undo_manager.execute(cmd, &mut state.document);
+                        state.selected_ids = vec![new_id];
+                    }
+                }
+
+                if ui.add_enabled(has_sel, egui::Button::new("🌊 Wave")).clicked() {
+                    if let Some(obj) = &target_obj {
+                        let warped = crate::core::mesh_warp::apply_lattice_warp(obj, 4, 4, crate::core::mesh_warp::WarpPreset::WaveWarp, 1.0);
+                        let new_id = warped.id.clone();
+                        let cmd = Box::new(crate::core::history::AddObjectCommand::new(warped));
+                        state.undo_manager.execute(cmd, &mut state.document);
+                        state.selected_ids = vec![new_id];
+                    }
+                }
+            });
+        } else {
+            ui.label(RichText::new("Select an object to warp with FFD lattice").weak().size(11.0));
+        }
+    }
+}

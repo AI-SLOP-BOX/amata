@@ -348,6 +348,74 @@ pub enum Commands {
         output: PathBuf,
     },
 
+    /// Apply Photoshop blend mode to composite two vector artworks
+    Blend {
+        /// Base vector file
+        #[arg(short = '1', long)]
+        base: PathBuf,
+
+        /// Blend vector file
+        #[arg(short = '2', long)]
+        blend: PathBuf,
+
+        /// Blend mode (normal, multiply, screen, overlay, color-dodge, difference, etc.)
+        #[arg(value_enum, short, long, default_value_t = CliBlendMode::Multiply)]
+        mode: CliBlendMode,
+
+        /// Output SVG file
+        #[arg(short, long)]
+        output: PathBuf,
+    },
+
+    /// Generate audio waveform or synthesizer curves (LogicPro DSP)
+    AudioWave {
+        /// Waveform type (sine, sawtooth, square, triangle, harmonics, fm)
+        #[arg(value_enum, short, long, default_value_t = CliWaveformType::Sine)]
+        wave_type: CliWaveformType,
+
+        /// Frequency / cycles (default: 4.0)
+        #[arg(short, long, default_value_t = 4.0)]
+        freq: f64,
+
+        /// Harmonic count (default: 5)
+        #[arg(short = 'H', long, default_value_t = 5)]
+        harmonics: usize,
+
+        /// Output SVG file
+        #[arg(short, long)]
+        output: PathBuf,
+    },
+
+    /// Apply Live2D-style Free-Form Deformation (FFD) Lattice Mesh Warp
+    Warp {
+        /// Input vector file (.svg or .json)
+        #[arg(short, long)]
+        input: PathBuf,
+
+        /// Warp preset (bulge, pinch, twist, wave)
+        #[arg(value_enum, short, long, default_value_t = CliWarpPreset::Bulge)]
+        preset: CliWarpPreset,
+
+        /// Grid divisions (default: 4)
+        #[arg(short, long, default_value_t = 4)]
+        grid: usize,
+
+        /// Output SVG file
+        #[arg(short, long)]
+        output: PathBuf,
+    },
+
+    /// Export vector artwork to pure standards-compliant Vector PDF
+    ExportPdf {
+        /// Input vector file (.svg or .json)
+        #[arg(short, long)]
+        input: PathBuf,
+
+        /// Output PDF file (.pdf)
+        #[arg(short, long)]
+        output: PathBuf,
+    },
+
     /// Execute headless Pathfinder (Boolean Operations) on two vector files
     Boolean {
         /// First vector file (Subject)
@@ -425,6 +493,40 @@ pub enum CliFlowFieldPreset {
     Vortex,
     Magnetic,
     Cyber,
+}
+
+#[derive(ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CliBlendMode {
+    Normal,
+    Multiply,
+    Screen,
+    Overlay,
+    Darken,
+    Lighten,
+    ColorDodge,
+    ColorBurn,
+    HardLight,
+    SoftLight,
+    Difference,
+    Exclusion,
+}
+
+#[derive(ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CliWaveformType {
+    Sine,
+    Sawtooth,
+    Square,
+    Triangle,
+    Harmonics,
+    Fm,
+}
+
+#[derive(ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CliWarpPreset {
+    Bulge,
+    Pinch,
+    Twist,
+    Wave,
 }
 
 pub fn run_cli(cli: Cli) -> Result<bool, Box<dyn std::error::Error>> {
@@ -770,6 +872,91 @@ pub fn run_cli(cli: Cli) -> Result<bool, Box<dyn std::error::Error>> {
             }
             save_any_document(&out_doc, &output)?;
             println!("✅ Scattered brush stroke saved to {:?}", output);
+            Ok(false)
+        }
+        Some(Commands::Blend { base, blend, mode, output }) => {
+            println!("🎨 Blending '{:?}' over '{:?}' ({:?})...", blend, base, mode);
+            let mut base_doc = load_any_document(&base)?;
+            let blend_doc = load_any_document(&blend)?;
+
+            let blend_mode = match mode {
+                CliBlendMode::Normal => crate::core::blend::BlendMode::Normal,
+                CliBlendMode::Multiply => crate::core::blend::BlendMode::Multiply,
+                CliBlendMode::Screen => crate::core::blend::BlendMode::Screen,
+                CliBlendMode::Overlay => crate::core::blend::BlendMode::Overlay,
+                CliBlendMode::Darken => crate::core::blend::BlendMode::Darken,
+                CliBlendMode::Lighten => crate::core::blend::BlendMode::Lighten,
+                CliBlendMode::ColorDodge => crate::core::blend::BlendMode::ColorDodge,
+                CliBlendMode::ColorBurn => crate::core::blend::BlendMode::ColorBurn,
+                CliBlendMode::HardLight => crate::core::blend::BlendMode::HardLight,
+                CliBlendMode::SoftLight => crate::core::blend::BlendMode::SoftLight,
+                CliBlendMode::Difference => crate::core::blend::BlendMode::Difference,
+                CliBlendMode::Exclusion => crate::core::blend::BlendMode::Exclusion,
+            };
+
+            for (_, obj) in blend_doc.all_objects() {
+                let mut blended_obj = obj.clone();
+                if let Some(fill) = &mut blended_obj.fill {
+                    fill.color = crate::core::blend::blend_colors(fill.color, [1.0, 1.0, 1.0, 1.0], blend_mode);
+                }
+                base_doc.add_object(blended_obj);
+            }
+
+            save_any_document(&base_doc, &output)?;
+            println!("✅ Blended vector artwork saved to {:?}", output);
+            Ok(false)
+        }
+        Some(Commands::AudioWave { wave_type, freq, harmonics, output }) => {
+            println!("🎵 Generating Audio Waveform ({:?}, freq: {}, harmonics: {})...", wave_type, freq, harmonics);
+            let wtype = match wave_type {
+                CliWaveformType::Sine => crate::core::audio_curve::WaveformType::Sine,
+                CliWaveformType::Sawtooth => crate::core::audio_curve::WaveformType::Sawtooth,
+                CliWaveformType::Square => crate::core::audio_curve::WaveformType::Square,
+                CliWaveformType::Triangle => crate::core::audio_curve::WaveformType::Triangle,
+                CliWaveformType::Harmonics => crate::core::audio_curve::WaveformType::Harmonics,
+                CliWaveformType::Fm => crate::core::audio_curve::WaveformType::FM,
+            };
+
+            let path = crate::core::audio_curve::generate_audio_waveform(wtype, freq, harmonics, 800.0, 400.0, 300);
+            let mut out_doc = crate::core::document::Document {
+                width: 800.0,
+                height: 400.0,
+                ..Default::default()
+            };
+            out_doc.add_object(crate::core::document::Object::new_path("Audio Waveform", path));
+            save_any_document(&out_doc, &output)?;
+            println!("✅ Audio waveform vector saved to {:?}", output);
+            Ok(false)
+        }
+        Some(Commands::Warp { input, preset, grid, output }) => {
+            println!("🦴 Warping '{:?}' with Live2D FFD ({:?}, grid: {}x{})...", input, preset, grid, grid);
+            let doc = load_any_document(&input)?;
+            let wpreset = match preset {
+                CliWarpPreset::Bulge => crate::core::mesh_warp::WarpPreset::Bulge,
+                CliWarpPreset::Pinch => crate::core::mesh_warp::WarpPreset::Pinch,
+                CliWarpPreset::Twist => crate::core::mesh_warp::WarpPreset::TwistS,
+                CliWarpPreset::Wave => crate::core::mesh_warp::WarpPreset::WaveWarp,
+            };
+
+            let mut out_doc = crate::core::document::Document {
+                width: doc.width,
+                height: doc.height,
+                ..Default::default()
+            };
+            for (_, obj) in doc.all_objects() {
+                let warped = crate::core::mesh_warp::apply_lattice_warp(obj, grid, grid, wpreset, 1.0);
+                out_doc.add_object(warped);
+            }
+            save_any_document(&out_doc, &output)?;
+            println!("✅ FFD Mesh warped vector saved to {:?}", output);
+            Ok(false)
+        }
+        Some(Commands::ExportPdf { input, output }) => {
+            println!("📄 Exporting '{:?}' to Pure Vector PDF...", input);
+            let doc = load_any_document(&input)?;
+            let pdf_bytes = crate::io::pdf::export_pdf(&doc);
+            std::fs::write(&output, pdf_bytes)?;
+            println!("✅ Vector PDF exported successfully to {:?}", output);
             Ok(false)
         }
         Some(Commands::MotionPath { input, output, samples, duration, fps }) => {

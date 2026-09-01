@@ -1,4 +1,6 @@
+pub mod audio_curve;
 pub mod barcode;
+pub mod blend;
 pub mod boolean;
 pub mod brush;
 pub mod document;
@@ -11,6 +13,7 @@ pub mod history;
 pub mod isometric;
 pub mod lsystem;
 pub mod mesh3d;
+pub mod mesh_warp;
 pub mod morph;
 pub mod noise;
 pub mod offset;
