@@ -177,8 +177,12 @@ impl CanvasWidget {
             }
         }
 
-        // Secondary / Middle Click Pan
-        if response.secondary_clicked() && !response.dragged() {
+        let space_down = ui.input(|i| i.key_down(egui::Key::Space));
+        let shift_down = ui.input(|i| i.modifiers.shift);
+        let alt_down = ui.input(|i| i.modifiers.alt);
+
+        // Secondary / Middle Click Pan or Spacebar Pan
+        if (response.secondary_clicked() || (space_down && response.clicked())) && !response.dragged() {
             self.drag = Some(DragState::new(DragMode::Pan, 0.0, 0.0));
         }
 
@@ -187,7 +191,9 @@ impl CanvasWidget {
             let (wx, wy) = state.screen_to_world(screen_pos.x, screen_pos.y);
 
             let mut cursor = egui::CursorIcon::Default;
-            if state.current_tool == Tool::Select {
+            if space_down {
+                cursor = if response.dragged() { egui::CursorIcon::Grabbing } else { egui::CursorIcon::Grab };
+            } else if state.current_tool == Tool::Select {
                 for id in &state.selected_ids {
                     if let Some((_, obj)) = state.document.all_objects().find(|(_, o)| &o.id == id) {
                         if let Some(corner) = self.hit_test_handles(obj, screen_pos, origin, state) {
@@ -204,10 +210,10 @@ impl CanvasWidget {
                 }
                 if cursor == egui::CursorIcon::Default
                     && self.select_state.hit_test(state, wx, wy).is_some() {
-                        cursor = egui::CursorIcon::Move;
+                        cursor = if alt_down { egui::CursorIcon::Copy } else { egui::CursorIcon::Move };
                     }
             } else if state.current_tool == Tool::Hand {
-                cursor = egui::CursorIcon::Grab;
+                cursor = if response.dragged() { egui::CursorIcon::Grabbing } else { egui::CursorIcon::Grab };
             } else if state.current_tool == Tool::Eyedropper {
                 cursor = egui::CursorIcon::Crosshair;
             } else if state.current_tool == Tool::Text {
@@ -225,7 +231,7 @@ impl CanvasWidget {
                 self.pen_state.update_hover(wx, wy);
             }
 
-            if response.clicked() {
+            if response.clicked() && !space_down {
                 let shift = painter.ctx().input(|i| i.modifiers.shift);
                 self.handle_click(state, wx, wy, screen_pos, origin, shift);
             }
@@ -233,7 +239,9 @@ impl CanvasWidget {
 
         // Drag Start
         if response.drag_started() && self.drag.is_none() {
-            if let Some(screen_pos) = response.interact_pointer_pos() {
+            if space_down {
+                self.drag = Some(DragState::new(DragMode::Pan, 0.0, 0.0));
+            } else if let Some(screen_pos) = response.interact_pointer_pos() {
                 let (wx, wy) = state.screen_to_world(screen_pos.x, screen_pos.y);
                 let (wx, wy) = state.snap(wx, wy);
 
@@ -329,12 +337,20 @@ impl CanvasWidget {
             if let Some(drag) = self.drag.take() {
                 match drag.mode {
                     DragMode::CreateRect => {
-                        let w = drag.current_world.0 - drag.start_world.0;
-                        let h = drag.current_world.1 - drag.start_world.1;
+                        let mut w = drag.current_world.0 - drag.start_world.0;
+                        let mut h = drag.current_world.1 - drag.start_world.1;
+                        if shift_down {
+                            let sz = w.abs().max(h.abs());
+                            w = sz * w.signum();
+                            h = sz * h.signum();
+                        }
                         if w.abs() > 4.0 && h.abs() > 4.0 {
-                            let x = drag.start_world.0.min(drag.current_world.0);
-                            let y = drag.start_world.1.min(drag.current_world.1);
-                            let mut obj = Object::new_rect("Rectangle", x, y, w.abs(), h.abs(), state.corner_radius);
+                            let (x, y, w_val, h_val) = if alt_down {
+                                (drag.start_world.0 - w.abs(), drag.start_world.1 - h.abs(), w.abs() * 2.0, h.abs() * 2.0)
+                            } else {
+                                (drag.start_world.0.min(drag.current_world.0), drag.start_world.1.min(drag.current_world.1), w.abs(), h.abs())
+                            };
+                            let mut obj = Object::new_rect("Rectangle", x, y, w_val, h_val, state.corner_radius);
                             obj.fill = Some(FillStyle::solid(state.fill_color));
                             obj.stroke = Some(StrokeStyle {
                                 color: state.stroke_color,
@@ -346,11 +362,19 @@ impl CanvasWidget {
                         }
                     }
                     DragMode::CreateEllipse => {
-                        let rx = ((drag.current_world.0 - drag.start_world.0) / 2.0).abs();
-                        let ry = ((drag.current_world.1 - drag.start_world.1) / 2.0).abs();
+                        let mut rx = ((drag.current_world.0 - drag.start_world.0) / 2.0).abs();
+                        let mut ry = ((drag.current_world.1 - drag.start_world.1) / 2.0).abs();
+                        if shift_down {
+                            let r = rx.max(ry);
+                            rx = r;
+                            ry = r;
+                        }
                         if rx > 2.0 && ry > 2.0 {
-                            let cx = (drag.start_world.0 + drag.current_world.0) / 2.0;
-                            let cy = (drag.start_world.1 + drag.current_world.1) / 2.0;
+                            let (cx, cy) = if alt_down {
+                                (drag.start_world.0, drag.start_world.1)
+                            } else {
+                                ((drag.start_world.0 + drag.current_world.0) / 2.0, (drag.start_world.1 + drag.current_world.1) / 2.0)
+                            };
                             let mut obj = Object::new_ellipse("Ellipse", cx, cy, rx, ry);
                             obj.fill = Some(FillStyle::solid(state.fill_color));
                             obj.stroke = Some(StrokeStyle {
@@ -396,10 +420,18 @@ impl CanvasWidget {
                         }
                     }
                     DragMode::CreateLine => {
-                        let dx = drag.current_world.0 - drag.start_world.0;
-                        let dy = drag.current_world.1 - drag.start_world.1;
+                        let mut dx = drag.current_world.0 - drag.start_world.0;
+                        let mut dy = drag.current_world.1 - drag.start_world.1;
+                        if shift_down {
+                            let angle = dy.atan2(dx);
+                            let snap_step = std::f64::consts::FRAC_PI_4;
+                            let snapped = (angle / snap_step).round() * snap_step;
+                            let len = (dx * dx + dy * dy).sqrt();
+                            dx = len * snapped.cos();
+                            dy = len * snapped.sin();
+                        }
                         if (dx * dx + dy * dy).sqrt() > 2.0 {
-                            let mut obj = Object::new_line("Line", drag.start_world.0, drag.start_world.1, drag.current_world.0, drag.current_world.1);
+                            let mut obj = Object::new_line("Line", drag.start_world.0, drag.start_world.1, drag.start_world.0 + dx, drag.start_world.1 + dy);
                             obj.stroke = Some(StrokeStyle {
                                 color: state.stroke_color,
                                 width: state.stroke_width,
@@ -407,6 +439,27 @@ impl CanvasWidget {
                             });
                             let cmd = Box::new(crate::core::history::AddObjectCommand::new(obj));
                             state.undo_manager.execute(cmd, &mut state.document);
+                        }
+                    }
+                    DragMode::MoveObject => {
+                        self.select_state.end_drag(state);
+                        if alt_down {
+                            // Alt+Drag duplicates selected objects!
+                            let mut duplicated = Vec::new();
+                            for id in &state.selected_ids {
+                                if let Some((_, obj)) = state.document.all_objects().find(|(_, o)| &o.id == id) {
+                                    let mut dup = obj.clone();
+                                    dup.id = uuid::Uuid::new_v4().to_string();
+                                    dup.name = format!("{} Copy", obj.name);
+                                    duplicated.push(dup);
+                                }
+                            }
+                            for dup in duplicated {
+                                let new_id = dup.id.clone();
+                                let cmd = Box::new(crate::core::history::AddObjectCommand::new(dup));
+                                state.undo_manager.execute(cmd, &mut state.document);
+                                state.selected_ids = vec![new_id];
+                            }
                         }
                     }
                     DragMode::PencilDraw => {
@@ -440,9 +493,6 @@ impl CanvasWidget {
                                 }
                             }
                         }
-                    }
-                    DragMode::MoveObject => {
-                        self.select_state.end_drag(state);
                     }
                     _ => {}
                 }

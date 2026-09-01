@@ -168,6 +168,54 @@ impl eframe::App for IrasuApp {
                 }
             }
 
+            // Swap Fill and Stroke (Shift+X)
+            if i.modifiers.shift && i.key_pressed(egui::Key::X) {
+                std::mem::swap(&mut self.state.fill_color, &mut self.state.stroke_color);
+            }
+
+            // Default Fill and Stroke (D)
+            if !i.modifiers.ctrl && !i.modifiers.mac_cmd && !i.modifiers.alt && i.key_pressed(egui::Key::D) {
+                self.state.fill_color = [1.0, 1.0, 1.0, 1.0];
+                self.state.stroke_color = [0.0, 0.0, 0.0, 1.0];
+                self.state.stroke_width = 1.0;
+            }
+
+            // Set Fill to None (Slash /)
+            if !i.modifiers.ctrl && !i.modifiers.mac_cmd && !i.modifiers.alt && i.key_pressed(egui::Key::Slash) {
+                self.state.fill_color = [0.0, 0.0, 0.0, 0.0];
+            }
+
+            // Zoom In (Ctrl + Plus / Equal)
+            if (i.modifiers.ctrl || i.modifiers.mac_cmd) && (i.key_pressed(egui::Key::Equals) || i.key_pressed(egui::Key::Plus)) {
+                self.state.zoom = (self.state.zoom * 1.25).clamp(0.01, 100.0);
+            }
+
+            // Zoom Out (Ctrl + Minus)
+            if (i.modifiers.ctrl || i.modifiers.mac_cmd) && i.key_pressed(egui::Key::Minus) {
+                self.state.zoom = (self.state.zoom / 1.25).clamp(0.01, 100.0);
+            }
+
+            // Duplicate / Transform Again (Ctrl+D)
+            if (i.modifiers.ctrl || i.modifiers.mac_cmd) && i.key_pressed(egui::Key::D) && !self.state.selected_ids.is_empty() {
+                let mut duplicated = Vec::new();
+                for id in &self.state.selected_ids {
+                    if let Some((_, obj)) = self.state.document.all_objects().find(|(_, o)| &o.id == id) {
+                        let mut dup = obj.clone();
+                        dup.id = uuid::Uuid::new_v4().to_string();
+                        dup.name = format!("{} Copy", obj.name);
+                        dup.transform.x += 15.0;
+                        dup.transform.y += 15.0;
+                        duplicated.push(dup);
+                    }
+                }
+                for dup in duplicated {
+                    let new_id = dup.id.clone();
+                    let cmd = Box::new(irasu_illustrator::core::history::AddObjectCommand::new(dup));
+                    self.state.undo_manager.execute(cmd, &mut self.state.document);
+                    self.state.selected_ids = vec![new_id];
+                }
+            }
+
             // Copy (Ctrl+C)
             if (i.modifiers.ctrl || i.modifiers.mac_cmd) && i.key_pressed(egui::Key::C) {
                 self.state.clipboard.clear();
