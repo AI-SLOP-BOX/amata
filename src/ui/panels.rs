@@ -1512,3 +1512,159 @@ impl MeshWarpPanel {
         }
     }
 }
+
+pub struct GradientMeshPanel;
+
+impl GradientMeshPanel {
+    pub fn show(ui: &mut Ui, state: &mut AppState) {
+        ui.heading(RichText::new("🌈 Gradient Mesh Generator").strong());
+        ui.add_space(4.0);
+
+        let w = state.document.width;
+        let h = state.document.height;
+
+        ui.horizontal_wrapped(|ui| {
+            if ui.button("🌅 Sunset Mesh").clicked() {
+                let patches = crate::core::gradient_mesh::generate_gradient_mesh(
+                    crate::core::gradient_mesh::GradientMeshPreset::Sunset,
+                    w, h, 3, 3,
+                );
+                for patch in patches {
+                    let cmd = Box::new(crate::core::history::AddObjectCommand::new(patch));
+                    state.undo_manager.execute(cmd, &mut state.document);
+                }
+            }
+
+            if ui.button("🌆 Cyber Mesh").clicked() {
+                let patches = crate::core::gradient_mesh::generate_gradient_mesh(
+                    crate::core::gradient_mesh::GradientMeshPreset::Cyberpunk,
+                    w, h, 3, 3,
+                );
+                for patch in patches {
+                    let cmd = Box::new(crate::core::history::AddObjectCommand::new(patch));
+                    state.undo_manager.execute(cmd, &mut state.document);
+                }
+            }
+
+            if ui.button("🌌 Aurora Mesh").clicked() {
+                let patches = crate::core::gradient_mesh::generate_gradient_mesh(
+                    crate::core::gradient_mesh::GradientMeshPreset::Aurora,
+                    w, h, 3, 3,
+                );
+                for patch in patches {
+                    let cmd = Box::new(crate::core::history::AddObjectCommand::new(patch));
+                    state.undo_manager.execute(cmd, &mut state.document);
+                }
+            }
+        });
+    }
+}
+
+pub struct AxonometricPanel;
+
+impl AxonometricPanel {
+    pub fn show(ui: &mut Ui, state: &mut AppState) {
+        ui.heading(RichText::new("📐 Axonometric Architectural Projections").strong());
+        ui.add_space(4.0);
+
+        let has_sel = !state.selected_ids.is_empty();
+
+        if let Some(id) = state.selected_ids.first().cloned() {
+            let target_obj = state.document.all_objects().find(|(_, o)| o.id == id).map(|(_, o)| o.clone());
+            ui.horizontal_wrapped(|ui| {
+                if ui.add_enabled(has_sel, egui::Button::new("Dimetric")).clicked() {
+                    if let Some(obj) = &target_obj {
+                        let proj = crate::core::axonometric::apply_axonometric_projection(obj, crate::core::axonometric::AxonometricMode::Dimetric);
+                        let new_id = proj.id.clone();
+                        let cmd = Box::new(crate::core::history::AddObjectCommand::new(proj));
+                        state.undo_manager.execute(cmd, &mut state.document);
+                        state.selected_ids = vec![new_id];
+                    }
+                }
+
+                if ui.add_enabled(has_sel, egui::Button::new("Trimetric")).clicked() {
+                    if let Some(obj) = &target_obj {
+                        let proj = crate::core::axonometric::apply_axonometric_projection(obj, crate::core::axonometric::AxonometricMode::Trimetric);
+                        let new_id = proj.id.clone();
+                        let cmd = Box::new(crate::core::history::AddObjectCommand::new(proj));
+                        state.undo_manager.execute(cmd, &mut state.document);
+                        state.selected_ids = vec![new_id];
+                    }
+                }
+
+                if ui.add_enabled(has_sel, egui::Button::new("Cabinet (Oblique)")).clicked() {
+                    if let Some(obj) = &target_obj {
+                        let proj = crate::core::axonometric::apply_axonometric_projection(obj, crate::core::axonometric::AxonometricMode::Cabinet);
+                        let new_id = proj.id.clone();
+                        let cmd = Box::new(crate::core::history::AddObjectCommand::new(proj));
+                        state.undo_manager.execute(cmd, &mut state.document);
+                        state.selected_ids = vec![new_id];
+                    }
+                }
+
+                if ui.add_enabled(has_sel, egui::Button::new("Cavalier")).clicked() {
+                    if let Some(obj) = &target_obj {
+                        let proj = crate::core::axonometric::apply_axonometric_projection(obj, crate::core::axonometric::AxonometricMode::Cavalier);
+                        let new_id = proj.id.clone();
+                        let cmd = Box::new(crate::core::history::AddObjectCommand::new(proj));
+                        state.undo_manager.execute(cmd, &mut state.document);
+                        state.selected_ids = vec![new_id];
+                    }
+                }
+            });
+        } else {
+            ui.label(RichText::new("Select an object for axonometric projection").weak().size(11.0));
+        }
+    }
+}
+
+pub struct NeonGlowPanel;
+
+impl NeonGlowPanel {
+    pub fn show(ui: &mut Ui, state: &mut AppState) {
+        ui.heading(RichText::new("✨ Vector Neon Glow & Laser").strong());
+        ui.add_space(4.0);
+
+        let has_sel = !state.selected_ids.is_empty();
+
+        if let Some(id) = state.selected_ids.first().cloned() {
+            let target_obj = state.document.all_objects().find(|(_, o)| o.id == id).map(|(_, o)| o.clone());
+            ui.horizontal(|ui| {
+                if ui.add_enabled(has_sel, egui::Button::new("Cyan Neon")).clicked() {
+                    if let Some(obj) = &target_obj {
+                        let path = obj.to_path_data();
+                        let neon_layers = crate::core::neon_glow::generate_neon_glow(&path, [0.0, 1.0, 0.9, 1.0], 18.0, 6);
+                        for layer in neon_layers {
+                            let cmd = Box::new(crate::core::history::AddObjectCommand::new(layer));
+                            state.undo_manager.execute(cmd, &mut state.document);
+                        }
+                    }
+                }
+
+                if ui.add_enabled(has_sel, egui::Button::new("Magenta Neon")).clicked() {
+                    if let Some(obj) = &target_obj {
+                        let path = obj.to_path_data();
+                        let neon_layers = crate::core::neon_glow::generate_neon_glow(&path, [1.0, 0.1, 0.7, 1.0], 18.0, 6);
+                        for layer in neon_layers {
+                            let cmd = Box::new(crate::core::history::AddObjectCommand::new(layer));
+                            state.undo_manager.execute(cmd, &mut state.document);
+                        }
+                    }
+                }
+
+                if ui.add_enabled(has_sel, egui::Button::new("Gold Laser")).clicked() {
+                    if let Some(obj) = &target_obj {
+                        let path = obj.to_path_data();
+                        let neon_layers = crate::core::neon_glow::generate_neon_glow(&path, [1.0, 0.8, 0.1, 1.0], 18.0, 6);
+                        for layer in neon_layers {
+                            let cmd = Box::new(crate::core::history::AddObjectCommand::new(layer));
+                            state.undo_manager.execute(cmd, &mut state.document);
+                        }
+                    }
+                }
+            });
+        } else {
+            ui.label(RichText::new("Select an object to generate vector neon halo").weak().size(11.0));
+        }
+    }
+}

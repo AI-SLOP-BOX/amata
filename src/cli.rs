@@ -416,6 +416,74 @@ pub enum Commands {
         output: PathBuf,
     },
 
+    /// Generate multi-point Gradient Mesh color patches
+    GradientMesh {
+        /// Preset palette (sunset, cyberpunk, aurora, gold)
+        #[arg(value_enum, short, long, default_value_t = CliGradientMeshPreset::Sunset)]
+        preset: CliGradientMeshPreset,
+
+        /// Number of grid rows (default: 3)
+        #[arg(short, long, default_value_t = 3)]
+        rows: usize,
+
+        /// Number of grid columns (default: 3)
+        #[arg(short, long, default_value_t = 3)]
+        cols: usize,
+
+        /// Output SVG file
+        #[arg(short, long)]
+        output: PathBuf,
+    },
+
+    /// Transform artwork with axonometric projection (Isometric, Dimetric, Trimetric, Cabinet, Cavalier)
+    Axonometric {
+        /// Input vector file (.svg or .json)
+        #[arg(short, long)]
+        input: PathBuf,
+
+        /// Axonometric mode (isometric, dimetric, trimetric, cabinet, cavalier)
+        #[arg(value_enum, short, long, default_value_t = CliAxonometricMode::Dimetric)]
+        mode: CliAxonometricMode,
+
+        /// Output SVG file
+        #[arg(short, long)]
+        output: PathBuf,
+    },
+
+    /// Synthesize evolutionary computational vector art with mutating polygons
+    Evolve {
+        /// Number of polygons (default: 40)
+        #[arg(short, long, default_value_t = 40)]
+        polygons: usize,
+
+        /// Generations (default: 50)
+        #[arg(short, long, default_value_t = 50)]
+        generations: usize,
+
+        /// Output SVG file
+        #[arg(short, long)]
+        output: PathBuf,
+    },
+
+    /// Generate multi-tiered glowing vector neon halos and laser blooms
+    Neon {
+        /// Input vector file (.svg or .json)
+        #[arg(short, long)]
+        input: PathBuf,
+
+        /// Bloom radius in pixels (default: 20.0)
+        #[arg(short, long, default_value_t = 20.0)]
+        radius: f64,
+
+        /// Number of halo tiers (default: 6)
+        #[arg(short, long, default_value_t = 6)]
+        layers: usize,
+
+        /// Output SVG file
+        #[arg(short, long)]
+        output: PathBuf,
+    },
+
     /// Execute headless Pathfinder (Boolean Operations) on two vector files
     Boolean {
         /// First vector file (Subject)
@@ -527,6 +595,23 @@ pub enum CliWarpPreset {
     Pinch,
     Twist,
     Wave,
+}
+
+#[derive(ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CliGradientMeshPreset {
+    Sunset,
+    Cyberpunk,
+    Aurora,
+    Gold,
+}
+
+#[derive(ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CliAxonometricMode {
+    Isometric,
+    Dimetric,
+    Trimetric,
+    Cabinet,
+    Cavalier,
 }
 
 pub fn run_cli(cli: Cli) -> Result<bool, Box<dyn std::error::Error>> {
@@ -957,6 +1042,86 @@ pub fn run_cli(cli: Cli) -> Result<bool, Box<dyn std::error::Error>> {
             let pdf_bytes = crate::io::pdf::export_pdf(&doc);
             std::fs::write(&output, pdf_bytes)?;
             println!("✅ Vector PDF exported successfully to {:?}", output);
+            Ok(false)
+        }
+        Some(Commands::GradientMesh { preset, rows, cols, output }) => {
+            println!("🌈 Generating Gradient Mesh ({:?}, {}x{})...", preset, rows, cols);
+            let gpreset = match preset {
+                CliGradientMeshPreset::Sunset => crate::core::gradient_mesh::GradientMeshPreset::Sunset,
+                CliGradientMeshPreset::Cyberpunk => crate::core::gradient_mesh::GradientMeshPreset::Cyberpunk,
+                CliGradientMeshPreset::Aurora => crate::core::gradient_mesh::GradientMeshPreset::Aurora,
+                CliGradientMeshPreset::Gold => crate::core::gradient_mesh::GradientMeshPreset::Gold,
+            };
+
+            let patches = crate::core::gradient_mesh::generate_gradient_mesh(gpreset, 800.0, 600.0, rows, cols);
+            let mut out_doc = crate::core::document::Document {
+                width: 800.0,
+                height: 600.0,
+                ..Default::default()
+            };
+            for patch in patches {
+                out_doc.add_object(patch);
+            }
+            save_any_document(&out_doc, &output)?;
+            println!("✅ Gradient Mesh saved to {:?}", output);
+            Ok(false)
+        }
+        Some(Commands::Axonometric { input, mode, output }) => {
+            println!("📐 Transforming '{:?}' with Axonometric Projection ({:?})...", input, mode);
+            let doc = load_any_document(&input)?;
+            let amode = match mode {
+                CliAxonometricMode::Isometric => crate::core::axonometric::AxonometricMode::Isometric,
+                CliAxonometricMode::Dimetric => crate::core::axonometric::AxonometricMode::Dimetric,
+                CliAxonometricMode::Trimetric => crate::core::axonometric::AxonometricMode::Trimetric,
+                CliAxonometricMode::Cabinet => crate::core::axonometric::AxonometricMode::Cabinet,
+                CliAxonometricMode::Cavalier => crate::core::axonometric::AxonometricMode::Cavalier,
+            };
+
+            let mut out_doc = crate::core::document::Document {
+                width: doc.width * 1.5,
+                height: doc.height * 1.5,
+                ..Default::default()
+            };
+            for (_, obj) in doc.all_objects() {
+                let proj = crate::core::axonometric::apply_axonometric_projection(obj, amode);
+                out_doc.add_object(proj);
+            }
+            save_any_document(&out_doc, &output)?;
+            println!("✅ Axonometric vector saved to {:?}", output);
+            Ok(false)
+        }
+        Some(Commands::Evolve { polygons, generations, output }) => {
+            println!("🧬 Synthesizing Evolutionary Art ({} polygons, {} gens)...", polygons, generations);
+            let polys = crate::core::evolutionary::evolve_vector_composition(800.0, 800.0, polygons, generations);
+            let mut out_doc = crate::core::document::Document {
+                width: 800.0,
+                height: 800.0,
+                ..Default::default()
+            };
+            for poly in polys {
+                out_doc.add_object(poly);
+            }
+            save_any_document(&out_doc, &output)?;
+            println!("✅ Evolutionary art saved to {:?}", output);
+            Ok(false)
+        }
+        Some(Commands::Neon { input, radius, layers, output }) => {
+            println!("✨ Generating Vector Neon Bloom on '{:?}' (radius: {}, layers: {})...", input, radius, layers);
+            let doc = load_any_document(&input)?;
+            let mut out_doc = crate::core::document::Document {
+                width: doc.width,
+                height: doc.height,
+                ..Default::default()
+            };
+            for (_, obj) in doc.all_objects() {
+                let path = obj.to_path_data();
+                let neon_layers = crate::core::neon_glow::generate_neon_glow(&path, [0.0, 1.0, 0.9, 1.0], radius, layers);
+                for layer in neon_layers {
+                    out_doc.add_object(layer);
+                }
+            }
+            save_any_document(&out_doc, &output)?;
+            println!("✅ Vector neon artwork saved to {:?}", output);
             Ok(false)
         }
         Some(Commands::MotionPath { input, output, samples, duration, fps }) => {

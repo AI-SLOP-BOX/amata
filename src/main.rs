@@ -7,10 +7,11 @@ use irasu_illustrator::core::document::Object;
 use irasu_illustrator::core::state::{AppState, Tool};
 use irasu_illustrator::ui::canvas::CanvasWidget;
 use irasu_illustrator::ui::panels::{
-    AlignPanel, AudioWavePanel, DeformPanel, EffectsPanel, FlowFieldPanel, FormulaPanel,
-    HalftonePanel, IsometricPanel, LSystemPanel, LayerPanel, MeshWarpPanel, MorphPanel, OffsetPanel,
-    PathfinderPanel, PresetPanel, PropertyPanel, QrCodePanel, ScatterBrushPanel, SymmetryPanel,
-    TracePanel, VfxTrailPanel, VoronoiPanel,
+    AlignPanel, AudioWavePanel, AxonometricPanel, DeformPanel, EffectsPanel, FlowFieldPanel,
+    FormulaPanel, GradientMeshPanel, HalftonePanel, IsometricPanel, LSystemPanel, LayerPanel,
+    MeshWarpPanel, MorphPanel, NeonGlowPanel, OffsetPanel, PathfinderPanel, PresetPanel,
+    PropertyPanel, QrCodePanel, ScatterBrushPanel, SymmetryPanel, TracePanel, VfxTrailPanel,
+    VoronoiPanel,
 };
 use irasu_illustrator::ui::timeline_widget::TimelineWidget;
 
@@ -589,6 +590,15 @@ impl eframe::App for IrasuApp {
                     ui.add_space(8.0);
                     ui.separator();
                     MeshWarpPanel::show(ui, &mut self.state);
+                    ui.add_space(8.0);
+                    ui.separator();
+                    GradientMeshPanel::show(ui, &mut self.state);
+                    ui.add_space(8.0);
+                    ui.separator();
+                    AxonometricPanel::show(ui, &mut self.state);
+                    ui.add_space(8.0);
+                    ui.separator();
+                    NeonGlowPanel::show(ui, &mut self.state);
                     ui.add_space(8.0);
                     ui.separator();
                     VfxTrailPanel::show(ui, &mut self.state);
