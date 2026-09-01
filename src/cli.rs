@@ -484,6 +484,62 @@ pub enum Commands {
         output: PathBuf,
     },
 
+    /// Generate 3D Revolve / Lathe OBJ mesh by spinning a 2D profile
+    Revolve {
+        /// Input profile vector file (.svg or .json)
+        #[arg(short, long)]
+        input: PathBuf,
+
+        /// Rotation angle in degrees (default: 360)
+        #[arg(short, long, default_value_t = 360.0)]
+        angle: f64,
+
+        /// Radial subdivisions (default: 32)
+        #[arg(short, long, default_value_t = 32)]
+        segments: usize,
+
+        /// Output 3D Wavefront OBJ file (.obj)
+        #[arg(short, long)]
+        output: PathBuf,
+    },
+
+    /// Mold and distort art artwork into an envelope frame polygon
+    Envelope {
+        /// Artwork vector file (.svg or .json)
+        #[arg(short, long)]
+        art: PathBuf,
+
+        /// Envelope frame vector file (.svg or .json)
+        #[arg(short, long)]
+        envelope: PathBuf,
+
+        /// Output SVG file
+        #[arg(short, long)]
+        output: PathBuf,
+    },
+
+    /// Transform artwork between Cartesian (Rect) and Polar coordinates
+    Polar {
+        /// Input vector file (.svg or .json)
+        #[arg(short, long)]
+        input: PathBuf,
+
+        /// Output SVG file
+        #[arg(short, long)]
+        output: PathBuf,
+    },
+
+    /// Slice and bisect vector artwork with a cutting line
+    Slice {
+        /// Input vector file (.svg or .json)
+        #[arg(short, long)]
+        input: PathBuf,
+
+        /// Output SVG file
+        #[arg(short, long)]
+        output: PathBuf,
+    },
+
     /// Execute headless Pathfinder (Boolean Operations) on two vector files
     Boolean {
         /// First vector file (Subject)
@@ -1122,6 +1178,80 @@ pub fn run_cli(cli: Cli) -> Result<bool, Box<dyn std::error::Error>> {
             }
             save_any_document(&out_doc, &output)?;
             println!("✅ Vector neon artwork saved to {:?}", output);
+            Ok(false)
+        }
+        Some(Commands::Revolve { input, angle, segments, output }) => {
+            println!("🏺 Revolving '{:?}' in 3D (angle: {} deg, segs: {})...", input, angle, segments);
+            let doc = load_any_document(&input)?;
+            let profile_obj = doc.all_objects().next().map(|(_, o)| o).ok_or("Profile document is empty")?;
+            let axis_x = profile_obj.bounding_box().map(|(min, _)| min.x).unwrap_or(0.0);
+            let obj_data = crate::core::revolve::generate_3d_revolve_obj(profile_obj, axis_x, angle, segments);
+            std::fs::write(&output, obj_data)?;
+            println!("✅ 3D Revolved OBJ mesh saved to {:?}", output);
+            Ok(false)
+        }
+        Some(Commands::Envelope { art, envelope, output }) => {
+            println!("🚩 Molding '{:?}' into Envelope frame '{:?}'...", art, envelope);
+            let art_doc = load_any_document(&art)?;
+            let env_doc = load_any_document(&envelope)?;
+
+            let art_obj = art_doc.all_objects().next().map(|(_, o)| o).ok_or("Art document is empty")?;
+            let env_obj = env_doc.all_objects().next().map(|(_, o)| o).ok_or("Envelope document is empty")?;
+
+            let warped = crate::core::envelope::apply_envelope_distort(art_obj, env_obj);
+            let mut out_doc = crate::core::document::Document {
+                width: art_doc.width.max(env_doc.width),
+                height: art_doc.height.max(env_doc.height),
+                ..Default::default()
+            };
+            out_doc.add_object(warped);
+            save_any_document(&out_doc, &output)?;
+            println!("✅ Envelope distorted vector saved to {:?}", output);
+            Ok(false)
+        }
+        Some(Commands::Polar { input, output }) => {
+            println!("🌐 Transforming '{:?}' to Polar Coordinates...", input);
+            let doc = load_any_document(&input)?;
+            let cx = doc.width * 0.5;
+            let cy = doc.height * 0.5;
+            let mut out_doc = crate::core::document::Document {
+                width: doc.width,
+                height: doc.height,
+                ..Default::default()
+            };
+            for (_, obj) in doc.all_objects() {
+                let polar = crate::core::polar::apply_polar_transform(obj, cx, cy, doc.width, doc.height, crate::core::polar::PolarMode::RectToPolar);
+                out_doc.add_object(polar);
+            }
+            save_any_document(&out_doc, &output)?;
+            println!("✅ Polar coordinates vector saved to {:?}", output);
+            Ok(false)
+        }
+        Some(Commands::Slice { input, output }) => {
+            println!("✂ Slicing '{:?}' in half...", input);
+            let doc = load_any_document(&input)?;
+            let mut out_doc = crate::core::document::Document {
+                width: doc.width,
+                height: doc.height,
+                ..Default::default()
+            };
+            for (_, obj) in doc.all_objects() {
+                if let Some((min, max)) = obj.bounding_box() {
+                    let mid_y = (min.y + max.y) * 0.5;
+                    let p1 = crate::core::path::AnchorPoint::new(min.x - 10.0, mid_y);
+                    let p2 = crate::core::path::AnchorPoint::new(max.x + 10.0, mid_y);
+                    if let Some((pa, pb)) = crate::core::knife::slice_object_with_line(obj, p1, p2) {
+                        out_doc.add_object(pa);
+                        out_doc.add_object(pb);
+                    } else {
+                        out_doc.add_object(obj.clone());
+                    }
+                } else {
+                    out_doc.add_object(obj.clone());
+                }
+            }
+            save_any_document(&out_doc, &output)?;
+            println!("✅ Sliced vector saved to {:?}", output);
             Ok(false)
         }
         Some(Commands::MotionPath { input, output, samples, duration, fps }) => {

@@ -1668,3 +1668,158 @@ impl NeonGlowPanel {
         }
     }
 }
+
+pub struct RevolvePanel;
+
+impl RevolvePanel {
+    pub fn show(ui: &mut Ui, state: &mut AppState) {
+        ui.heading(RichText::new("🏺 3D Revolve & Lathe Modeler").strong());
+        ui.add_space(4.0);
+
+        let has_sel = !state.selected_ids.is_empty();
+
+        if let Some(id) = state.selected_ids.first().cloned() {
+            let target_obj = state.document.all_objects().find(|(_, o)| o.id == id).map(|(_, o)| o.clone());
+            if ui.add_enabled(has_sel, egui::Button::new("Export 3D Revolve OBJ...")).clicked() {
+                if let Some(obj) = &target_obj {
+                    let axis = obj.bounding_box().map(|(min, _)| min.x).unwrap_or(0.0);
+                    let obj_data = crate::core::revolve::generate_3d_revolve_obj(obj, axis, 360.0, 32);
+                    if let Some(path) = rfd::FileDialog::new().add_filter("OBJ 3D Model", &["obj"]).save_file() {
+                        let _ = std::fs::write(path, obj_data);
+                    }
+                }
+            }
+        } else {
+            ui.label(RichText::new("Select a profile path to revolve in 3D").weak().size(11.0));
+        }
+    }
+}
+
+pub struct EnvelopePanel;
+
+impl EnvelopePanel {
+    pub fn show(ui: &mut Ui, state: &mut AppState) {
+        ui.heading(RichText::new("🚩 Envelope Distort & Shape Mold").strong());
+        ui.add_space(4.0);
+
+        let has_sel = state.selected_ids.len() >= 2;
+
+        if ui.add_enabled(has_sel, egui::Button::new("Mold 1st (Art) inside 2nd (Frame)")).clicked() {
+            let id_art = state.selected_ids[0].clone();
+            let id_env = state.selected_ids[1].clone();
+
+            let target_art = state.document.all_objects().find(|(_, o)| o.id == id_art).map(|(_, o)| o.clone());
+            let target_env = state.document.all_objects().find(|(_, o)| o.id == id_env).map(|(_, o)| o.clone());
+
+            if let (Some(art), Some(env)) = (target_art, target_env) {
+                let warped = crate::core::envelope::apply_envelope_distort(&art, &env);
+                let cmd = Box::new(crate::core::history::AddObjectCommand::new(warped));
+                state.undo_manager.execute(cmd, &mut state.document);
+            }
+        } else if !has_sel {
+            ui.label(RichText::new("Select 2 objects (Art + Envelope Frame)").weak().size(11.0));
+        }
+    }
+}
+
+pub struct PolarPanel;
+
+impl PolarPanel {
+    pub fn show(ui: &mut Ui, state: &mut AppState) {
+        ui.heading(RichText::new("🌐 Polar Coordinates & Planet Wrap").strong());
+        ui.add_space(4.0);
+
+        let has_sel = !state.selected_ids.is_empty();
+        let cx = state.document.width * 0.5;
+        let cy = state.document.height * 0.5;
+        let w = state.document.width;
+        let h = state.document.height;
+
+        if let Some(id) = state.selected_ids.first().cloned() {
+            let target_obj = state.document.all_objects().find(|(_, o)| o.id == id).map(|(_, o)| o.clone());
+            ui.horizontal(|ui| {
+                if ui.add_enabled(has_sel, egui::Button::new("Rect -> Polar")).clicked() {
+                    if let Some(obj) = &target_obj {
+                        let polar = crate::core::polar::apply_polar_transform(obj, cx, cy, w, h, crate::core::polar::PolarMode::RectToPolar);
+                        let new_id = polar.id.clone();
+                        let cmd = Box::new(crate::core::history::AddObjectCommand::new(polar));
+                        state.undo_manager.execute(cmd, &mut state.document);
+                        state.selected_ids = vec![new_id];
+                    }
+                }
+
+                if ui.add_enabled(has_sel, egui::Button::new("Polar -> Rect")).clicked() {
+                    if let Some(obj) = &target_obj {
+                        let rect = crate::core::polar::apply_polar_transform(obj, cx, cy, w, h, crate::core::polar::PolarMode::PolarToRect);
+                        let new_id = rect.id.clone();
+                        let cmd = Box::new(crate::core::history::AddObjectCommand::new(rect));
+                        state.undo_manager.execute(cmd, &mut state.document);
+                        state.selected_ids = vec![new_id];
+                    }
+                }
+            });
+        } else {
+            ui.label(RichText::new("Select an object to wrap into circular polar coordinates").weak().size(11.0));
+        }
+    }
+}
+
+pub struct KnifePanel;
+
+impl KnifePanel {
+    pub fn show(ui: &mut Ui, state: &mut AppState) {
+        ui.heading(RichText::new("✂️ Knife & Vector Slicer").strong());
+        ui.add_space(4.0);
+
+        let has_sel = !state.selected_ids.is_empty();
+
+        if let Some(id) = state.selected_ids.first().cloned() {
+            let target_obj = state.document.all_objects().find(|(_, o)| o.id == id).map(|(_, o)| o.clone());
+            ui.horizontal(|ui| {
+                if ui.add_enabled(has_sel, egui::Button::new("Slice Horizontally")).clicked() {
+                    if let Some(obj) = &target_obj {
+                        if let Some((min, max)) = obj.bounding_box() {
+                            let mid_y = (min.y + max.y) * 0.5;
+                            let p1 = crate::core::path::AnchorPoint::new(min.x - 10.0, mid_y);
+                            let p2 = crate::core::path::AnchorPoint::new(max.x + 10.0, mid_y);
+
+                            if let Some((part_a, part_b)) = crate::core::knife::slice_object_with_line(obj, p1, p2) {
+                                let cmd1 = Box::new(crate::core::history::RemoveObjectCommand::new(obj.clone(), 0, 0));
+                                state.undo_manager.execute(cmd1, &mut state.document);
+
+                                let cmd2 = Box::new(crate::core::history::AddObjectCommand::new(part_a));
+                                state.undo_manager.execute(cmd2, &mut state.document);
+
+                                let cmd3 = Box::new(crate::core::history::AddObjectCommand::new(part_b));
+                                state.undo_manager.execute(cmd3, &mut state.document);
+                            }
+                        }
+                    }
+                }
+
+                if ui.add_enabled(has_sel, egui::Button::new("Slice Vertically")).clicked() {
+                    if let Some(obj) = &target_obj {
+                        if let Some((min, max)) = obj.bounding_box() {
+                            let mid_x = (min.x + max.x) * 0.5;
+                            let p1 = crate::core::path::AnchorPoint::new(mid_x, min.y - 10.0);
+                            let p2 = crate::core::path::AnchorPoint::new(mid_x, max.y + 10.0);
+
+                            if let Some((part_a, part_b)) = crate::core::knife::slice_object_with_line(obj, p1, p2) {
+                                let cmd1 = Box::new(crate::core::history::RemoveObjectCommand::new(obj.clone(), 0, 0));
+                                state.undo_manager.execute(cmd1, &mut state.document);
+
+                                let cmd2 = Box::new(crate::core::history::AddObjectCommand::new(part_a));
+                                state.undo_manager.execute(cmd2, &mut state.document);
+
+                                let cmd3 = Box::new(crate::core::history::AddObjectCommand::new(part_b));
+                                state.undo_manager.execute(cmd3, &mut state.document);
+                            }
+                        }
+                    }
+                }
+            });
+        } else {
+            ui.label(RichText::new("Select an object to slice in half").weak().size(11.0));
+        }
+    }
+}
