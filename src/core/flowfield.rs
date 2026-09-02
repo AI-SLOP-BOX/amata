@@ -81,6 +81,7 @@ pub fn generate_flowfield_streamlines(
                 },
                 width: 1.5,
                 dash_pattern: None,
+                ..StrokeStyle::default()
             });
 
             let obj = Object::new_path(&format!("Streamline {}", i + 1), path);

@@ -1,9 +1,14 @@
 use crate::core::document::{ObjectType, Object};
-use crate::core::path::{AnchorPoint, FillStyle, PathData, PathElement, StrokeStyle};
+use crate::core::path::{
+    AnchorPoint, FillStyle, FillType, LinearGradient, PatternFill, PathData, PathElement,
+    RadialGradient, StrokeStyle,
+};
 use crate::core::state::{AppState, HandleCorner, Tool};
+use crate::gpu::GpuRenderer;
 use crate::tools::pen::PenState;
 use crate::tools::select::SelectState;
 use egui::{Color32, FontId, Pos2, Rect, Sense, Stroke, StrokeKind, Ui, Vec2};
+use std::sync::Arc;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum DragMode {
@@ -14,6 +19,8 @@ enum DragMode {
     CreatePolygon,
     CreateLine,
     PencilDraw,
+    BrushDraw,
+    EraserDrag,
     MoveObject,
     Resize(HandleCorner),
     Rotate,
@@ -48,6 +55,7 @@ pub struct CanvasWidget {
     pub select_state: SelectState,
     drag: Option<DragState>,
     node_edit_state: NodeEditState,
+    pub gpu_renderer: Option<GpuRenderer>,
 }
 
 struct NodeEditState {
@@ -77,16 +85,28 @@ impl CanvasWidget {
             select_state: SelectState::new(),
             drag: None,
             node_edit_state: NodeEditState::new(),
+            gpu_renderer: None,
         }
     }
 
-    pub fn show(&mut self, ui: &mut Ui, state: &mut AppState) {
+    /// Lazily initialize the GPU renderer from eframe's wgpu context
+    pub fn ensure_gpu_renderer(&mut self, device: Arc<wgpu::Device>, queue: Arc<wgpu::Queue>) {
+        if self.gpu_renderer.is_some() {
+            return;
+        }
+        self.gpu_renderer = Some(GpuRenderer::new(device, queue));
+        log::info!("GPU renderer initialized via eframe wgpu backend");
+    }
+
+    pub fn show(&mut self, ui: &mut Ui, state: &mut AppState, device: Option<Arc<wgpu::Device>>, queue: Option<Arc<wgpu::Queue>>) {
         let (response, painter) = ui.allocate_painter(
             Vec2::new(ui.available_width(), ui.available_height()),
             Sense::click_and_drag(),
         );
 
         let rect = response.rect;
+        state.canvas_center_x = rect.center().x;
+        state.canvas_center_y = rect.center().y;
         let origin = Pos2::new(
             rect.center().x + state.pan_x,
             rect.center().y + state.pan_y,
@@ -130,12 +150,126 @@ impl CanvasWidget {
             Color32::from_rgb(170, 170, 170),
         );
 
-        // Render Objects
+        // Render Objects (CPU fallback via egui painter)
         for (_, obj) in state.document.all_objects() {
             if !obj.visible {
                 continue;
             }
             self.draw_object(&painter, obj, origin, state);
+        }
+
+        // GPU-Accelerated Rendering Pass (effects: glow, blur, shadow)
+        if let (Some(device), Some(queue)) = (device, queue) {
+            self.ensure_gpu_renderer(device.clone(), queue.clone());
+
+            if let Some(ref _gpu) = self.gpu_renderer {
+                // Collect objects with GPU-renderable effects
+                let mut has_gpu_effects = false;
+                for (_, obj) in state.document.all_objects() {
+                    if !obj.visible { continue; }
+                    if obj.shadow.is_some() || obj.glow.is_some() {
+                        has_gpu_effects = true;
+                        break;
+                    }
+                }
+
+                if has_gpu_effects {
+                    let screen_rect = ui.ctx().input(|i| i.screen_rect);
+                    let width = screen_rect.width() as u32;
+                    let height = screen_rect.height() as u32;
+
+                    // Create render target texture for GPU effects
+                    let output_texture = device.create_texture(&wgpu::TextureDescriptor {
+                        label: Some("GPU Effects Texture"),
+                        size: wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
+                        mip_level_count: 1,
+                        sample_count: 1,
+                        dimension: wgpu::TextureDimension::D2,
+                        format: wgpu::TextureFormat::Rgba16Float,
+                        usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+                        view_formats: &[],
+                    });
+                    let output_view = output_texture.create_view(&wgpu::TextureViewDescriptor::default());
+
+                    let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                        label: Some("GPU Effects Encoder"),
+                    });
+
+                    // Render objects with GPU effects to texture
+                    {
+                        let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                            label: Some("GPU Effects Pass"),
+                            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                                view: &output_view,
+                                resolve_target: None,
+                                ops: wgpu::Operations {
+                                    load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
+                                    store: wgpu::StoreOp::Store,
+                                },
+                            })],
+                            depth_stencil_attachment: None,
+                            timestamp_writes: None,
+                            occlusion_query_set: None,
+                        });
+
+                        let mut gpu = GpuRenderer::new(device.clone(), queue.clone());
+                        gpu.begin_frame();
+
+                        // Collect geometry with effects
+                        for (_, obj) in state.document.all_objects() {
+                            if !obj.visible { continue; }
+
+                            let _fill_rgba = obj.fill.as_ref().map(|f| {
+                                let c = f.color;
+                                [c[0], c[1], c[2], c[3] * obj.opacity]
+                            }).unwrap_or([0.0, 0.0, 0.0, 0.0]);
+
+                            let _opacity = obj.opacity;
+
+                            // Shadow: render offset geometry in shadow color
+                            if let Some(ref sh) = obj.shadow {
+                                let sh_color = [sh.color[0], sh.color[1], sh.color[2], sh.color[3] * sh.opacity * obj.opacity];
+                                let poly = obj.to_path_data().to_polygon(16);
+                                let sh_pts: Vec<(f32, f32)> = poly.iter().map(|p| {
+                                    let (wx, wy) = obj.transform.transform_point(
+                                        p.x + sh.offset_x,
+                                        p.y + sh.offset_y,
+                                    );
+                                    (origin.x + wx as f32 * state.zoom,
+                                     origin.y + wy as f32 * state.zoom)
+                                }).collect();
+                                gpu.push_convex_polygon(&sh_pts, sh_color);
+                            }
+
+                            // Glow: render with additive blending
+                            if let Some(ref gl) = obj.glow {
+                                let gl_color = [gl.color[0], gl.color[1], gl.color[2], gl.color[3] * gl.intensity * obj.opacity];
+                                let poly = obj.to_path_data().to_polygon(16);
+                                let screen_pts: Vec<(f32, f32)> = poly.iter().map(|p| {
+                                    let (wx, wy) = obj.transform.transform_point(p.x, p.y);
+                                    (origin.x + wx as f32 * state.zoom,
+                                     origin.y + wy as f32 * state.zoom)
+                                }).collect();
+                                // Render glow at larger scale
+                                let cx: f32 = screen_pts.iter().map(|p| p.0).sum::<f32>() / screen_pts.len() as f32;
+                                let cy: f32 = screen_pts.iter().map(|p| p.1).sum::<f32>() / screen_pts.len() as f32;
+                                let glow_pts: Vec<(f32, f32)> = screen_pts.iter().map(|p| {
+                                    let dx = p.0 - cx;
+                                    let dy = p.1 - cy;
+                                    let r = gl.radius as f32;
+                                    (p.0 + dx * r * 0.1, p.1 + dy * r * 0.1)
+                                }).collect();
+                                gpu.push_convex_polygon(&glow_pts, gl_color);
+                            }
+                        }
+
+                        let resolution = [width as f32, height as f32];
+                        gpu.render(&mut render_pass, resolution, state.zoom, [state.pan_x, state.pan_y], 0.0, 0.0, 0.0, 0.0, [0.0, 0.0], 0.0, 0.0, 1.0);
+                    }
+
+                    queue.submit(std::iter::once(encoder.finish()));
+                }
+            }
         }
 
         // Smart Guides
@@ -152,6 +286,8 @@ impl CanvasWidget {
                 DragMode::CreatePolygon => self.draw_polygon_preview(&painter, origin, state, drag),
                 DragMode::CreateLine => self.draw_line_preview(&painter, origin, state, drag),
                 DragMode::PencilDraw => self.draw_pencil_preview(&painter, origin, state, drag),
+                DragMode::BrushDraw => self.draw_brush_preview(&painter, origin, state, drag),
+                DragMode::EraserDrag => self.draw_eraser_preview(&painter, origin, state, drag),
                 DragMode::Select => self.draw_marquee(&painter, origin, state, drag),
                 _ => {}
             }
@@ -179,18 +315,36 @@ impl CanvasWidget {
             self.draw_rulers(&painter, rect, origin, state);
         }
 
+        // Smooth Zoom Animation (lerp toward target)
+        if state.zoom_animation_progress < 1.0 {
+            state.zoom_animation_progress = (state.zoom_animation_progress + 0.15_f32).min(1.0);
+            let t = smooth_step(state.zoom_animation_progress);
+            state.zoom = state.start_zoom + (state.target_zoom - state.start_zoom) * t;
+            state.pan_x = state.start_pan_x + (state.target_pan_x - state.start_pan_x) * t;
+            state.pan_y = state.start_pan_y + (state.target_pan_y - state.start_pan_y) * t;
+            ui.ctx().request_repaint();
+        } else {
+            state.zoom = state.target_zoom;
+            state.pan_x = state.target_pan_x;
+            state.pan_y = state.target_pan_y;
+        }
+
         // Mouse Wheel Zoom (Ctrl+scroll or trackpad pinch)
         let scroll = ui.input(|i| i.raw_scroll_delta.y);
         if scroll != 0.0_f32 {
-            let old_zoom = state.zoom;
-            state.zoom = (state.zoom * (1.0_f32 + scroll * 0.001_f32)).clamp(0.01_f32, 100.0_f32);
+            let old_zoom = state.target_zoom;
+            state.target_zoom = (state.target_zoom * (1.0_f32 + scroll * 0.001_f32)).clamp(0.01_f32, 100.0_f32);
             if let Some(screen_pos) = response.interact_pointer_pos() {
-                let zoom_ratio = state.zoom / old_zoom;
+                let zoom_ratio = state.target_zoom / old_zoom;
                 let dx = (screen_pos.x - origin.x) * (zoom_ratio - 1.0_f32);
                 let dy = (screen_pos.y - origin.y) * (zoom_ratio - 1.0_f32);
-                state.pan_x -= dx;
-                state.pan_y -= dy;
+                state.target_pan_x -= dx;
+                state.target_pan_y -= dy;
             }
+            state.start_zoom = state.zoom;
+            state.start_pan_x = state.pan_x;
+            state.start_pan_y = state.pan_y;
+            state.zoom_animation_progress = 0.0;
         }
 
         // Right-Click Context Menu (Illustrator style)
@@ -202,6 +356,48 @@ impl CanvasWidget {
                 ui.label(egui::RichText::new("Selection").weak().size(10.0));
                 ui.separator();
 
+                if ui.button("Cut   Cmd+X").clicked() {
+                    state.clipboard.clear();
+                    let ids = state.selected_ids.clone();
+                    for id in &ids {
+                        if let Some(obj) = state.document.remove_object(id) {
+                            state.clipboard.push(obj);
+                        }
+                    }
+                    state.selected_ids.clear();
+                    ui.close_menu();
+                }
+
+                if ui.button("Copy   Cmd+C").clicked() {
+                    state.clipboard.clear();
+                    for id in &state.selected_ids {
+                        if let Some((_, obj)) = state.document.all_objects().find(|(_, o)| &o.id == id) {
+                            state.clipboard.push(obj.clone());
+                        }
+                    }
+                    ui.close_menu();
+                }
+
+                if ui.button("Paste   Cmd+V").clicked() {
+                    state.selected_ids.clear();
+                    let mut offset = 0.0;
+                    for obj in &state.clipboard {
+                        let mut new_obj = obj.clone();
+                        new_obj.id = uuid::Uuid::new_v4().to_string();
+                        new_obj.name = format!("{} (copy)", obj.name);
+                        new_obj.transform.x += 20.0 + offset;
+                        new_obj.transform.y += 20.0 + offset;
+                        offset += 15.0;
+                        let id = new_obj.id.clone();
+                        let cmd = Box::new(crate::core::history::AddObjectCommand::new(new_obj));
+                        state.undo_manager.execute(cmd, &mut state.document);
+                        state.selected_ids.push(id);
+                    }
+                    ui.close_menu();
+                }
+
+                ui.separator();
+
                 if ui.button("Duplicate   Cmd+D").clicked() {
                     let ids = state.selected_ids.clone();
                     let mut new_objs = Vec::new();
@@ -209,8 +405,8 @@ impl CanvasWidget {
                         if let Some((_, obj)) = state.document.all_objects().find(|(_, o)| &o.id == id) {
                             let mut c = obj.clone();
                             c.id = uuid::Uuid::new_v4().to_string();
-                            c.transform.x += 10.0;
-                            c.transform.y += 10.0;
+                            c.transform.x += 20.0;
+                            c.transform.y += 20.0;
                             new_objs.push(c);
                         }
                     }
@@ -296,12 +492,9 @@ impl CanvasWidget {
                         let sel = state.selected_ids.clone();
                         let mut children = Vec::new();
                         for id in &sel {
-                            if let Some((_, obj)) = state.document.all_objects().find(|(_, o)| &o.id == id) {
-                                children.push(obj.clone());
+                            if let Some(obj) = state.document.remove_object(id) {
+                                children.push(obj);
                             }
-                        }
-                        for id in &sel {
-                            state.document.remove_object(id);
                         }
                         let grp = crate::core::document::Object::new_group("Group", children);
                         let new_id = grp.id.clone();
@@ -311,20 +504,60 @@ impl CanvasWidget {
                         ui.close_menu();
                     }
                 }
+
+                if has_sel {
+                    // Check if any selected object is a Group
+                    let has_group = state.selected_ids.iter().any(|id| {
+                        state.document.all_objects().any(|(_, o)| o.id == *id && matches!(o.object_type, ObjectType::Group(_)))
+                    });
+                    if has_group && ui.button("Ungroup   Cmd+Shift+G").clicked() {
+                        let ids = state.selected_ids.clone();
+                        let mut new_ids = Vec::new();
+                        for id in &ids {
+                            if let Some(obj) = state.document.remove_object(id) {
+                                if let ObjectType::Group(children) = obj.object_type {
+                                    for child in children {
+                                        new_ids.push(child.id.clone());
+                                        let cmd = Box::new(crate::core::history::AddObjectCommand::new(child));
+                                        state.undo_manager.execute(cmd, &mut state.document);
+                                    }
+                                } else {
+                                    new_ids.push(obj.id.clone());
+                                    let cmd = Box::new(crate::core::history::AddObjectCommand::new(obj));
+                                    state.undo_manager.execute(cmd, &mut state.document);
+                                }
+                            }
+                        }
+                        state.selected_ids = new_ids;
+                        ui.close_menu();
+                    }
+                }
             } else {
                 ui.label(egui::RichText::new("Canvas").weak().size(10.0));
                 ui.separator();
                 if ui.button("Zoom to Fit   Cmd+0").clicked() {
+                    state.start_zoom = state.zoom;
+                    state.start_pan_x = state.pan_x;
+                    state.start_pan_y = state.pan_y;
+                    state.zoom_to_fit();
+                    state.zoom_animation_progress = 0.0;
                     ui.close_menu();
                 }
                 if ui.button("Zoom 100%   Cmd+1").clicked() {
-                    state.zoom = 1.0;
+                    state.start_zoom = state.zoom;
+                    state.start_pan_x = state.pan_x;
+                    state.start_pan_y = state.pan_y;
+                    state.target_zoom = 1.0;
+                    state.target_pan_x = 0.0;
+                    state.target_pan_y = 0.0;
+                    state.zoom_animation_progress = 0.0;
                     ui.close_menu();
                 }
                 ui.separator();
                 ui.checkbox(&mut state.show_grid, "Show Grid");
                 ui.checkbox(&mut state.show_rulers, "Show Rulers");
                 ui.checkbox(&mut state.show_smart_guides, "Smart Guides");
+                ui.checkbox(&mut state.snap_to_objects, "Snap to Objects");
             }
         });
 
@@ -365,12 +598,10 @@ impl CanvasWidget {
                     }
             } else if state.current_tool == Tool::Hand {
                 cursor = if response.dragged() { egui::CursorIcon::Grabbing } else { egui::CursorIcon::Grab };
-            } else if state.current_tool == Tool::Eyedropper {
+            } else if matches!(state.current_tool, Tool::Eyedropper | Tool::Brush | Tool::Eraser | Tool::Pen) {
                 cursor = egui::CursorIcon::Crosshair;
             } else if state.current_tool == Tool::Text {
                 cursor = egui::CursorIcon::Text;
-            } else if state.current_tool == Tool::Pen {
-                cursor = egui::CursorIcon::Crosshair;
             } else if state.current_tool == Tool::Node {
                 if self.hit_test_nodes(state, screen_pos, origin).is_some() {
                     cursor = egui::CursorIcon::Move;
@@ -419,6 +650,22 @@ impl CanvasWidget {
                     Tool::Pencil => {
                         self.drag = Some(DragState::new(DragMode::PencilDraw, wx, wy));
                     }
+                    Tool::Brush => {
+                        self.drag = Some(DragState::new(DragMode::BrushDraw, wx, wy));
+                    }
+                    Tool::Eraser => {
+                        self.drag = Some(DragState::new(DragMode::EraserDrag, wx, wy));
+                    }
+                    Tool::Pen => {
+                        // If drawing and drag starts, we're pulling bezier handles
+                        if self.pen_state.is_drawing && self.pen_state.dragging_handle {
+                            // dragging handle is already set, just let drag update handle
+                        } else if !self.pen_state.is_drawing {
+                            self.pen_state.start_path(wx, wy);
+                        } else {
+                            self.pen_state.add_point(wx, wy);
+                        }
+                    }
                     Tool::Select => {
                         let mut handled = false;
                         for id in &state.selected_ids {
@@ -464,6 +711,14 @@ impl CanvasWidget {
 
         // Dragging
         if response.dragged() {
+            // Pen tool handle dragging (no DragState needed)
+            if state.current_tool == Tool::Pen && self.pen_state.dragging_handle {
+                if let Some(screen_pos) = response.interact_pointer_pos() {
+                    let (wx, wy) = state.screen_to_world(screen_pos.x, screen_pos.y);
+                    self.pen_state.drag_handle(wx, wy);
+                }
+            }
+
             if let Some(ref mut drag) = self.drag {
                 let delta = response.drag_delta();
                 if drag.mode == DragMode::Pan {
@@ -474,7 +729,7 @@ impl CanvasWidget {
                     let (wx, wy) = state.snap(wx, wy);
                     drag.current_world = (wx, wy);
 
-                    if drag.mode == DragMode::PencilDraw {
+                    if matches!(drag.mode, DragMode::PencilDraw | DragMode::BrushDraw | DragMode::EraserDrag) {
                         drag.pencil_points.push(AnchorPoint::new(wx, wy));
                     } else if drag.mode == DragMode::MoveObject {
                         self.select_state.update_drag(state, wx, wy);
@@ -482,6 +737,8 @@ impl CanvasWidget {
                         self.update_rotate(state, wx, wy);
                     } else if let DragMode::MoveNode(idx) = drag.mode {
                         self.move_node(state, idx, wx, wy);
+                    } else if let DragMode::Resize(corner) = drag.mode {
+                        self.update_resize(state, corner, wx, wy);
                     }
                 }
             }
@@ -511,6 +768,7 @@ impl CanvasWidget {
                                 color: state.stroke_color,
                                 width: state.stroke_width,
                                 dash_pattern: None,
+                                ..StrokeStyle::default()
                             });
                             let cmd = Box::new(crate::core::history::AddObjectCommand::new(obj));
                             state.undo_manager.execute(cmd, &mut state.document);
@@ -536,6 +794,7 @@ impl CanvasWidget {
                                 color: state.stroke_color,
                                 width: state.stroke_width,
                                 dash_pattern: None,
+                                ..StrokeStyle::default()
                             });
                             let cmd = Box::new(crate::core::history::AddObjectCommand::new(obj));
                             state.undo_manager.execute(cmd, &mut state.document);
@@ -553,6 +812,7 @@ impl CanvasWidget {
                                 color: state.stroke_color,
                                 width: state.stroke_width,
                                 dash_pattern: None,
+                                ..StrokeStyle::default()
                             });
                             let cmd = Box::new(crate::core::history::AddObjectCommand::new(obj));
                             state.undo_manager.execute(cmd, &mut state.document);
@@ -569,6 +829,7 @@ impl CanvasWidget {
                                 color: state.stroke_color,
                                 width: state.stroke_width,
                                 dash_pattern: None,
+                                ..StrokeStyle::default()
                             });
                             let cmd = Box::new(crate::core::history::AddObjectCommand::new(obj));
                             state.undo_manager.execute(cmd, &mut state.document);
@@ -591,6 +852,7 @@ impl CanvasWidget {
                                 color: state.stroke_color,
                                 width: state.stroke_width,
                                 dash_pattern: None,
+                                ..StrokeStyle::default()
                             });
                             let cmd = Box::new(crate::core::history::AddObjectCommand::new(obj));
                             state.undo_manager.execute(cmd, &mut state.document);
@@ -625,10 +887,68 @@ impl CanvasWidget {
                                 color: state.stroke_color,
                                 width: state.stroke_width,
                                 dash_pattern: None,
+                                ..StrokeStyle::default()
                             });
                             let obj = Object::new_path("Pencil Stroke", path);
                             let cmd = Box::new(crate::core::history::AddObjectCommand::new(obj));
                             state.undo_manager.execute(cmd, &mut state.document);
+                        }
+                    }
+                    DragMode::BrushDraw => {
+                        if drag.pencil_points.len() >= 2 {
+                            let mut path = PathData::from_smooth_points(&drag.pencil_points);
+                            path.fill = None;
+                            path.stroke = Some(StrokeStyle {
+                                color: state.fill_color,
+                                width: 4.0,
+                                dash_pattern: None,
+                                ..StrokeStyle::default()
+                            });
+                            let obj = Object::new_path("Brush Stroke", path);
+                            let cmd = Box::new(crate::core::history::AddObjectCommand::new(obj));
+                            state.undo_manager.execute(cmd, &mut state.document);
+                        }
+                    }
+                    DragMode::EraserDrag => {
+                        if drag.pencil_points.len() >= 2 {
+                            let min_x = drag.pencil_points.iter().map(|p| p.x).fold(f64::INFINITY, f64::min);
+                            let max_x = drag.pencil_points.iter().map(|p| p.x).fold(f64::NEG_INFINITY, f64::max);
+                            let min_y = drag.pencil_points.iter().map(|p| p.y).fold(f64::INFINITY, f64::min);
+                            let max_y = drag.pencil_points.iter().map(|p| p.y).fold(f64::NEG_INFINITY, f64::max);
+
+                            let eraser_margin = 10.0;
+                            let eraser_rect_min = (min_x - eraser_margin, min_y - eraser_margin);
+                            let eraser_rect_max = (max_x + eraser_margin, max_y + eraser_margin);
+
+                            let mut ids_to_remove = Vec::new();
+                            for (_, obj) in state.document.all_objects() {
+                                if !obj.visible || obj.locked {
+                                    continue;
+                                }
+                                if let Some((bb_min, bb_max)) = obj.bounding_box() {
+                                    let intersects = bb_max.x >= eraser_rect_min.0
+                                        && bb_min.x <= eraser_rect_max.0
+                                        && bb_max.y >= eraser_rect_min.1
+                                        && bb_min.y <= eraser_rect_max.1;
+                                    if intersects {
+                                        ids_to_remove.push(obj.id.clone());
+                                    }
+                                }
+                            }
+                            for id in &ids_to_remove {
+                                let layer_idx = state
+                                    .document
+                                    .layers
+                                    .iter()
+                                    .position(|l| l.objects.iter().any(|o| &o.id == id))
+                                    .unwrap_or(0);
+                                if let Some(obj) = state.document.remove_object(id) {
+                                    let cmd = Box::new(crate::core::history::RemoveObjectCommand::new(
+                                        obj, layer_idx, 0,
+                                    ));
+                                    state.undo_manager.execute(cmd, &mut state.document);
+                                }
+                            }
                         }
                     }
                     DragMode::Select => {
@@ -683,6 +1003,9 @@ impl CanvasWidget {
                     if let Some((_, obj)) = state.document.all_objects().find(|(_, o)| o.id == id) {
                         if let Some(ref fill) = obj.fill {
                             state.fill_color = fill.color;
+                        } else if let Some(ref stroke) = obj.stroke {
+                            // No fill on object: use stroke color as fill
+                            state.fill_color = stroke.color;
                         }
                         if let Some(ref stroke) = obj.stroke {
                             state.stroke_color = stroke.color;
@@ -690,6 +1013,8 @@ impl CanvasWidget {
                         }
                     }
                 }
+                let prev = state.previous_tool;
+                state.current_tool = prev;
             }
             Tool::Select => {
                 if let Some(id) = self.select_state.hit_test(state, wx, wy) {
@@ -793,15 +1118,7 @@ impl CanvasWidget {
             Pos2::new(origin.x + sx as f32 * state.zoom, origin.y + sy as f32 * state.zoom)
         };
 
-        let fill_color = obj.fill.as_ref().map(|f| {
-            let c = f.color;
-            Color32::from_rgba_unmultiplied(
-                (c[0] * 255.0_f32) as u8,
-                (c[1] * 255.0_f32) as u8,
-                (c[2] * 255.0_f32) as u8,
-                ((c[3] * opacity) * 255.0_f32) as u8,
-            )
-        });
+        let fill_color = obj.fill.as_ref().and_then(|f| fill_type_color(f, opacity));
 
         let stroke_info = obj.stroke.as_ref().map(|s| {
             let c = s.color;
@@ -905,6 +1222,235 @@ impl CanvasWidget {
                     self.draw_object(painter, child, origin, state);
                 }
             }
+            ObjectType::ClippingMask { children } => {
+                for child in children {
+                    self.draw_object(painter, child, origin, state);
+                }
+            }
+        }
+
+        if let Some(ref fill) = obj.fill {
+            match &fill.fill_type {
+                FillType::Linear(grad) => {
+                    self.draw_linear_gradient(painter, obj, grad, opacity, origin, state);
+                }
+                FillType::Radial(grad) => {
+                    self.draw_radial_gradient(painter, obj, grad, opacity, origin, state);
+                }
+                FillType::Pattern(pat) => {
+                    self.draw_pattern_fill(painter, obj, pat, opacity, origin, state);
+                }
+                FillType::Solid(_) => {}
+            }
+        }
+    }
+
+    fn draw_linear_gradient(
+        &self,
+        painter: &egui::Painter,
+        obj: &Object,
+        grad: &LinearGradient,
+        opacity: f32,
+        origin: Pos2,
+        state: &AppState,
+    ) {
+        let to_screen = |wx: f64, wy: f64| -> Pos2 {
+            let (sx, sy) = obj.transform.transform_point(wx, wy);
+            Pos2::new(origin.x + sx as f32 * state.zoom, origin.y + sy as f32 * state.zoom)
+        };
+
+        let path = obj.to_path_data();
+        let poly = path.to_polygon(16);
+        if poly.len() < 3 {
+            return;
+        }
+        let screen_pts: Vec<Pos2> = poly.iter().map(|p| to_screen(p.x, p.y)).collect();
+
+        let dx = grad.end_x - grad.start_x;
+        let dy = grad.end_y - grad.start_y;
+        let len = (dx * dx + dy * dy).sqrt();
+        if len <= 0.0 {
+            return;
+        }
+
+        let num_bands = 32;
+        let min_y = screen_pts.iter().map(|p| p.y).fold(f32::INFINITY, f32::min);
+        let max_y = screen_pts.iter().map(|p| p.y).fold(f32::NEG_INFINITY, f32::max);
+        let band_height = (max_y - min_y) / num_bands as f32;
+
+        for i in 0..num_bands {
+            let y_top = min_y + i as f32 * band_height;
+            let y_bot = y_top + band_height;
+            let y_mid = (y_top + y_bot) / 2.0;
+
+            let t = ((y_mid - min_y) / (max_y - min_y)).clamp(0.0, 1.0);
+            let c = sample_gradient_stops(&grad.stops, t);
+            let a = c[3] * opacity;
+            if a <= 0.0 {
+                continue;
+            }
+            let band_color = Color32::from_rgba_unmultiplied(
+                (c[0] * 255.0) as u8,
+                (c[1] * 255.0) as u8,
+                (c[2] * 255.0) as u8,
+                (a * 255.0) as u8,
+            );
+
+            let clipped = clip_polygon_to_y_band(&screen_pts, y_top, y_bot);
+            if clipped.len() >= 3 {
+                painter.add(egui::epaint::PathShape::convex_polygon(
+                    clipped,
+                    band_color,
+                    Stroke::NONE,
+                ));
+            }
+        }
+
+        let stroke_info = obj.stroke.as_ref().map(|s| {
+            let c = s.color;
+            let stroke_c = Color32::from_rgba_unmultiplied(
+                (c[0] * 255.0) as u8,
+                (c[1] * 255.0) as u8,
+                (c[2] * 255.0) as u8,
+                ((c[3] * opacity) * 255.0) as u8,
+            );
+            Stroke::new((s.width as f32 * state.zoom).max(1.0_f32), stroke_c)
+        });
+        if let Some(stroke) = stroke_info {
+            painter.add(egui::epaint::PathShape::line(screen_pts, stroke));
+        }
+    }
+
+    fn draw_radial_gradient(
+        &self,
+        painter: &egui::Painter,
+        obj: &Object,
+        grad: &RadialGradient,
+        opacity: f32,
+        origin: Pos2,
+        state: &AppState,
+    ) {
+        let to_screen = |wx: f64, wy: f64| -> Pos2 {
+            let (sx, sy) = obj.transform.transform_point(wx, wy);
+            Pos2::new(origin.x + sx as f32 * state.zoom, origin.y + sy as f32 * state.zoom)
+        };
+
+        let path = obj.to_path_data();
+        let poly = path.to_polygon(16);
+        if poly.len() < 3 {
+            return;
+        }
+        let screen_pts: Vec<Pos2> = poly.iter().map(|p| to_screen(p.x, p.y)).collect();
+
+        let min_x = screen_pts.iter().map(|p| p.x).fold(f32::INFINITY, f32::min);
+        let max_x = screen_pts.iter().map(|p| p.x).fold(f32::NEG_INFINITY, f32::max);
+        let min_y = screen_pts.iter().map(|p| p.y).fold(f32::INFINITY, f32::min);
+        let max_y = screen_pts.iter().map(|p| p.y).fold(f32::NEG_INFINITY, f32::max);
+
+        let cx = (min_x + max_x) / 2.0;
+        let cy = (min_y + max_y) / 2.0;
+        let max_r = ((max_x - min_x).max(max_y - min_y)) / 2.0;
+        if max_r <= 0.0 {
+            return;
+        }
+
+        let num_rings = 24;
+        for i in (0..num_rings).rev() {
+            let t = (i as f32) / (num_rings as f32);
+            let inner_r = t * max_r;
+            let outer_r = ((i + 1) as f32) / (num_rings as f32) * max_r;
+
+            let c = sample_gradient_stops(&grad.stops, t);
+            let a = c[3] * opacity;
+            if a <= 0.0 {
+                continue;
+            }
+            let ring_color = Color32::from_rgba_unmultiplied(
+                (c[0] * 255.0) as u8,
+                (c[1] * 255.0) as u8,
+                (c[2] * 255.0) as u8,
+                (a * 255.0) as u8,
+            );
+
+            let segments = 32;
+            let mut ring_pts: Vec<Pos2> = Vec::new();
+            for j in 0..=segments {
+                let angle = (j as f32 / segments as f32) * std::f32::consts::TAU;
+                ring_pts.push(Pos2::new(
+                    cx + outer_r * angle.cos(),
+                    cy + outer_r * angle.sin(),
+                ));
+            }
+            for j in (0..=segments).rev() {
+                let angle = (j as f32 / segments as f32) * std::f32::consts::TAU;
+                ring_pts.push(Pos2::new(
+                    cx + inner_r * angle.cos(),
+                    cy + inner_r * angle.sin(),
+                ));
+            }
+
+            painter.add(egui::epaint::PathShape::convex_polygon(
+                ring_pts,
+                ring_color,
+                Stroke::NONE,
+            ));
+        }
+
+        let stroke_info = obj.stroke.as_ref().map(|s| {
+            let c = s.color;
+            let stroke_c = Color32::from_rgba_unmultiplied(
+                (c[0] * 255.0) as u8,
+                (c[1] * 255.0) as u8,
+                (c[2] * 255.0) as u8,
+                ((c[3] * opacity) * 255.0) as u8,
+            );
+            Stroke::new((s.width as f32 * state.zoom).max(1.0_f32), stroke_c)
+        });
+        if let Some(stroke) = stroke_info {
+            painter.add(egui::epaint::PathShape::line(screen_pts, stroke));
+        }
+    }
+
+    fn draw_pattern_fill(
+        &self,
+        painter: &egui::Painter,
+        obj: &Object,
+        pat: &PatternFill,
+        opacity: f32,
+        origin: Pos2,
+        state: &AppState,
+    ) {
+        if let Some((bb_min, bb_max)) = obj.bounding_box() {
+            let tile_w = (pat.tile_width * pat.scale) as f32 * state.zoom;
+            let tile_h = (pat.tile_height * pat.scale) as f32 * state.zoom;
+            if tile_w < 2.0 || tile_h < 2.0 {
+                return;
+            }
+
+            let base_color = obj.fill.as_ref().map(|f| f.color).unwrap_or([0.0, 0.0, 0.0, 1.0]);
+            let a = (base_color[3] * opacity * 255.0) as u8;
+            let tile_color = Color32::from_rgba_unmultiplied(
+                (base_color[0] * 255.0) as u8,
+                (base_color[1] * 255.0) as u8,
+                (base_color[2] * 255.0) as u8,
+                a,
+            );
+
+            let sx = origin.x + bb_min.x as f32 * state.zoom + (pat.offset_x as f32 * state.zoom);
+            let sy = origin.y + bb_min.y as f32 * state.zoom + (pat.offset_y as f32 * state.zoom);
+            let ex = origin.x + bb_max.x as f32 * state.zoom;
+            let ey = origin.y + bb_max.y as f32 * state.zoom;
+
+            let mut y = sy;
+            while y < ey {
+                let mut x = sx;
+                while x < ex {
+                    let r = Rect::from_min_size(Pos2::new(x, y), Vec2::new(tile_w, tile_h));
+                    painter.rect_filled(r, 0.0, tile_color);
+                    x += tile_w;
+                }
+                y += tile_h;
+            }
         }
     }
 
@@ -988,6 +1534,85 @@ impl CanvasWidget {
                     let cy = obj.transform.y;
                     let angle = (wy - cy).atan2(wx - cx);
                     obj.transform.rotation = angle;
+                }
+            }
+        }
+    }
+
+    fn update_resize(&self, state: &mut AppState, corner: HandleCorner, wx: f64, wy: f64) {
+        if let Some(ref drag) = self.drag {
+            let (start_wx, start_wy) = drag.start_world;
+            let id = state.selected_ids[0].clone();
+
+            // Get current bounding box
+            let (bb_min, bb_max) = if let Some((_, obj)) = state.document.all_objects().find(|(_, o)| o.id == id) {
+                if let Some((min, max)) = obj.bounding_box() {
+                    (min, max)
+                } else {
+                    return;
+                }
+            } else {
+                return;
+            };
+
+            let bb_w = bb_max.x - bb_min.x;
+            let bb_h = bb_max.y - bb_min.y;
+            if bb_w < 1.0 || bb_h < 1.0 { return; }
+
+            let dx = wx - start_wx;
+            let dy = wy - start_wy;
+
+            for (_, obj) in state.document.all_objects_mut() {
+                if obj.id == id {
+                    match corner {
+                        HandleCorner::BottomRight => {
+                            let new_w = (bb_w + dx).max(5.0);
+                            let new_h = (bb_h + dy).max(5.0);
+                            obj.transform.scale_x = new_w / bb_w;
+                            obj.transform.scale_y = new_h / bb_h;
+                        }
+                        HandleCorner::TopLeft => {
+                            let new_w = (bb_w - dx).max(5.0);
+                            let new_h = (bb_h - dy).max(5.0);
+                            obj.transform.x += bb_w - new_w;
+                            obj.transform.y += bb_h - new_h;
+                            obj.transform.scale_x = new_w / bb_w;
+                            obj.transform.scale_y = new_h / bb_h;
+                        }
+                        HandleCorner::TopRight => {
+                            let new_w = (bb_w + dx).max(5.0);
+                            let new_h = (bb_h - dy).max(5.0);
+                            obj.transform.y += bb_h - new_h;
+                            obj.transform.scale_x = new_w / bb_w;
+                            obj.transform.scale_y = new_h / bb_h;
+                        }
+                        HandleCorner::BottomLeft => {
+                            let new_w = (bb_w - dx).max(5.0);
+                            let new_h = (bb_h + dy).max(5.0);
+                            obj.transform.x += bb_w - new_w;
+                            obj.transform.scale_x = new_w / bb_w;
+                            obj.transform.scale_y = new_h / bb_h;
+                        }
+                        HandleCorner::Top => {
+                            let new_h = (bb_h - dy).max(5.0);
+                            obj.transform.y += bb_h - new_h;
+                            obj.transform.scale_y = new_h / bb_h;
+                        }
+                        HandleCorner::Bottom => {
+                            let new_h = (bb_h + dy).max(5.0);
+                            obj.transform.scale_y = new_h / bb_h;
+                        }
+                        HandleCorner::Left => {
+                            let new_w = (bb_w - dx).max(5.0);
+                            obj.transform.x += bb_w - new_w;
+                            obj.transform.scale_x = new_w / bb_w;
+                        }
+                        HandleCorner::Right => {
+                            let new_w = (bb_w + dx).max(5.0);
+                            obj.transform.scale_x = new_w / bb_w;
+                        }
+                        _ => {}
+                    }
                 }
             }
         }
@@ -1104,6 +1729,27 @@ impl CanvasWidget {
         }
     }
 
+    fn draw_brush_preview(&self, painter: &egui::Painter, origin: Pos2, state: &AppState, drag: &DragState) {
+        if drag.pencil_points.len() >= 2 {
+            let pts: Vec<Pos2> = drag.pencil_points.iter().map(|p| Pos2::new(origin.x + p.x as f32 * state.zoom, origin.y + p.y as f32 * state.zoom)).collect();
+            let fill_c = state.fill_color;
+            let color = Color32::from_rgba_unmultiplied(
+                (fill_c[0] * 255.0) as u8,
+                (fill_c[1] * 255.0) as u8,
+                (fill_c[2] * 255.0) as u8,
+                (fill_c[3] * 255.0) as u8,
+            );
+            painter.add(egui::epaint::PathShape::line(pts, Stroke::new(4.0_f32, color)));
+        }
+    }
+
+    fn draw_eraser_preview(&self, painter: &egui::Painter, origin: Pos2, state: &AppState, drag: &DragState) {
+        if drag.pencil_points.len() >= 2 {
+            let pts: Vec<Pos2> = drag.pencil_points.iter().map(|p| Pos2::new(origin.x + p.x as f32 * state.zoom, origin.y + p.y as f32 * state.zoom)).collect();
+            painter.add(egui::epaint::PathShape::line(pts, Stroke::new(3.0_f32, Color32::from_rgba_unmultiplied(255, 80, 80, 180))));
+        }
+    }
+
     fn draw_marquee(&self, painter: &egui::Painter, origin: Pos2, state: &AppState, drag: &DragState) {
         let p1 = Pos2::new(origin.x + drag.start_world.0 as f32 * state.zoom, origin.y + drag.start_world.1 as f32 * state.zoom);
         let p2 = Pos2::new(origin.x + drag.current_world.0 as f32 * state.zoom, origin.y + drag.current_world.1 as f32 * state.zoom);
@@ -1113,12 +1759,30 @@ impl CanvasWidget {
     }
 
     fn draw_pen_preview(&self, painter: &egui::Painter, origin: Pos2, state: &AppState) {
+        let w2s = |x: f64, y: f64| -> Pos2 {
+            Pos2::new(origin.x + x as f32 * state.zoom, origin.y + y as f32 * state.zoom)
+        };
         let mut screen_pts = Vec::new();
-        for p in self.pen_state.preview_points() {
-            let sp = Pos2::new(origin.x + p.x as f32 * state.zoom, origin.y + p.y as f32 * state.zoom);
+
+        for p in &self.pen_state.points {
+            let sp = w2s(p.anchor.x, p.anchor.y);
             screen_pts.push(sp);
 
-            // Anchor point square
+            // Draw bezier handle lines
+            if let Some(ho) = p.handle_out {
+                let hsp = w2s(ho.x, ho.y);
+                painter.line_segment([sp, hsp], Stroke::new(1.0_f32, Color32::from_rgb(100, 160, 240)));
+                painter.circle_filled(hsp, 4.0_f32, Color32::from_rgb(20, 115, 230));
+                painter.circle_stroke(hsp, 4.0_f32, Stroke::new(1.0_f32, Color32::WHITE));
+            }
+            if let Some(hi) = p.handle_in {
+                let hsp = w2s(hi.x, hi.y);
+                painter.line_segment([sp, hsp], Stroke::new(1.0_f32, Color32::from_rgb(100, 160, 240)));
+                painter.circle_filled(hsp, 4.0_f32, Color32::from_rgb(20, 115, 230));
+                painter.circle_stroke(hsp, 4.0_f32, Stroke::new(1.0_f32, Color32::WHITE));
+            }
+
+            // Anchor point square (Illustrator style: white fill, blue border)
             let a_rect = Rect::from_center_size(sp, Vec2::splat(6.0));
             painter.rect_filled(a_rect, 0.0_f32, Color32::WHITE);
             painter.rect_stroke(a_rect, 0.0_f32, Stroke::new(1.0_f32, Color32::from_rgb(20, 115, 230)), StrokeKind::Outside);
@@ -1126,20 +1790,141 @@ impl CanvasWidget {
 
         // Live Illustrator Rubberband Line from last anchor to mouse hover
         if let Some((hx, hy)) = self.pen_state.hover_pos {
-            let hp = Pos2::new(origin.x + hx as f32 * state.zoom, origin.y + hy as f32 * state.zoom);
+            let hp = w2s(hx, hy);
             if let Some(last_sp) = screen_pts.last() {
+                // Dashed line from last anchor to cursor
                 painter.line_segment([*last_sp, hp], Stroke::new(1.0_f32, Color32::from_rgb(20, 115, 230)));
             }
-            // Mouse cursor anchor circle
+            // Mouse cursor crosshair dot
             painter.circle_filled(hp, 3.0_f32, Color32::from_rgb(20, 115, 230));
+            painter.circle_stroke(hp, 3.0_f32, Stroke::new(1.0_f32, Color32::WHITE));
         }
 
+        // Draw the path segments as actual bezier curves
         if screen_pts.len() >= 2 {
-            painter.add(egui::epaint::PathShape::line(screen_pts, Stroke::new(1.5_f32, Color32::from_rgb(20, 115, 230))));
+            // Simple polyline for straight segments; curves handled by segment drawing
+            for i in 1..self.pen_state.points.len() {
+                let prev = &self.pen_state.points[i - 1];
+                let curr = &self.pen_state.points[i];
+                let p0 = w2s(prev.anchor.x, prev.anchor.y);
+                let p3 = w2s(curr.anchor.x, curr.anchor.y);
+                let c0 = prev.handle_out.map(|h| w2s(h.x, h.y)).unwrap_or(p0);
+                let c1 = curr.handle_in.map(|h| w2s(h.x, h.y)).unwrap_or(p3);
+
+                if c0 == p0 && c1 == p3 {
+                    painter.line_segment([p0, p3], Stroke::new(1.5_f32, Color32::from_rgb(20, 115, 230)));
+                } else {
+                    // Approximate bezier with segments
+                    let steps = 32;
+                    let mut prev_pt = p0;
+                    for step in 1..=steps {
+                        let t = step as f32 / steps as f32;
+                        let mt = 1.0 - t;
+                        let x = mt*mt*mt*p0.x + 3.0*mt*mt*t*c0.x + 3.0*mt*t*t*c1.x + t*t*t*p3.x;
+                        let y = mt*mt*mt*p0.y + 3.0*mt*mt*t*c0.y + 3.0*mt*t*t*c1.y + t*t*t*p3.y;
+                        let next_pt = Pos2::new(x, y);
+                        painter.line_segment([prev_pt, next_pt], Stroke::new(1.5_f32, Color32::from_rgb(20, 115, 230)));
+                        prev_pt = next_pt;
+                    }
+                }
+            }
         }
     }
 }
 
 fn outer_radius_to_f64(r: f64) -> f64 {
     r
+}
+
+fn smooth_step(t: f32) -> f32 {
+    let t = t.clamp(0.0, 1.0);
+    t * t * (3.0 - 2.0 * t)
+}
+
+fn clip_polygon_to_y_band(poly: &[Pos2], y_top: f32, y_bot: f32) -> Vec<Pos2> {
+    if poly.len() < 3 {
+        return poly.to_vec();
+    }
+    let mut result = Vec::new();
+    let n = poly.len();
+    for i in 0..n {
+        let curr = poly[i];
+        let next = poly[(i + 1) % n];
+        let curr_in = curr.y >= y_top && curr.y <= y_bot;
+        let next_in = next.y >= y_top && next.y <= y_bot;
+
+        if curr_in && next_in {
+            result.push(curr);
+        } else if curr_in && !next_in {
+            result.push(curr);
+            if (next.y - curr.y).abs() > f32::EPSILON {
+                let t = if next.y > curr.y {
+                    (y_bot - curr.y) / (next.y - curr.y)
+                } else {
+                    (y_top - curr.y) / (next.y - curr.y)
+                };
+                let t = t.clamp(0.0, 1.0);
+                result.push(Pos2::new(
+                    curr.x + t * (next.x - curr.x),
+                    curr.y + t * (next.y - curr.y),
+                ));
+            }
+        } else if !curr_in && next_in && (next.y - curr.y).abs() > f32::EPSILON {
+            let t = if next.y > curr.y {
+                (y_top - curr.y) / (next.y - curr.y)
+            } else {
+                (y_bot - curr.y) / (next.y - curr.y)
+            };
+            let t = t.clamp(0.0, 1.0);
+            result.push(Pos2::new(
+                curr.x + t * (next.x - curr.x),
+                curr.y + t * (next.y - curr.y),
+            ));
+        }
+    }
+    result
+}
+
+fn sample_gradient_stops(stops: &[crate::core::path::GradientStop], t: f32) -> [f32; 4] {
+    if stops.is_empty() {
+        return [0.0, 0.0, 0.0, 1.0];
+    }
+    if stops.len() == 1 {
+        return stops[0].color;
+    }
+    let t = t.clamp(0.0, 1.0);
+    for w in stops.windows(2) {
+        if t >= w[0].offset && t <= w[1].offset {
+            let span = w[1].offset - w[0].offset;
+            let local_t = if span > 0.0 {
+                (t - w[0].offset) / span
+            } else {
+                0.0
+            };
+            return [
+                w[0].color[0] + (w[1].color[0] - w[0].color[0]) * local_t,
+                w[0].color[1] + (w[1].color[1] - w[0].color[1]) * local_t,
+                w[0].color[2] + (w[1].color[2] - w[0].color[2]) * local_t,
+                w[0].color[3] + (w[1].color[3] - w[0].color[3]) * local_t,
+            ];
+        }
+    }
+    stops.last().unwrap().color
+}
+
+fn fill_type_color(fill: &FillStyle, opacity: f32) -> Option<Color32> {
+    let c = match &fill.fill_type {
+        FillType::Solid(color) => *color,
+        FillType::Linear(_) | FillType::Radial(_) | FillType::Pattern(_) => return None,
+    };
+    let a = c[3] * opacity;
+    if a <= 0.0 {
+        return None;
+    }
+    Some(Color32::from_rgba_unmultiplied(
+        (c[0] * 255.0) as u8,
+        (c[1] * 255.0) as u8,
+        (c[2] * 255.0) as u8,
+        (a * 255.0) as u8,
+    ))
 }

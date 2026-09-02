@@ -80,6 +80,7 @@ impl PresetLibrary {
             color: [0.2, 0.25, 0.3, 1.0],
             width: 2.0,
             dash_pattern: None,
+            ..StrokeStyle::default()
         });
         obj
     }
@@ -106,6 +107,7 @@ impl PresetLibrary {
             color: [0.2, 0.2, 0.2, 1.0],
             width: 2.5,
             dash_pattern: None,
+            ..StrokeStyle::default()
         });
         obj
     }
@@ -132,6 +134,7 @@ impl PresetLibrary {
             color: [0.8, 1.0, 1.0, 1.0],
             width: 3.0,
             dash_pattern: None,
+            ..StrokeStyle::default()
         });
         obj
     }

@@ -1,5 +1,43 @@
 use serde::{Deserialize, Serialize};
 
+// ═══════════════════════════════════════════════════════════════════
+// Pattern Fill: Repeating tile patterns
+// ═══════════════════════════════════════════════════════════════════
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum PatternType {
+    #[default]
+    Grid,
+    Hex,
+    Brick,
+    Dots,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PatternFill {
+    pub pattern_type: PatternType,
+    pub tile_width: f64,
+    pub tile_height: f64,
+    pub offset_x: f64,
+    pub offset_y: f64,
+    pub rotation: f64,
+    pub scale: f64,
+}
+
+impl Default for PatternFill {
+    fn default() -> Self {
+        Self {
+            pattern_type: PatternType::Grid,
+            tile_width: 40.0,
+            tile_height: 40.0,
+            offset_x: 0.0,
+            offset_y: 0.0,
+            rotation: 0.0,
+            scale: 1.0,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct AnchorPoint {
     pub x: f64,
@@ -125,9 +163,37 @@ impl Default for LinearGradient {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RadialGradient {
+    pub center_x: f32,
+    pub center_y: f32,
+    pub radius: f32,
+    pub focus_x: f32,
+    pub focus_y: f32,
+    pub stops: Vec<GradientStop>,
+}
+
+impl Default for RadialGradient {
+    fn default() -> Self {
+        Self {
+            center_x: 0.5,
+            center_y: 0.5,
+            radius: 0.5,
+            focus_x: 0.5,
+            focus_y: 0.5,
+            stops: vec![
+                GradientStop { offset: 0.0, color: [1.0, 1.0, 1.0, 1.0] },
+                GradientStop { offset: 1.0, color: [0.0, 0.0, 0.0, 1.0] },
+            ],
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum FillType {
     Solid([f32; 4]),
     Linear(LinearGradient),
+    Radial(RadialGradient),
+    Pattern(PatternFill),
 }
 
 impl Default for FillType {
@@ -170,6 +236,77 @@ impl FillStyle {
             rule: FillRule::NonZero,
         }
     }
+
+    pub fn radial_gradient(gradient: RadialGradient) -> Self {
+        let first_color = gradient.stops.first().map(|s| s.color).unwrap_or([0.0, 0.0, 0.0, 1.0]);
+        Self {
+            color: first_color,
+            fill_type: FillType::Radial(gradient),
+            rule: FillRule::NonZero,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum StrokeCap {
+    #[default]
+    Butt,
+    Round,
+    Square,
+}
+
+impl StrokeCap {
+    pub fn name(&self) -> &'static str {
+        match self {
+            Self::Butt => "Butt",
+            Self::Round => "Round",
+            Self::Square => "Square",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum StrokeJoin {
+    #[default]
+    Miter,
+    Round,
+    Bevel,
+}
+
+impl StrokeJoin {
+    pub fn name(&self) -> &'static str {
+        match self {
+            Self::Miter => "Miter",
+            Self::Round => "Round",
+            Self::Bevel => "Bevel",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum ArrowHead {
+    #[default]
+    None,
+    Triangle,
+    Arrow,
+    Circle,
+    Diamond,
+    Square,
+    Barbed,
+}
+
+impl ArrowHead {
+    pub fn name(&self) -> &'static str {
+        match self {
+            Self::None => "None",
+            Self::Triangle => "Triangle",
+            Self::Arrow => "Arrow",
+            Self::Circle => "Circle",
+            Self::Diamond => "Diamond",
+            Self::Square => "Square",
+            Self::Barbed => "Barbed",
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -177,6 +314,11 @@ pub struct StrokeStyle {
     pub color: [f32; 4],
     pub width: f64,
     pub dash_pattern: Option<Vec<f64>>,
+    pub cap: StrokeCap,
+    pub join: StrokeJoin,
+    pub miter_limit: f64,
+    pub arrow_start: ArrowHead,
+    pub arrow_end: ArrowHead,
 }
 
 impl Default for StrokeStyle {
@@ -185,6 +327,11 @@ impl Default for StrokeStyle {
             color: [0.0, 0.0, 0.0, 1.0],
             width: 1.0,
             dash_pattern: None,
+            cap: StrokeCap::Butt,
+            join: StrokeJoin::Miter,
+            miter_limit: 4.0,
+            arrow_start: ArrowHead::None,
+            arrow_end: ArrowHead::None,
         }
     }
 }

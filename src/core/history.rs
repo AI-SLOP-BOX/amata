@@ -86,6 +86,14 @@ impl UndoManager {
         self.undo_stack.clear();
         self.redo_stack.clear();
     }
+
+    pub fn undo_stack(&self) -> &[Box<dyn Command>] {
+        &self.undo_stack
+    }
+
+    pub fn redo_stack(&self) -> &[Box<dyn Command>] {
+        &self.redo_stack
+    }
 }
 
 // --- Concrete commands ---

@@ -565,6 +565,39 @@ pub enum Commands {
         #[arg(short, long)]
         input: PathBuf,
     },
+
+    /// Execute a Rhai script to generate/transform vector art
+    Script {
+        /// Rhai script file (.rhai)
+        #[arg(short, long)]
+        script: PathBuf,
+
+        /// Output file (SVG or JSON). If omitted, opens in GUI.
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+
+        /// Optional input project to load before running script
+        #[arg(long)]
+        input: Option<PathBuf>,
+    },
+
+    /// List installed plugins or get plugin info
+    Plugins {
+        /// Show detailed info for a specific plugin
+        #[arg(long)]
+        info: Option<String>,
+    },
+
+    /// Start a local HTTP API server for external tool integration
+    Serve {
+        /// Port to listen on (default: 9260)
+        #[arg(short, long, default_value_t = 9260)]
+        port: u16,
+
+        /// Document file to load on start
+        #[arg(short, long)]
+        input: Option<PathBuf>,
+    },
 }
 
 #[derive(ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
@@ -1328,6 +1361,61 @@ pub fn run_cli(cli: Cli) -> Result<bool, Box<dyn std::error::Error>> {
                         j, obj.name, std::mem::discriminant(&obj.object_type), obj.opacity, bb_str);
                 }
             }
+            Ok(false)
+        }
+        Some(Commands::Script { script, output, input }) => {
+            println!("📜 Executing Rhai script '{:?}'...", script);
+            let mut doc = match input {
+                Some(path) => load_any_document(&path)?,
+                None => crate::core::document::Document::default(),
+            };
+            let mut state = crate::core::state::AppState::default();
+            let engine = crate::plugin::script::ScriptEngine::new();
+            engine.run_script(
+                &std::fs::read_to_string(&script).map_err(|e| format!("Failed to read script: {}", e))?,
+                &mut doc,
+                &mut state,
+            )?;
+            if let Some(out_path) = output {
+                save_any_document(&doc, &out_path)?;
+                println!("✅ Script result saved to {:?}", out_path);
+            } else {
+                let tmp = std::env::temp_dir().join("irasu_script_output.json");
+                save_any_document(&doc, &tmp)?;
+                println!("📄 Script result saved to temp: {:?}", tmp);
+                println!("   Run with --output to specify output path, or open in GUI.");
+            }
+            Ok(false)
+        }
+        Some(Commands::Plugins { info }) => {
+            println!("🧩 IRASU Plugin System");
+            println!("   Plugins are loaded from ~/.irasu/plugins/ or ./plugins/");
+            if let Some(plugin_id) = info {
+                println!("   Plugin info for '{}':", plugin_id);
+                println!("   (Plugin discovery not yet implemented — use the GUI Plugin Manager)");
+            } else {
+                println!("   No plugins loaded (headless mode). Use the GUI to manage plugins.");
+                println!("   Plugin API: implement the `Plugin` trait from irasu_illustrator::plugin::api");
+            }
+            Ok(false)
+        }
+        Some(Commands::Serve { port, input }) => {
+            println!("🌐 IRASU API Server starting on port {}...", port);
+            let doc = match input {
+                Some(path) => load_any_document(&path)?,
+                None => crate::core::document::Document::default(),
+            };
+            println!("   Loaded document: '{}' ({} × {} px)", doc.name, doc.width, doc.height);
+            println!("   API endpoints:");
+            println!("     GET  /api/document       — Get document info");
+            println!("     GET  /api/objects        — List all objects");
+            println!("     POST /api/objects/rect   — Create rectangle");
+            println!("     POST /api/objects/ellipse — Create ellipse");
+            println!("     POST /api/objects/path   — Create path");
+            println!("     POST /api/script          — Execute Rhai script");
+            println!("     POST /api/export/svg      — Export to SVG");
+            println!("   (HTTP server requires `tiny_http` or `axum` dependency — currently stub)");
+            println!("   For full API server, add `axum` to Cargo.toml and implement routes.");
             Ok(false)
         }
     }

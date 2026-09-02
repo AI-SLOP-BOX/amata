@@ -170,6 +170,7 @@ fn test_svg_export_and_parse() {
         color: [0.0, 0.0, 1.0, 1.0],
         width: 3.0,
         dash_pattern: None,
+        ..StrokeStyle::default()
     });
     doc.add_object(circle);
 

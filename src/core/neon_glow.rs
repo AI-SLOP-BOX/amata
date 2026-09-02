@@ -34,6 +34,7 @@ pub fn generate_neon_glow(
                 color: [glow_color[0], glow_color[1], glow_color[2], alpha],
                 width: 1.5,
                 dash_pattern: None,
+                ..StrokeStyle::default()
             });
         } else {
             halo.fill = None;
@@ -41,6 +42,7 @@ pub fn generate_neon_glow(
                 color: [glow_color[0], glow_color[1], glow_color[2], alpha],
                 width: (r * 2.0).max(1.0),
                 dash_pattern: None,
+                ..StrokeStyle::default()
             });
         }
 
@@ -56,6 +58,7 @@ pub fn generate_neon_glow(
             color: [glow_color[0], glow_color[1], glow_color[2], 1.0],
             width: 2.0,
             dash_pattern: None,
+            ..StrokeStyle::default()
         });
     } else {
         core.fill = None;
@@ -63,6 +66,7 @@ pub fn generate_neon_glow(
             color: [1.0, 1.0, 1.0, 0.95],
             width: 2.5,
             dash_pattern: None,
+            ..StrokeStyle::default()
         });
     }
 

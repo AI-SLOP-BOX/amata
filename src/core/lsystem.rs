@@ -101,6 +101,7 @@ pub fn generate_lsystem(
         },
         width: 1.5,
         dash_pattern: None,
+        ..StrokeStyle::default()
     });
 
     path

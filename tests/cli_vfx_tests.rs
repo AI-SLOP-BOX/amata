@@ -16,6 +16,7 @@ fn test_doc_to_aevfx_comp() {
         color: [1.0, 1.0, 1.0, 1.0],
         width: 4.0,
         dash_pattern: None,
+        ..StrokeStyle::default()
     });
     doc.add_object(star);
 

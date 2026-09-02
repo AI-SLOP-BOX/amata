@@ -80,6 +80,7 @@ pub fn generate_audio_waveform(
         },
         width: 2.0,
         dash_pattern: None,
+        ..StrokeStyle::default()
     });
 
     path

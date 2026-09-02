@@ -41,18 +41,30 @@ impl SelectState {
         if !self.is_dragging {
             return;
         }
-        if let (Some(start), Some(obj_start)) = (self.drag_start, self.drag_object_start) {
+        if let Some(start) = self.drag_start {
             let dx = wx - start.0;
             let dy = wy - start.1;
-            let new_x = obj_start.0 + dx;
-            let new_y = obj_start.1 + dy;
 
-            let id = self.drag_object_id.as_ref().unwrap().clone();
-            for (_, obj) in state.document.all_objects_mut() {
-                if obj.id == id {
-                    obj.transform.x = new_x;
-                    obj.transform.y = new_y;
-                    break;
+            // Move all selected objects by the delta
+            for id in &state.selected_ids {
+                // Find the original position for this object
+                let orig = if id == self.drag_object_id.as_ref().unwrap_or(&String::new()) {
+                    self.drag_object_start
+                } else {
+                    // For other selected objects, get their current position as "start"
+                    state.document.all_objects().find(|(_, o)| &o.id == id).map(|(_, o)| (o.transform.x, o.transform.y))
+                };
+
+                if let Some(obj_start) = orig {
+                    let new_x = obj_start.0 + dx;
+                    let new_y = obj_start.1 + dy;
+                    for (_, obj) in state.document.all_objects_mut() {
+                        if obj.id == *id {
+                            obj.transform.x = new_x;
+                            obj.transform.y = new_y;
+                            break;
+                        }
+                    }
                 }
             }
         }

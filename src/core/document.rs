@@ -3,6 +3,59 @@ use super::path::{AnchorPoint, FillStyle, PathData, StrokeStyle};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum BlendMode {
+    #[default]
+    Normal,
+    Multiply,
+    Screen,
+    Overlay,
+    Darken,
+    Lighten,
+    ColorDodge,
+    ColorBurn,
+    HardLight,
+    SoftLight,
+    Difference,
+    Exclusion,
+    Hue,
+    Saturation,
+    Color,
+    Luminosity,
+}
+
+impl BlendMode {
+    pub fn name(&self) -> &'static str {
+        match self {
+            Self::Normal => "Normal",
+            Self::Multiply => "Multiply",
+            Self::Screen => "Screen",
+            Self::Overlay => "Overlay",
+            Self::Darken => "Darken",
+            Self::Lighten => "Lighten",
+            Self::ColorDodge => "Color Dodge",
+            Self::ColorBurn => "Color Burn",
+            Self::HardLight => "Hard Light",
+            Self::SoftLight => "Soft Light",
+            Self::Difference => "Difference",
+            Self::Exclusion => "Exclusion",
+            Self::Hue => "Hue",
+            Self::Saturation => "Saturation",
+            Self::Color => "Color",
+            Self::Luminosity => "Luminosity",
+        }
+    }
+
+    pub fn all() -> &'static [BlendMode] {
+        &[
+            Self::Normal, Self::Multiply, Self::Screen, Self::Overlay,
+            Self::Darken, Self::Lighten, Self::ColorDodge, Self::ColorBurn,
+            Self::HardLight, Self::SoftLight, Self::Difference, Self::Exclusion,
+            Self::Hue, Self::Saturation, Self::Color, Self::Luminosity,
+        ]
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ObjectType {
     Path(PathData),
@@ -13,6 +66,7 @@ pub enum ObjectType {
     Line { x2: f64, y2: f64 },
     Text { text: String, font_size: f64 },
     Group(Vec<Object>),
+    ClippingMask { children: Vec<Object> },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -22,6 +76,8 @@ pub struct Transform {
     pub rotation: f64,
     pub scale_x: f64,
     pub scale_y: f64,
+    pub skew_x: f64,
+    pub skew_y: f64,
 }
 
 impl Default for Transform {
@@ -32,6 +88,8 @@ impl Default for Transform {
             rotation: 0.0,
             scale_x: 1.0,
             scale_y: 1.0,
+            skew_x: 0.0,
+            skew_y: 0.0,
         }
     }
 }
@@ -40,11 +98,13 @@ impl Transform {
     pub fn matrix(&self) -> [f64; 6] {
         let cos = self.rotation.cos();
         let sin = self.rotation.sin();
+        let skew_x_rad = self.skew_x.to_radians();
+        let skew_y_rad = self.skew_y.to_radians();
         [
-            cos * self.scale_x,
-            sin * self.scale_x,
-            -sin * self.scale_y,
-            cos * self.scale_y,
+            cos * self.scale_x + skew_x_rad.sin() * self.scale_x,
+            sin * self.scale_x + skew_x_rad.cos() * self.scale_x,
+            -sin * self.scale_y + skew_y_rad.sin() * self.scale_y,
+            cos * self.scale_y + skew_y_rad.cos() * self.scale_y,
             self.x,
             self.y,
         ]
@@ -55,9 +115,13 @@ impl Transform {
         let sin = self.rotation.sin();
         let sx = px * self.scale_x;
         let sy = py * self.scale_y;
+        let skew_x_rad = self.skew_x.to_radians();
+        let skew_y_rad = self.skew_y.to_radians();
+        let skewed_x = sx + sy * skew_x_rad.sin();
+        let skewed_y = sx * skew_y_rad.sin() + sy;
         (
-            cos * sx - sin * sy + self.x,
-            sin * sx + cos * sy + self.y,
+            cos * skewed_x - sin * skewed_y + self.x,
+            sin * skewed_x + cos * skewed_y + self.y,
         )
     }
 
@@ -85,6 +149,7 @@ pub struct Object {
     pub shadow: Option<DropShadow>,
     pub glow: Option<GlowEffect>,
     pub opacity: f32,
+    pub blend_mode: BlendMode,
     pub visible: bool,
     pub locked: bool,
 }
@@ -103,6 +168,7 @@ impl Object {
             shadow: None,
             glow: None,
             opacity: 1.0,
+            blend_mode: BlendMode::Normal,
             visible: true,
             locked: false,
         }
@@ -119,6 +185,7 @@ impl Object {
             shadow: None,
             glow: None,
             opacity: 1.0,
+            blend_mode: BlendMode::Normal,
             visible: true,
             locked: false,
         }
@@ -135,6 +202,7 @@ impl Object {
             shadow: None,
             glow: None,
             opacity: 1.0,
+            blend_mode: BlendMode::Normal,
             visible: true,
             locked: false,
         }
@@ -151,6 +219,7 @@ impl Object {
             shadow: None,
             glow: None,
             opacity: 1.0,
+            blend_mode: BlendMode::Normal,
             visible: true,
             locked: false,
         }
@@ -167,6 +236,7 @@ impl Object {
             shadow: None,
             glow: None,
             opacity: 1.0,
+            blend_mode: BlendMode::Normal,
             visible: true,
             locked: false,
         }
@@ -183,6 +253,7 @@ impl Object {
             shadow: None,
             glow: None,
             opacity: 1.0,
+            blend_mode: BlendMode::Normal,
             visible: true,
             locked: false,
         }
@@ -199,6 +270,7 @@ impl Object {
             shadow: None,
             glow: None,
             opacity: 1.0,
+            blend_mode: BlendMode::Normal,
             visible: true,
             locked: false,
         }
@@ -215,6 +287,7 @@ impl Object {
             shadow: None,
             glow: None,
             opacity: 1.0,
+            blend_mode: BlendMode::Normal,
             visible: true,
             locked: false,
         }
@@ -246,6 +319,15 @@ impl Object {
                 PathData::from_rect(0.0, -height, width, height, 0.0)
             }
             ObjectType::Group(children) => {
+                let mut combined = PathData::new();
+                for child in children {
+                    let mut child_path = child.to_path_data();
+                    child_path.transform(&child.transform.matrix());
+                    combined.elements.extend(child_path.elements);
+                }
+                combined
+            }
+            ObjectType::ClippingMask { children } => {
                 let mut combined = PathData::new();
                 for child in children {
                     let mut child_path = child.to_path_data();
@@ -310,6 +392,9 @@ impl Object {
                 lx >= 0.0 && lx <= width && ly >= -height && ly <= 0.0
             }
             ObjectType::Group(children) => {
+                children.iter().any(|c| c.hit_test(lx, ly))
+            }
+            ObjectType::ClippingMask { children } => {
                 children.iter().any(|c| c.hit_test(lx, ly))
             }
         }
@@ -420,5 +505,63 @@ impl Document {
             }
         }
         None
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Symbol: Reusable object definition
+// ═══════════════════════════════════════════════════════════════════
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Symbol {
+    pub id: String,
+    pub name: String,
+    pub object: Object,
+    pub use_count: usize,
+}
+
+impl Symbol {
+    pub fn new(name: &str, object: Object) -> Self {
+        Self {
+            id: Uuid::new_v4().to_string(),
+            name: name.to_string(),
+            object,
+            use_count: 0,
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Width Point: Variable stroke width
+// ═══════════════════════════════════════════════════════════════════
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WidthPoint {
+    pub position: f64,
+    pub width: f64,
+    pub side: WidthSide,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum WidthSide {
+    Left,
+    Right,
+    #[default]
+    Both,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WidthProfile {
+    pub points: Vec<WidthPoint>,
+}
+
+impl Default for WidthProfile {
+    fn default() -> Self {
+        Self {
+            points: vec![
+                WidthPoint { position: 0.0, width: 1.0, side: WidthSide::Both },
+                WidthPoint { position: 1.0, width: 1.0, side: WidthSide::Both },
+            ],
+        }
     }
 }

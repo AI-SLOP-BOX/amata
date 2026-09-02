@@ -70,6 +70,7 @@ pub fn generate_voronoi_cells(
                 color: [0.1, 0.1, 0.1, 1.0],
                 width: 1.5,
                 dash_pattern: None,
+                ..StrokeStyle::default()
             });
 
             objects.push(obj);

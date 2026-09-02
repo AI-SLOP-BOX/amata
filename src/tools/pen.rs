@@ -6,6 +6,8 @@ pub struct PenState {
     pub is_drawing: bool,
     pub last_point: Option<(f64, f64)>,
     pub hover_pos: Option<(f64, f64)>,
+    /// While the user drags after placing an anchor, we pull bezier handles out
+    pub dragging_handle: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -22,6 +24,7 @@ impl PenState {
             is_drawing: false,
             last_point: None,
             hover_pos: None,
+            dragging_handle: false,
         }
     }
 
@@ -34,6 +37,7 @@ impl PenState {
         });
         self.is_drawing = true;
         self.last_point = Some((x, y));
+        self.dragging_handle = true;
     }
 
     pub fn add_point(&mut self, x: f64, y: f64) {
@@ -48,6 +52,23 @@ impl PenState {
             handle_out: None,
         });
         self.last_point = Some((x, y));
+        self.dragging_handle = true;
+    }
+
+    /// Called while dragging after placing an anchor: set smooth bezier handles
+    pub fn drag_handle(&mut self, hx: f64, hy: f64) {
+        if let Some(last) = self.points.last_mut() {
+            // handle_out goes to where the mouse dragged
+            last.handle_out = Some(AnchorPoint::new(hx, hy));
+            // handle_in is the mirror (smooth node)
+            let ax = last.anchor.x;
+            let ay = last.anchor.y;
+            last.handle_in = Some(AnchorPoint::new(2.0 * ax - hx, 2.0 * ay - hy));
+        }
+    }
+
+    pub fn end_drag(&mut self) {
+        self.dragging_handle = false;
     }
 
     pub fn update_hover(&mut self, x: f64, y: f64) {
@@ -89,12 +110,14 @@ impl PenState {
                 color: stroke_color,
                 width: stroke_width,
                 dash_pattern: None,
+                ..StrokeStyle::default()
             });
 
             let obj = Object::new_path("Path", path);
             self.points.clear();
             self.is_drawing = false;
             self.last_point = None;
+            self.dragging_handle = false;
             Some(obj)
         } else {
             self.cancel();
@@ -106,6 +129,7 @@ impl PenState {
         self.points.clear();
         self.is_drawing = false;
         self.last_point = None;
+        self.dragging_handle = false;
     }
 
     pub fn preview_points(&self) -> Vec<AnchorPoint> {
@@ -118,3 +142,4 @@ impl Default for PenState {
         Self::new()
     }
 }
+

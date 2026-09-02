@@ -9,10 +9,14 @@ authors = ["IRASU Contributors"]
 [dependencies]
 eframe = { version = "0.31", default-features = false, features = [
     "default_fonts",
-    "glow",
+    "wgpu",
     "persistence",
 ] }
 egui = "0.31"
+egui-wgpu = "0.31"
+wgpu = { version = "24", features = ["naga-ir"] }
+bytemuck = { version = "1", features = ["derive"] }
+pollster = "0.4"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 rfd = "0.15"
@@ -23,3 +27,5 @@ env_logger = "0.11"
 clap = { version = "4.5", features = ["derive"] }
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 qrcode = { version = "0.14", default-features = false }
+rhai = { version = "1.20", features = ["sync", "serde", "metadata"] }
+toml = "0.8"

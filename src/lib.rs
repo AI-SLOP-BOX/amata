@@ -1,5 +1,7 @@
 pub mod cli;
 pub mod core;
+pub mod gpu;
 pub mod io;
+pub mod plugin;
 pub mod tools;
 pub mod ui;

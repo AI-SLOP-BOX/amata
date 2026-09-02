@@ -31,6 +31,7 @@ impl FormulaCurves {
             color: [0.0, 0.8, 1.0, 1.0],
             width: 2.5,
             dash_pattern: None,
+            ..StrokeStyle::default()
         });
         path
     }
@@ -65,6 +66,7 @@ impl FormulaCurves {
             color: [0.2, 1.0, 0.4, 1.0],
             width: 2.0,
             dash_pattern: None,
+            ..StrokeStyle::default()
         });
         path
     }
@@ -99,6 +101,7 @@ impl FormulaCurves {
             color: [0.95, 0.3, 0.8, 1.0],
             width: 1.5,
             dash_pattern: None,
+            ..StrokeStyle::default()
         });
         path
     }
@@ -134,6 +137,7 @@ impl FormulaCurves {
             color: [0.9, 0.1, 0.4, 1.0],
             width: 2.0,
             dash_pattern: None,
+            ..StrokeStyle::default()
         });
         path
     }

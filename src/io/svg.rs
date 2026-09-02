@@ -311,6 +311,7 @@ fn extract_stroke(line: &str) -> Option<StrokeStyle> {
             color: color.unwrap_or([0.0, 0.0, 0.0, 1.0]),
             width,
             dash_pattern: None,
+            ..StrokeStyle::default()
         })
     } else {
         None
@@ -401,7 +402,7 @@ pub fn export_svg(doc: &Document) -> String {
                         obj.transform.x, obj.transform.y, font_size, text
                     ));
                 }
-                ObjectType::Star { .. } | ObjectType::Polygon { .. } | ObjectType::Group(_) => {
+                ObjectType::Star { .. } | ObjectType::Polygon { .. } | ObjectType::Group(_) | ObjectType::ClippingMask { .. } => {
                     let path = obj.to_path_data();
                     svg.push_str(&path_to_svg(&path, &obj.transform, &opacity_str));
                 }
@@ -456,6 +457,8 @@ fn color_to_svg(fill: &FillStyle) -> String {
     match &fill.fill_type {
         FillType::Solid(c) => format!(" fill=\"{}\"", color_to_svg_str(c)),
         FillType::Linear(_) => format!(" fill=\"{}\"", color_to_svg_str(&fill.color)),
+        FillType::Radial(_) => format!(" fill=\"{}\"", color_to_svg_str(&fill.color)),
+        FillType::Pattern(_) => String::new(),
     }
 }
 
