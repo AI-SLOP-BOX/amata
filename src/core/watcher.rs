@@ -56,6 +56,26 @@ impl FileWatcher {
         self.periodic_verify_interval = interval;
     }
 
+    /// Returns the adaptive periodic verification interval based on file size.
+    /// Small files (<1MB) verify every 1.0s, medium files (1MB-10MB) every 3.0s,
+    /// large files (10MB-30MB) every 5.0s, and very large files (>=30MB) every 10.0s.
+    /// If an explicit custom interval was set (different from default 1000ms), it is respected.
+    pub fn effective_verify_interval(&self) -> Duration {
+        if self.periodic_verify_interval != Duration::from_millis(1000) {
+            return self.periodic_verify_interval;
+        }
+
+        if self.last_file_size < 1024 * 1024 {
+            Duration::from_millis(1000)
+        } else if self.last_file_size < 10 * 1024 * 1024 {
+            Duration::from_millis(3000)
+        } else if self.last_file_size < 30 * 1024 * 1024 {
+            Duration::from_millis(5000)
+        } else {
+            Duration::from_millis(10000)
+        }
+    }
+
     /// Mark that Amata itself wrote this content to disk, preventing self-write loop
     pub fn mark_saved(&mut self, content: &str) {
         self.last_content_hash = compute_hash(content);
@@ -110,7 +130,9 @@ impl FileWatcher {
             _ => current_size != self.last_file_size,
         };
 
-        let is_periodic_check = self.last_full_verify.elapsed() >= self.periodic_verify_interval;
+        let interval = self.effective_verify_interval();
+        let is_periodic_check =
+            interval > Duration::ZERO && self.last_full_verify.elapsed() >= interval;
 
         // Read content and check content hash if metadata changed OR periodic verification fires
         if metadata_changed
@@ -179,5 +201,47 @@ impl FileWatcher {
         }
 
         None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_adaptive_verify_interval() {
+        let mut watcher = FileWatcher::new(PathBuf::from("dummy.svg"));
+        assert_eq!(
+            watcher.effective_verify_interval(),
+            Duration::from_millis(1000)
+        );
+
+        // Medium file: 5MB
+        watcher.last_file_size = 5 * 1024 * 1024;
+        assert_eq!(
+            watcher.effective_verify_interval(),
+            Duration::from_millis(3000)
+        );
+
+        // Large file: 20MB
+        watcher.last_file_size = 20 * 1024 * 1024;
+        assert_eq!(
+            watcher.effective_verify_interval(),
+            Duration::from_millis(5000)
+        );
+
+        // Very large file: 50MB
+        watcher.last_file_size = 50 * 1024 * 1024;
+        assert_eq!(
+            watcher.effective_verify_interval(),
+            Duration::from_millis(10000)
+        );
+
+        // Explicit override respects custom setting
+        watcher.set_periodic_verify_interval(Duration::from_millis(250));
+        assert_eq!(
+            watcher.effective_verify_interval(),
+            Duration::from_millis(250)
+        );
     }
 }

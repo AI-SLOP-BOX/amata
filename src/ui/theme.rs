@@ -34,7 +34,9 @@ pub fn setup_custom_fonts(ctx: &egui::Context) {
         jp_candidates.push(home_p.join("Library/Fonts/NotoSansJP-Medium.ttf"));
         jp_candidates.push(home_p.join("Library/Fonts/NotoSansJP-Regular.ttf"));
     }
-    jp_candidates.push(std::path::PathBuf::from("/System/Library/Fonts/Hiragino Sans GB.ttc"));
+    jp_candidates.push(std::path::PathBuf::from(
+        "/System/Library/Fonts/Hiragino Sans GB.ttc",
+    ));
     jp_candidates.push(std::path::PathBuf::from("/Library/Fonts/Arial Unicode.ttf"));
 
     let mut jp_loaded = false;
