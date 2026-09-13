@@ -652,10 +652,12 @@ fn compare_objects(a: &Object, b: &Object) -> Vec<FieldDiff> {
             ObjectType::Text {
                 text: t_a,
                 font_size: s_a,
+                style: style_a,
             },
             ObjectType::Text {
                 text: t_b,
                 font_size: s_b,
+                style: style_b,
             },
         ) => {
             if t_a != t_b {
@@ -670,6 +672,41 @@ fn compare_objects(a: &Object, b: &Object) -> Vec<FieldDiff> {
                     field: "font-size".to_string(),
                     old_value: format!("{s_a:.0}"),
                     new_value: format!("{s_b:.0}"),
+                });
+            }
+            if style_a.font_family != style_b.font_family {
+                changes.push(FieldDiff {
+                    field: "font-family".to_string(),
+                    old_value: style_a.font_family.clone(),
+                    new_value: style_b.font_family.clone(),
+                });
+            }
+            if style_a.font_weight != style_b.font_weight {
+                changes.push(FieldDiff {
+                    field: "font-weight".to_string(),
+                    old_value: style_a.font_weight.to_string(),
+                    new_value: style_b.font_weight.to_string(),
+                });
+            }
+            if style_a.font_style != style_b.font_style {
+                changes.push(FieldDiff {
+                    field: "font-style".to_string(),
+                    old_value: style_a.font_style.as_svg_str().to_string(),
+                    new_value: style_b.font_style.as_svg_str().to_string(),
+                });
+            }
+            if (style_a.letter_spacing - style_b.letter_spacing).abs() > 0.01 {
+                changes.push(FieldDiff {
+                    field: "letter-spacing".to_string(),
+                    old_value: format!("{:.1}", style_a.letter_spacing),
+                    new_value: format!("{:.1}", style_b.letter_spacing),
+                });
+            }
+            if style_a.text_anchor != style_b.text_anchor {
+                changes.push(FieldDiff {
+                    field: "text-anchor".to_string(),
+                    old_value: style_a.text_anchor.as_svg_str().to_string(),
+                    new_value: style_b.text_anchor.as_svg_str().to_string(),
                 });
             }
         }

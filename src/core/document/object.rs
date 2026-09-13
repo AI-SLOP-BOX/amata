@@ -68,6 +68,96 @@ impl BlendMode {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum FontStyle {
+    #[default]
+    Normal,
+    Italic,
+    Oblique,
+}
+
+impl FontStyle {
+    pub fn as_svg_str(&self) -> &'static str {
+        match self {
+            Self::Normal => "normal",
+            Self::Italic => "italic",
+            Self::Oblique => "oblique",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum TextAnchor {
+    #[default]
+    Start,
+    Middle,
+    End,
+}
+
+impl TextAnchor {
+    pub fn as_svg_str(&self) -> &'static str {
+        match self {
+            Self::Start => "start",
+            Self::Middle => "middle",
+            Self::End => "end",
+        }
+    }
+}
+
+fn default_font_family() -> String {
+    "Inter, sans-serif".to_string()
+}
+
+fn default_font_size() -> f64 {
+    24.0
+}
+
+fn default_font_weight() -> u16 {
+    400
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TextStyle {
+    #[serde(default = "default_font_family")]
+    pub font_family: String,
+    #[serde(default = "default_font_size")]
+    pub font_size: f64,
+    #[serde(default = "default_font_weight")]
+    pub font_weight: u16,
+    #[serde(default)]
+    pub font_style: FontStyle,
+    #[serde(default)]
+    pub letter_spacing: f64,
+    #[serde(default)]
+    pub text_anchor: TextAnchor,
+}
+
+impl Default for TextStyle {
+    fn default() -> Self {
+        Self {
+            font_family: default_font_family(),
+            font_size: default_font_size(),
+            font_weight: default_font_weight(),
+            font_style: FontStyle::Normal,
+            letter_spacing: 0.0,
+            text_anchor: TextAnchor::Start,
+        }
+    }
+}
+
+impl TextStyle {
+    pub fn new(font_family: impl Into<String>, font_size: f64) -> Self {
+        Self {
+            font_family: font_family.into(),
+            font_size,
+            font_weight: 400,
+            font_style: FontStyle::Normal,
+            letter_spacing: 0.0,
+            text_anchor: TextAnchor::Start,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ObjectType {
     Path(PathData),
@@ -95,7 +185,10 @@ pub enum ObjectType {
     },
     Text {
         text: String,
+        #[serde(default = "default_font_size")]
         font_size: f64,
+        #[serde(default)]
+        style: TextStyle,
     },
     Group(Vec<Object>),
     ClippingMask {
@@ -355,12 +448,24 @@ impl Object {
     }
 
     pub fn new_text(name: &str, text: &str, x: f64, y: f64, font_size: f64) -> Self {
+        Self::new_text_with_style(
+            name,
+            text,
+            x,
+            y,
+            TextStyle::new("Inter, sans-serif", font_size),
+        )
+    }
+
+    pub fn new_text_with_style(name: &str, text: &str, x: f64, y: f64, style: TextStyle) -> Self {
+        let font_size = style.font_size;
         Self {
             id: Uuid::new_v4().to_string(),
             name: name.to_string(),
             object_type: ObjectType::Text {
                 text: text.to_string(),
                 font_size,
+                style,
             },
             transform: Transform {
                 x,
@@ -501,7 +606,9 @@ impl Object {
                 PathData::from_polygon(*sides, *radius, 0.0, 0.0)
             }
             ObjectType::Line { x2, y2 } => PathData::from_line(0.0, 0.0, *x2, *y2),
-            ObjectType::Text { text, font_size } => {
+            ObjectType::Text {
+                text, font_size, ..
+            } => {
                 // Approximate bounding rect as a path
                 let width = text.chars().count() as f64 * font_size * 0.6;
                 let height = *font_size;
@@ -585,7 +692,9 @@ impl Object {
                 let stroke_w = self.stroke.as_ref().map(|s| s.width).unwrap_or(2.0);
                 dist <= (stroke_w / 2.0).max(4.0)
             }
-            ObjectType::Text { text, font_size } => {
+            ObjectType::Text {
+                text, font_size, ..
+            } => {
                 let width = text.chars().count() as f64 * font_size * 0.6;
                 let height = *font_size;
                 lx >= 0.0 && lx <= width && ly >= -height && ly <= 0.0

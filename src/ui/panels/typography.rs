@@ -1,4 +1,6 @@
-use crate::core::document::ObjectType;
+use crate::core::document::{FontStyle, ObjectType, TextAnchor, TextStyle};
+use crate::core::font::FontRegistry;
+use crate::core::history::ModifyTextCommand;
 use crate::core::path::{FillStyle, FillType};
 use crate::core::state::AppState;
 use egui::{Color32, RichText, Stroke, Ui, Vec2};
@@ -7,33 +9,27 @@ pub struct TextPanel;
 
 impl TextPanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("𝐓 Text").strong());
+        ui.heading(RichText::new("𝐓 Typography & Text").strong());
         ui.add_space(4.0);
 
         if state.selected_ids.is_empty() {
-            ui.label(RichText::new("Select a text object").weak());
+            ui.label(RichText::new("テキストオブジェクトを選択してください").weak());
             return;
         }
 
         let id = state.selected_ids[0].clone();
-        let mut text = String::new();
-        let mut font_size = 32.0;
-        let mut font_family = String::from("Sans-Serif");
-        let mut align = TextAlignment::Left;
-        let mut line_height = 1.2f64;
-        let mut letter_spacing = 0.0f64;
-        let mut word_spacing = 0.0f64;
+        let mut current_text = String::new();
+        let mut current_style = TextStyle::default();
         let mut found = false;
 
         for (_, obj) in state.document.all_objects() {
             if obj.id == id {
                 if let ObjectType::Text {
-                    text: t,
-                    font_size: fs,
+                    text: t, style: s, ..
                 } = &obj.object_type
                 {
-                    text = t.clone();
-                    font_size = *fs;
+                    current_text = t.clone();
+                    current_style = s.clone();
                     found = true;
                 }
                 break;
@@ -41,156 +37,287 @@ impl TextPanel {
         }
 
         if !found {
-            ui.label(RichText::new("Not a text object").weak());
+            ui.label(RichText::new("選択中の要素はテキストではありません").weak());
             return;
         }
 
-        // Text content
-        ui.label("Content:");
-        ui.text_edit_multiline(&mut text);
+        let registry = FontRegistry::global();
+        let is_avail = registry.is_any_family_available(&current_style.font_family);
+
+        // Missing font warning banner
+        if !is_avail {
+            ui.horizontal(|ui| {
+                ui.label(
+                    RichText::new(format!(
+                        "⚠️ 未インストール: \"{}\"",
+                        current_style.font_family
+                    ))
+                    .color(Color32::from_rgb(255, 160, 40))
+                    .small(),
+                );
+            });
+            ui.label(
+                RichText::new("（キャンバスでは代替フォントで描画中。保存・出力時は元のフォント名を保持します）")
+                    .weak()
+                    .small(),
+            );
+            ui.add_space(2.0);
+        }
+
+        // 1. Text Content
+        ui.label("テキスト内容:");
+        let mut text_edit = current_text.clone();
+        let text_response = ui.text_edit_multiline(&mut text_edit);
+        if text_response.lost_focus() && text_edit != current_text {
+            let cmd = Box::new(ModifyTextCommand::new(
+                id.clone(),
+                current_text.clone(),
+                current_style.clone(),
+                text_edit.clone(),
+                current_style.clone(),
+            ));
+            state.undo_manager.execute(cmd, &mut state.document);
+            current_text = text_edit;
+        }
+
+        ui.add_space(6.0);
+
+        // 2. Font Family Picker
+        ui.label("フォントファミリー:");
+        let mut selected_family = current_style.font_family.clone();
+        let display_family = if is_avail {
+            selected_family.clone()
+        } else {
+            format!("⚠️ [Missing] {}", selected_family)
+        };
+
+        egui::ComboBox::from_id_salt("typography_font_family_combo")
+            .selected_text(&display_family)
+            .width(220.0)
+            .show_ui(ui, |ui| {
+                // Popular curated families at the top
+                let curated = [
+                    "Inter, sans-serif",
+                    "LINE Seed JP",
+                    "Noto Sans JP",
+                    "Hiragino Sans",
+                    "Yu Gothic",
+                    "Yu Mincho",
+                    "Monospace",
+                ];
+                ui.label(RichText::new("--- おすすめ ---").weak().small());
+                for fam in curated {
+                    if ui.selectable_label(selected_family == fam, fam).clicked() {
+                        selected_family = fam.to_string();
+                    }
+                }
+
+                ui.separator();
+                ui.label(
+                    RichText::new("--- システム / 同梱フォント ---")
+                        .weak()
+                        .small(),
+                );
+
+                // Scroll area for all detected system & bundled fonts
+                egui::ScrollArea::vertical()
+                    .max_height(200.0)
+                    .show(ui, |ui| {
+                        for fam in registry.list_families() {
+                            if ui.selectable_label(selected_family == *fam, fam).clicked() {
+                                selected_family = fam.clone();
+                            }
+                        }
+                    });
+            });
+
+        if selected_family != current_style.font_family {
+            let mut new_style = current_style.clone();
+            new_style.font_family = selected_family;
+            let cmd = Box::new(ModifyTextCommand::new(
+                id.clone(),
+                current_text.clone(),
+                current_style.clone(),
+                current_text.clone(),
+                new_style.clone(),
+            ));
+            state.undo_manager.execute(cmd, &mut state.document);
+            current_style = new_style;
+        }
 
         ui.add_space(4.0);
 
-        // Font size
+        // 3. Font Size & Quick Sizes
         ui.horizontal(|ui| {
-            ui.label("Size:");
-            let mut fs = font_size;
+            ui.label("サイズ:");
+            let mut fs = current_style.font_size;
             if ui
                 .add(
                     egui::DragValue::new(&mut fs)
                         .speed(1.0)
-                        .range(6.0..=500.0)
+                        .range(4.0..=500.0)
                         .suffix("pt"),
                 )
                 .changed()
             {
-                for (_, obj) in state.document.all_objects_mut() {
-                    if obj.id == id {
-                        if let ObjectType::Text {
-                            font_size: ref mut s,
-                            ..
-                        } = obj.object_type
-                        {
-                            *s = fs;
-                        }
-                    }
+                let mut new_style = current_style.clone();
+                new_style.font_size = fs;
+                let cmd = Box::new(ModifyTextCommand::new(
+                    id.clone(),
+                    current_text.clone(),
+                    current_style.clone(),
+                    current_text.clone(),
+                    new_style.clone(),
+                ));
+                state.undo_manager.execute(cmd, &mut state.document);
+                current_style = new_style;
+            }
+        });
+
+        // Quick sizes
+        ui.horizontal_wrapped(|ui| {
+            for size in [9.0, 11.0, 14.0, 18.0, 24.0, 36.0, 48.0, 72.0, 96.0] {
+                if ui
+                    .selectable_label(current_style.font_size == size, format!("{size}"))
+                    .clicked()
+                {
+                    let mut new_style = current_style.clone();
+                    new_style.font_size = size;
+                    let cmd = Box::new(ModifyTextCommand::new(
+                        id.clone(),
+                        current_text.clone(),
+                        current_style.clone(),
+                        current_text.clone(),
+                        new_style.clone(),
+                    ));
+                    state.undo_manager.execute(cmd, &mut state.document);
+                    current_style = new_style;
                 }
             }
         });
 
-        // Font family — Professional Adobe Typography Font Menu
+        ui.add_space(6.0);
+
+        // 4. Font Weight & Font Style
         ui.horizontal(|ui| {
-            ui.label("フォント:");
-            egui::ComboBox::from_id_salt("font_family")
-                .selected_text(&font_family)
-                .width(160.0)
+            ui.label("ウェイト:");
+            let weights = [
+                (100, "Thin (100)"),
+                (300, "Light (300)"),
+                (400, "Regular (400)"),
+                (500, "Medium (500)"),
+                (600, "SemiBold (600)"),
+                (700, "Bold (700)"),
+                (800, "ExtraBold (800)"),
+                (900, "Black (900)"),
+            ];
+            let current_weight_label = weights
+                .iter()
+                .find(|(w, _)| *w == current_style.font_weight)
+                .map(|(_, l)| *l)
+                .unwrap_or("Custom");
+
+            egui::ComboBox::from_id_salt("typography_font_weight_combo")
+                .selected_text(current_weight_label)
+                .width(130.0)
                 .show_ui(ui, |ui| {
-                    let font_choices = [
-                        ("Noto Sans JP (ゴシック)", "Noto Sans JP"),
-                        ("Hiragino Sans (ヒラギノ角ゴ)", "Hiragino Sans"),
-                        ("Inter (モダン欧文サンセリフ)", "Inter"),
-                        ("Yu Mincho (游明朝 / セリフ)", "Yu Mincho"),
-                        ("Monospace (等幅コード)", "Monospace"),
-                        ("Cursive (筆記体)", "Cursive"),
-                    ];
-                    for (display_name, val) in font_choices {
+                    for (w, label) in weights {
                         if ui
-                            .selectable_label(font_family == val, display_name)
+                            .selectable_label(current_style.font_weight == w, label)
                             .clicked()
                         {
-                            font_family = val.into();
+                            let mut new_style = current_style.clone();
+                            new_style.font_weight = w;
+                            let cmd = Box::new(ModifyTextCommand::new(
+                                id.clone(),
+                                current_text.clone(),
+                                current_style.clone(),
+                                current_text.clone(),
+                                new_style.clone(),
+                            ));
+                            state.undo_manager.execute(cmd, &mut state.document);
+                            current_style = new_style;
                         }
                     }
                 });
-        });
 
-        ui.add_space(4.0);
-
-        // Alignment
-        ui.label("行揃え:");
-        ui.horizontal(|ui| {
-            for (a, label) in [
-                (TextAlignment::Left, "左揃え"),
-                (TextAlignment::Center, "中央揃え"),
-                (TextAlignment::Right, "右揃え"),
-                (TextAlignment::Justify, "両端揃え"),
-            ] {
-                if ui.selectable_label(align == a, label).clicked() {
-                    align = a;
-                }
+            // Italic toggle
+            let is_italic = current_style.font_style == FontStyle::Italic;
+            if ui.selectable_label(is_italic, "斜体 (I)").clicked() {
+                let next_style = if is_italic {
+                    FontStyle::Normal
+                } else {
+                    FontStyle::Italic
+                };
+                let mut new_style = current_style.clone();
+                new_style.font_style = next_style;
+                let cmd = Box::new(ModifyTextCommand::new(
+                    id.clone(),
+                    current_text.clone(),
+                    current_style.clone(),
+                    current_text.clone(),
+                    new_style.clone(),
+                ));
+                state.undo_manager.execute(cmd, &mut state.document);
+                current_style = new_style;
             }
         });
 
-        ui.add_space(4.0);
+        ui.add_space(6.0);
 
-        // Line height
+        // 5. Alignment (TextAnchor)
+        ui.label("行揃え (Text Anchor):");
         ui.horizontal(|ui| {
-            ui.label("Line Height:");
-            let mut lh = line_height;
-            if ui
-                .add(
-                    egui::Slider::new(&mut lh, 0.5..=3.0)
-                        .show_value(true)
-                        .step_by(0.1),
-                )
-                .changed()
-            {
-                line_height = lh;
-            }
-        });
-
-        // Letter spacing
-        ui.horizontal(|ui| {
-            ui.label("Letter Spacing:");
-            let mut ls = letter_spacing;
-            if ui
-                .add(egui::DragValue::new(&mut ls).speed(0.5).range(-10.0..=50.0))
-                .changed()
-            {
-                letter_spacing = ls;
-            }
-        });
-
-        // Word spacing
-        ui.horizontal(|ui| {
-            ui.label("Word Spacing:");
-            let mut ws = word_spacing;
-            if ui
-                .add(
-                    egui::DragValue::new(&mut ws)
-                        .speed(1.0)
-                        .range(-10.0..=100.0),
-                )
-                .changed()
-            {
-                word_spacing = ws;
-            }
-        });
-
-        ui.add_space(4.0);
-
-        // Quick sizes
-        ui.label("Quick Sizes:");
-        ui.horizontal_wrapped(|ui| {
-            for size in [
-                9.0, 10.0, 11.0, 12.0, 14.0, 18.0, 24.0, 36.0, 48.0, 60.0, 72.0, 96.0,
+            for (anchor, label) in [
+                (TextAnchor::Start, "左揃え (Start)"),
+                (TextAnchor::Middle, "中央 (Middle)"),
+                (TextAnchor::End, "右揃え (End)"),
             ] {
                 if ui
-                    .selectable_label(font_size == size, format!("{}", size))
+                    .selectable_label(current_style.text_anchor == anchor, label)
                     .clicked()
                 {
-                    for (_, obj) in state.document.all_objects_mut() {
-                        if obj.id == id {
-                            if let ObjectType::Text {
-                                font_size: ref mut s,
-                                ..
-                            } = obj.object_type
-                            {
-                                *s = size;
-                            }
-                        }
-                    }
+                    let mut new_style = current_style.clone();
+                    new_style.text_anchor = anchor;
+                    let cmd = Box::new(ModifyTextCommand::new(
+                        id.clone(),
+                        current_text.clone(),
+                        current_style.clone(),
+                        current_text.clone(),
+                        new_style.clone(),
+                    ));
+                    state.undo_manager.execute(cmd, &mut state.document);
+                    current_style = new_style;
                 }
+            }
+        });
+
+        ui.add_space(6.0);
+
+        // 6. Letter Spacing (字間)
+        ui.horizontal(|ui| {
+            ui.label("字間 (Letter Spacing):");
+            let mut ls = current_style.letter_spacing;
+            if ui
+                .add(
+                    egui::DragValue::new(&mut ls)
+                        .speed(0.2)
+                        .range(-10.0..=100.0)
+                        .suffix("px"),
+                )
+                .changed()
+            {
+                let mut new_style = current_style.clone();
+                new_style.letter_spacing = ls;
+                let cmd = Box::new(ModifyTextCommand::new(
+                    id.clone(),
+                    current_text.clone(),
+                    current_style.clone(),
+                    current_text.clone(),
+                    new_style.clone(),
+                ));
+                state.undo_manager.execute(cmd, &mut state.document);
+                current_style = new_style;
             }
         });
     }

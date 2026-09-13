@@ -7,7 +7,7 @@ pub fn export_png(doc: &Document, scale: f32, transparent: bool) -> Result<Vec<u
     let scale = scale.clamp(0.1, 16.0);
     let svg_data = crate::io::svg::export_svg(doc);
     let mut opt = resvg::usvg::Options::default();
-    opt.fontdb_mut().load_system_fonts();
+    opt.fontdb = std::sync::Arc::new(crate::core::font::FontRegistry::global().database().clone());
     let rtree = resvg::usvg::Tree::from_str(&svg_data, &opt)
         .map_err(|e| format!("Failed to parse SVG for raster export: {}", e))?;
 

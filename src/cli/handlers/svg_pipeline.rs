@@ -28,7 +28,7 @@ pub fn handle_render(
     };
 
     let mut opt = resvg::usvg::Options::default();
-    opt.fontdb_mut().load_system_fonts();
+    opt.fontdb = std::sync::Arc::new(crate::core::font::FontRegistry::global().database().clone());
 
     let rtree = resvg::usvg::Tree::from_str(&svg_content, &opt)
         .map_err(|e| format!("Failed to parse SVG for rendering: {e}"))?;
@@ -399,7 +399,7 @@ pub fn handle_validate(input: &Path, strict: bool) -> Result<bool, Box<dyn std::
 
     // 2. Validate with usvg (robust XML & SVG grammar parser)
     let mut opt = resvg::usvg::Options::default();
-    opt.fontdb_mut().load_system_fonts();
+    opt.fontdb = std::sync::Arc::new(crate::core::font::FontRegistry::global().database().clone());
 
     match resvg::usvg::Tree::from_str(&svg_content, &opt) {
         Ok(tree) => {

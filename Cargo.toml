@@ -39,4 +39,5 @@ rhai = { version = "1.20", features = ["sync", "serde", "metadata"] }
 toml = "0.8"
 resvg = { version = "0.48", default-features = false, features = ["raster-images", "text"] }
 fontdb = { version = "0.24", features = ["fs", "memmap"] }
+ttf-parser = "0.25"
 

@@ -55,6 +55,15 @@ impl PathData {
         );
     }
 
+    pub fn push_quad_curve_to(&mut self, x1: f64, y1: f64, x: f64, y: f64) {
+        let p0 = self.last_point().unwrap_or(AnchorPoint::new(0.0, 0.0));
+        let c1x = p0.x + (2.0 / 3.0) * (x1 - p0.x);
+        let c1y = p0.y + (2.0 / 3.0) * (y1 - p0.y);
+        let c2x = x + (2.0 / 3.0) * (x1 - x);
+        let c2y = y + (2.0 / 3.0) * (y1 - y);
+        self.push_cubic_curve_to(c1x, c1y, c2x, c2y, x, y);
+    }
+
     pub fn close(&mut self) {
         self.closed = true;
         self.elements.push(PathElement::ClosePath);

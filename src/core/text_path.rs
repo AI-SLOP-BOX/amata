@@ -251,31 +251,141 @@ pub fn get_glyph_outline_path(ch: char) -> PathData {
     path
 }
 
-/// Convert a text string into an outlined vector PathData with proper kerning and size.
-pub fn text_to_outline_path(text: &str, font_size: f64) -> PathData {
+/// OutlineBuilder for ttf-parser that converts TrueType/OpenType contours into Amata PathData.
+struct PathOutlineBuilder {
+    path: PathData,
+    scale: f64,
+    offset_x: f64,
+    offset_y: f64,
+}
+
+impl ttf_parser::OutlineBuilder for PathOutlineBuilder {
+    fn move_to(&mut self, x: f32, y: f32) {
+        let px = self.offset_x + (x as f64) * self.scale;
+        let py = self.offset_y - (y as f64) * self.scale; // In TTF, Y is up, in SVG Y is down
+        self.path.push_move_to(px, py);
+    }
+
+    fn line_to(&mut self, x: f32, y: f32) {
+        let px = self.offset_x + (x as f64) * self.scale;
+        let py = self.offset_y - (y as f64) * self.scale;
+        self.path.push_line_to(px, py);
+    }
+
+    fn quad_to(&mut self, x1: f32, y1: f32, x: f32, y: f32) {
+        let cx = self.offset_x + (x1 as f64) * self.scale;
+        let cy = self.offset_y - (y1 as f64) * self.scale;
+        let px = self.offset_x + (x as f64) * self.scale;
+        let py = self.offset_y - (y as f64) * self.scale;
+        self.path.push_quad_curve_to(cx, cy, px, py);
+    }
+
+    fn curve_to(&mut self, x1: f32, y1: f32, x2: f32, y2: f32, x: f32, y: f32) {
+        let c1x = self.offset_x + (x1 as f64) * self.scale;
+        let c1y = self.offset_y - (y1 as f64) * self.scale;
+        let c2x = self.offset_x + (x2 as f64) * self.scale;
+        let c2y = self.offset_y - (y2 as f64) * self.scale;
+        let px = self.offset_x + (x as f64) * self.scale;
+        let py = self.offset_y - (y as f64) * self.scale;
+        self.path.push_cubic_curve_to(c1x, c1y, c2x, c2y, px, py);
+    }
+
+    fn close(&mut self) {
+        self.path.close();
+    }
+}
+
+/// Convert a text string into an outlined vector PathData with proper kerning and size,
+/// using the requested TextStyle and real font glyph outlines via ttf-parser.
+pub fn text_to_outline_path_with_style(
+    text: &str,
+    style: &crate::core::document::TextStyle,
+) -> PathData {
+    let font_size = style.font_size;
+    let letter_spacing = style.letter_spacing;
+    let registry = super::font::FontRegistry::global();
+
+    // Attempt to extract real glyph outlines from the resolved font face
+    let extracted = registry.query_face_data(
+        &style.font_family,
+        style.font_weight,
+        style.font_style,
+        |data, index| {
+            if let Ok(face) = ttf_parser::Face::parse(data, index) {
+                let units_per_em = face.units_per_em() as f64;
+                if units_per_em > 0.0 {
+                    let scale = font_size / units_per_em;
+                    let mut combined = PathData::new();
+                    let mut current_x = 0.0;
+
+                    for ch in text.chars() {
+                        if ch == ' ' {
+                            current_x += (font_size * 0.3) + letter_spacing;
+                            continue;
+                        }
+
+                        if let Some(glyph_id) = face.glyph_index(ch) {
+                            let mut builder = PathOutlineBuilder {
+                                path: PathData::new(),
+                                scale,
+                                offset_x: current_x,
+                                offset_y: 0.0,
+                            };
+                            let _ = face.outline_glyph(glyph_id, &mut builder);
+                            combined.elements.extend(builder.path.elements);
+
+                            let adv = face
+                                .glyph_hor_advance(glyph_id)
+                                .unwrap_or(face.units_per_em())
+                                as f64
+                                * scale;
+                            current_x += adv + letter_spacing;
+                        } else {
+                            // Fallback to mock glyph if glyph missing in face
+                            let char_width = font_size * 0.6;
+                            let mut glyph = get_glyph_outline_path(ch);
+                            let matrix = [char_width, 0.0, 0.0, font_size, current_x, -font_size];
+                            glyph.transform(&matrix);
+                            combined.elements.extend(glyph.elements);
+                            current_x += char_width * 1.1 + letter_spacing;
+                        }
+                    }
+                    return Some(combined);
+                }
+            }
+            None
+        },
+    );
+
+    if let Some(Some(path)) = extracted {
+        return path;
+    }
+
+    // Fallback: mock glyph outline generator
     let mut combined = PathData::new();
     let char_width = font_size * 0.6;
     let mut current_x = 0.0;
 
     for ch in text.chars() {
         if ch == ' ' {
-            current_x += char_width * 0.7;
+            current_x += char_width * 0.7 + letter_spacing;
             continue;
         }
 
         let mut glyph = get_glyph_outline_path(ch);
-        // Scale and translate glyph
-        // Normal matrix: [sx, 0, 0, sy, tx, ty]
-        let matrix = [
-            char_width, 0.0, 0.0, font_size, current_x,
-            -font_size, // top-left relative to baseline
-        ];
+        let matrix = [char_width, 0.0, 0.0, font_size, current_x, -font_size];
         glyph.transform(&matrix);
         combined.elements.extend(glyph.elements);
-        current_x += char_width * 1.1; // letter spacing
+        current_x += char_width * 1.1 + letter_spacing;
     }
 
     combined
+}
+
+/// Convert a text string into an outlined vector PathData with default style.
+pub fn text_to_outline_path(text: &str, font_size: f64) -> PathData {
+    let style = crate::core::document::TextStyle::new("Inter, sans-serif", font_size);
+    text_to_outline_path_with_style(text, &style)
 }
 
 /// Convert text into outlined vector path along a trajectory path (Text-on-Path Outlines)
@@ -295,15 +405,11 @@ pub fn text_on_path_to_outlines(
         }
 
         let mut glyph = get_glyph_outline_path(p.char_value);
-        // Transform glyph: center at origin, rotate by rotation_rad, then place at p.position
-        // First center x: -0.5, y: -0.5
         let cos = p.rotation_rad.cos();
         let sin = p.rotation_rad.sin();
         let sx = char_width;
         let sy = font_size;
 
-        // Combine: [cos*sx, sin*sx, -sin*sy, cos*sy, px, py]
-        // Offset glyph so baseline is at the path
         let matrix = [
             cos * sx,
             sin * sx,
@@ -321,8 +427,8 @@ pub fn text_on_path_to_outlines(
 
 /// Convert a Document's Text object into vector Path objects (Illustrator "Create Outlines" operation)
 pub fn create_text_outlines(text_obj: &Object) -> Option<Object> {
-    if let crate::core::document::ObjectType::Text { text, font_size } = &text_obj.object_type {
-        let mut path = text_to_outline_path(text, *font_size);
+    if let crate::core::document::ObjectType::Text { text, style, .. } = &text_obj.object_type {
+        let mut path = text_to_outline_path_with_style(text, style);
         path.fill = text_obj.fill.clone();
         path.stroke = text_obj.stroke.clone();
 

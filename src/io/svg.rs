@@ -1,4 +1,6 @@
-use crate::core::document::{Document, Object, ObjectType, Transform};
+use crate::core::document::{
+    Document, FontStyle, Object, ObjectType, TextAnchor, TextStyle, Transform,
+};
 use crate::core::path::{
     AnchorPoint, BezierSegment, FillStyle, FillType, PathData, PathElement, StrokeStyle,
 };
@@ -717,25 +719,58 @@ pub fn parse_svg_document(svg_text: &str) -> Document {
         } else if trimmed.starts_with("<text") {
             let x = extract_attr_f64(trimmed, "x").unwrap_or(0.0);
             let y = extract_attr_f64(trimmed, "y").unwrap_or(0.0);
-            let font_size = extract_attr_f64(trimmed, "font-size").unwrap_or(24.0);
+            let font_size = extract_prop_str(trimmed, "font-size")
+                .and_then(|s| {
+                    s.trim()
+                        .trim_end_matches("px")
+                        .trim_end_matches("pt")
+                        .parse::<f64>()
+                        .ok()
+                })
+                .unwrap_or(24.0);
+            let font_family = extract_prop_str(trimmed, "font-family")
+                .unwrap_or_else(|| "Inter, sans-serif".to_string());
+            let font_weight = extract_prop_str(trimmed, "font-weight")
+                .map(|w| parse_font_weight(&w))
+                .unwrap_or(400);
+            let font_style = extract_prop_str(trimmed, "font-style")
+                .map(|s| parse_font_style(&s))
+                .unwrap_or(FontStyle::Normal);
+            let letter_spacing = extract_prop_str(trimmed, "letter-spacing")
+                .map(|ls| parse_letter_spacing(&ls))
+                .unwrap_or(0.0);
+            let text_anchor = extract_prop_str(trimmed, "text-anchor")
+                .map(|ta| parse_text_anchor(&ta))
+                .unwrap_or(TextAnchor::Start);
+
+            let style = TextStyle {
+                font_family,
+                font_size,
+                font_weight,
+                font_style,
+                letter_spacing,
+                text_anchor,
+            };
+
             let text_content = if let Some(start) = trimmed.find('>') {
                 let rest = &trimmed[start + 1..];
-                if let Some(end) = rest.find("</text>") {
-                    rest[..end].trim().to_string()
+                let raw_content = if let Some(end) = rest.find("</text>") {
+                    rest[..end].trim()
                 } else {
-                    rest.trim().to_string()
-                }
+                    rest.trim()
+                };
+                xml_unescape(raw_content)
             } else {
                 String::new()
             };
             if !text_content.is_empty() {
                 obj_count += 1;
-                let mut obj = Object::new_text(
+                let mut obj = Object::new_text_with_style(
                     &format!("Text {obj_count}"),
                     &text_content,
                     x + total_tx,
                     y + total_ty,
-                    font_size,
+                    style,
                 );
                 obj.id = extract_attr_str(trimmed, "id")
                     .map(|s| s.to_string())
@@ -1029,6 +1064,50 @@ fn extract_from_style<'a>(tag: &'a str, prop: &str) -> Option<&'a str> {
         }
     }
     None
+}
+
+fn extract_prop_str(tag: &str, prop: &str) -> Option<String> {
+    extract_attr_str(tag, prop)
+        .or_else(|| extract_from_style(tag, prop))
+        .map(|s| s.to_string())
+}
+
+fn parse_font_weight(val: &str) -> u16 {
+    let lower = val.trim().to_lowercase();
+    match lower.as_str() {
+        "normal" => 400,
+        "bold" => 700,
+        "bolder" => 800,
+        "lighter" => 300,
+        _ => lower.parse::<u16>().unwrap_or(400),
+    }
+}
+
+fn parse_font_style(val: &str) -> FontStyle {
+    let lower = val.trim().to_lowercase();
+    match lower.as_str() {
+        "italic" => FontStyle::Italic,
+        "oblique" => FontStyle::Oblique,
+        _ => FontStyle::Normal,
+    }
+}
+
+fn parse_text_anchor(val: &str) -> TextAnchor {
+    let lower = val.trim().to_lowercase();
+    match lower.as_str() {
+        "middle" => TextAnchor::Middle,
+        "end" => TextAnchor::End,
+        _ => TextAnchor::Start,
+    }
+}
+
+fn parse_letter_spacing(val: &str) -> f64 {
+    let cleaned = val
+        .trim()
+        .trim_end_matches("px")
+        .trim_end_matches("pt")
+        .trim();
+    cleaned.parse::<f64>().unwrap_or(0.0)
 }
 
 fn extract_fill(tag: &str, gradients: &HashMap<String, FillStyle>) -> Option<FillStyle> {
@@ -1497,16 +1576,47 @@ fn render_object_to_svg(obj: &Object, svg: &mut String, defs: &mut String, count
                 obj.transform.x, obj.transform.y, obj.transform.x + x2, obj.transform.y + y2,
             ));
         }
-        ObjectType::Text { text, font_size } => {
+        ObjectType::Text {
+            text,
+            font_size,
+            style,
+        } => {
             let fill = if fill_attr.is_empty() || fill_attr == " fill=\"none\"" {
                 " fill=\"#000000\"".to_string()
             } else {
                 fill_attr
             };
             let escaped_text = xml_escape(text);
+
+            let font_fam = if style.font_family.is_empty() {
+                "Inter, sans-serif".to_string()
+            } else {
+                style.font_family.clone()
+            };
+
+            let mut extra_attrs = String::new();
+            if style.font_weight != 400 {
+                extra_attrs.push_str(&format!(" font-weight=\"{}\"", style.font_weight));
+            }
+            if style.font_style != FontStyle::Normal {
+                extra_attrs.push_str(&format!(
+                    " font-style=\"{}\"",
+                    style.font_style.as_svg_str()
+                ));
+            }
+            if style.letter_spacing != 0.0 {
+                extra_attrs.push_str(&format!(" letter-spacing=\"{}\"", style.letter_spacing));
+            }
+            if style.text_anchor != TextAnchor::Start {
+                extra_attrs.push_str(&format!(
+                    " text-anchor=\"{}\"",
+                    style.text_anchor.as_svg_str()
+                ));
+            }
+
             svg.push_str(&format!(
-                "  <text{id_attr} x=\"{}\" y=\"{}\" font-size=\"{}\" font-family=\"system-ui, -apple-system, sans-serif\"{fill}{effect_attr}>{}</text>\n",
-                obj.transform.x, obj.transform.y, font_size, escaped_text
+                "  <text{id_attr} x=\"{}\" y=\"{}\" font-size=\"{}\" font-family=\"{}\"{extra_attrs}{fill}{effect_attr}>{}</text>\n",
+                obj.transform.x, obj.transform.y, font_size, font_fam, escaped_text
             ));
         }
         ObjectType::Group(children) => {
@@ -1585,4 +1695,12 @@ fn xml_escape(s: &str) -> String {
         .replace('>', "&gt;")
         .replace('"', "&quot;")
         .replace('\'', "&apos;")
+}
+
+pub fn xml_unescape(s: &str) -> String {
+    s.replace("&quot;", "\"")
+        .replace("&apos;", "'")
+        .replace("&gt;", ">")
+        .replace("&lt;", "<")
+        .replace("&amp;", "&")
 }

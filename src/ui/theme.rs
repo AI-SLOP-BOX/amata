@@ -4,7 +4,8 @@ use eframe::egui::{
 };
 use std::sync::Arc;
 
-/// Setup refined high-legibility UI typography: Inter (Latin, Digits, Symbols) + Noto Sans JP (CJK)
+/// Setup refined high-legibility UI typography: Inter (Latin, Digits, Symbols) + LINE Seed JP (Japanese CJK)
+/// Prioritized cascade: Inter -> LINE Seed JP -> Noto Sans JP / Hiragino -> OS system fallbacks
 pub fn setup_custom_fonts(ctx: &egui::Context) {
     let mut fonts = FontDefinitions::default();
 
@@ -13,6 +14,8 @@ pub fn setup_custom_fonts(ctx: &egui::Context) {
         "assets/fonts/Inter.ttf",
         "/System/Library/Fonts/Supplemental/Inter.ttf",
         "/Library/Fonts/Inter.ttf",
+        "C:\\Windows\\Fonts\\Inter-Regular.ttf",
+        "/usr/share/fonts/truetype/inter/Inter-Regular.ttf",
     ];
 
     let mut inter_loaded = false;
@@ -27,35 +30,57 @@ pub fn setup_custom_fonts(ctx: &egui::Context) {
         }
     }
 
-    // 2. Primary Japanese Font: Noto Sans JP
+    // 2. Primary Japanese Font: LINE Seed JP (with fallback to Noto Sans JP / Hiragino Sans)
     let mut jp_candidates: Vec<std::path::PathBuf> = Vec::new();
+
+    // User font directory
     if let Ok(home) = std::env::var("HOME") {
         let home_p = std::path::PathBuf::from(home);
+        // Priority 1: LINE Seed JP
+        jp_candidates.push(home_p.join("Library/Fonts/LINESeedJP_OTF_Rg.otf"));
+        jp_candidates.push(home_p.join("Library/Fonts/LINESeedJP_OTF_Bd.otf"));
+        jp_candidates.push(home_p.join("Library/Fonts/LINESeedJP_TTF_Rg.ttf"));
+        jp_candidates.push(home_p.join("Library/Fonts/LINESeedJP-Regular.otf"));
+        jp_candidates.push(home_p.join(".local/share/fonts/LINESeedJP_OTF_Rg.otf"));
+        // Priority 2: Noto Sans JP
         jp_candidates.push(home_p.join("Library/Fonts/NotoSansJP-Medium.ttf"));
         jp_candidates.push(home_p.join("Library/Fonts/NotoSansJP-Regular.ttf"));
     }
+
+    // System font directories
+    jp_candidates.push(std::path::PathBuf::from(
+        "/Library/Fonts/LINESeedJP_OTF_Rg.otf",
+    ));
+    jp_candidates.push(std::path::PathBuf::from(
+        "/Library/Fonts/LINESeedJP_TTF_Rg.ttf",
+    ));
     jp_candidates.push(std::path::PathBuf::from(
         "/System/Library/Fonts/Hiragino Sans GB.ttc",
     ));
+    jp_candidates.push(std::path::PathBuf::from(
+        "/System/Library/Fonts/ヒラギノ角ゴシック W3.ttc",
+    ));
     jp_candidates.push(std::path::PathBuf::from("/Library/Fonts/Arial Unicode.ttf"));
+    jp_candidates.push(std::path::PathBuf::from("C:\\Windows\\Fonts\\meiryo.ttc"));
+    jp_candidates.push(std::path::PathBuf::from("C:\\Windows\\Fonts\\msgothic.ttc"));
 
     let mut jp_loaded = false;
     for path in &jp_candidates {
         if let Ok(bytes) = std::fs::read(path) {
             fonts.font_data.insert(
-                "noto_sans_jp".to_owned(),
+                "jp_ui_font".to_owned(),
                 Arc::new(FontData::from_owned(bytes)),
             );
             jp_loaded = true;
-            log::info!("Loaded Japanese UI font (Noto Sans JP): {}", path.display());
+            log::info!("Loaded Japanese UI font: {}", path.display());
             break;
         }
     }
 
-    // Assemble font cascade: Inter -> Noto Sans JP -> egui default fallbacks
+    // Assemble font cascade: Inter -> LINE Seed JP / CJK -> egui default fallbacks
     if let Some(prop) = fonts.families.get_mut(&FontFamily::Proportional) {
         if jp_loaded {
-            prop.insert(0, "noto_sans_jp".to_owned());
+            prop.insert(0, "jp_ui_font".to_owned());
         }
         if inter_loaded {
             prop.insert(0, "inter".to_owned());

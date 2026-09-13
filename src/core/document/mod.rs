@@ -1,5 +1,5 @@
 pub mod object;
-pub use object::{BlendMode, Object, ObjectType, Transform};
+pub use object::{BlendMode, FontStyle, Object, ObjectType, TextAnchor, TextStyle, Transform};
 
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;

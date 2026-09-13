@@ -201,11 +201,59 @@ impl CanvasWidget {
                 let stroke = stroke_info.unwrap_or_else(|| Stroke::new(2.0_f32, Color32::BLACK));
                 painter.line_segment([p1, p2], stroke);
             }
-            ObjectType::Text { text, font_size } => {
+            ObjectType::Text {
+                text,
+                font_size,
+                style,
+            } => {
                 let pos = to_screen(0.0, 0.0);
-                let font_id = FontId::proportional((font_size * state.zoom as f64) as f32);
+                let scaled_size = (font_size * state.zoom as f64) as f32;
+
+                let align = match style.text_anchor {
+                    crate::core::document::TextAnchor::Start => egui::Align2::LEFT_BOTTOM,
+                    crate::core::document::TextAnchor::Middle => egui::Align2::CENTER_BOTTOM,
+                    crate::core::document::TextAnchor::End => egui::Align2::RIGHT_BOTTOM,
+                };
+
+                let registry = crate::core::font::FontRegistry::global();
+                let is_avail = registry.is_any_family_available(&style.font_family);
+                let font_family = if style.font_family.to_lowercase().contains("mono") {
+                    egui::FontFamily::Monospace
+                } else {
+                    egui::FontFamily::Proportional
+                };
+
+                let font_id = FontId::new(scaled_size, font_family);
                 let color = fill_color.unwrap_or(Color32::BLACK);
-                painter.text(pos, egui::Align2::LEFT_BOTTOM, text, font_id, color);
+
+                if style.letter_spacing != 0.0 {
+                    let letter_space_screen = (style.letter_spacing * state.zoom as f64) as f32;
+                    let mut curr_x = pos.x;
+                    for ch in text.chars() {
+                        let ch_str = ch.to_string();
+                        let char_pos = egui::pos2(curr_x, pos.y);
+                        let galley = painter.layout_no_wrap(ch_str, font_id.clone(), color);
+                        let w = galley.size().x;
+                        painter.galley(char_pos, galley, color);
+                        curr_x += w + letter_space_screen;
+                    }
+                } else {
+                    painter.text(pos, align, text, font_id, color);
+                }
+
+                if !is_avail && state.selected_ids.contains(&obj.id) {
+                    let text_w = text.chars().count() as f32 * scaled_size * 0.6;
+                    let text_rect = egui::Rect::from_min_size(
+                        egui::pos2(pos.x, pos.y - scaled_size),
+                        egui::vec2(text_w, scaled_size),
+                    );
+                    painter.rect_stroke(
+                        text_rect,
+                        0.0,
+                        egui::Stroke::new(1.0_f32, Color32::from_rgb(255, 140, 0)),
+                        egui::StrokeKind::Outside,
+                    );
+                }
             }
             ObjectType::Group(children) => {
                 for child in children {

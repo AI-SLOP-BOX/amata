@@ -105,7 +105,9 @@ pub fn doc_to_aevfx_comp(doc: &Document, fps: f64, duration_sec: f64) -> AevfxCo
             let stroke_w = obj.stroke.as_ref().map(|s| s.width).unwrap_or(1.0);
 
             let (text_content, font_size) = match &obj.object_type {
-                ObjectType::Text { text, font_size } => (Some(text.clone()), Some(*font_size)),
+                ObjectType::Text {
+                    text, font_size, ..
+                } => (Some(text.clone()), Some(*font_size)),
                 _ => (None, None),
             };
 

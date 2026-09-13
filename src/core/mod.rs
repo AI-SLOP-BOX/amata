@@ -10,6 +10,7 @@ pub mod effects;
 pub mod envelope;
 pub mod evolutionary;
 pub mod flowfield;
+pub mod font;
 pub mod formula;
 pub mod geometry;
 pub mod gradient_mesh;

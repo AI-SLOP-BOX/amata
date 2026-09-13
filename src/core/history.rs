@@ -325,3 +325,61 @@ impl Command for ModifyPathCommand {
         "Edit Path Nodes"
     }
 }
+
+pub struct ModifyTextCommand {
+    pub object_id: String,
+    pub old_text: String,
+    pub old_style: crate::core::document::TextStyle,
+    pub new_text: String,
+    pub new_style: crate::core::document::TextStyle,
+}
+
+impl ModifyTextCommand {
+    pub fn new(
+        object_id: impl Into<String>,
+        old_text: String,
+        old_style: crate::core::document::TextStyle,
+        new_text: String,
+        new_style: crate::core::document::TextStyle,
+    ) -> Self {
+        Self {
+            object_id: object_id.into(),
+            old_text,
+            old_style,
+            new_text,
+            new_style,
+        }
+    }
+}
+
+impl Command for ModifyTextCommand {
+    fn execute(&self, doc: &mut Document) {
+        for (_, obj) in doc.all_objects_mut() {
+            if obj.id == self.object_id {
+                obj.object_type = crate::core::document::ObjectType::Text {
+                    text: self.new_text.clone(),
+                    font_size: self.new_style.font_size,
+                    style: self.new_style.clone(),
+                };
+                break;
+            }
+        }
+    }
+
+    fn undo(&self, doc: &mut Document) {
+        for (_, obj) in doc.all_objects_mut() {
+            if obj.id == self.object_id {
+                obj.object_type = crate::core::document::ObjectType::Text {
+                    text: self.old_text.clone(),
+                    font_size: self.old_style.font_size,
+                    style: self.old_style.clone(),
+                };
+                break;
+            }
+        }
+    }
+
+    fn name(&self) -> &str {
+        "Change Typography"
+    }
+}
