@@ -22,7 +22,8 @@ pub fn create_radial_symmetry(
         let mut path = cloned.to_path_data();
         // Transform around (cx, cy)
         path.elements.iter_mut().for_each(|elem| match elem {
-            crate::core::path::PathElement::MoveTo(p) | crate::core::path::PathElement::LineTo(p) => {
+            crate::core::path::PathElement::MoveTo(p)
+            | crate::core::path::PathElement::LineTo(p) => {
                 *p = rotate_point(*p, cx, cy, angle);
             }
             crate::core::path::PathElement::CurveTo(seg) => {
@@ -44,7 +45,8 @@ pub fn create_radial_symmetry(
 
             let mut mpath = mirrored.to_path_data();
             mpath.elements.iter_mut().for_each(|elem| match elem {
-                crate::core::path::PathElement::MoveTo(p) | crate::core::path::PathElement::LineTo(p) => {
+                crate::core::path::PathElement::MoveTo(p)
+                | crate::core::path::PathElement::LineTo(p) => {
                     let mp = AnchorPoint::new(cx - (p.x - cx), p.y);
                     *p = rotate_point(mp, cx, cy, angle);
                 }

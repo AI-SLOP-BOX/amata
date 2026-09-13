@@ -35,10 +35,7 @@ pub fn resample_polygon(points: &[AnchorPoint], count: usize) -> Vec<AnchorPoint
                 let seg_t = (target_dist - d0) / seg_len;
                 let p0 = points[j];
                 let p1 = points[j + 1];
-                pt = AnchorPoint::new(
-                    p0.x + seg_t * (p1.x - p0.x),
-                    p0.y + seg_t * (p1.y - p0.y),
-                );
+                pt = AnchorPoint::new(p0.x + seg_t * (p1.x - p0.x), p0.y + seg_t * (p1.y - p0.y));
                 break;
             }
         }
@@ -76,7 +73,7 @@ pub fn morph_paths(path_a: &PathData, path_b: &PathData, t: f64) -> PathData {
     let morphed_pts = morph_polygons(&poly_a, &poly_b, t);
 
     let mut result = PathData::from_polygon_points(&morphed_pts, path_a.closed || path_b.closed);
-    
+
     // Interpolate fill and stroke color if available
     let t_f32 = t as f32;
     let inv_t_f32 = 1.0_f32 - t_f32;

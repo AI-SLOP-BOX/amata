@@ -28,10 +28,7 @@ pub fn apply_isometric_transform(obj: &Object, plane: IsometricPlane) -> Object 
     };
 
     let transform_pt = |p: AnchorPoint| -> AnchorPoint {
-        AnchorPoint::new(
-            p.x * m00 + p.y * m01,
-            p.x * m10 + p.y * m11,
-        )
+        AnchorPoint::new(p.x * m00 + p.y * m01, p.x * m10 + p.y * m11)
     };
 
     path.elements.iter_mut().for_each(|elem| match elem {

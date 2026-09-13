@@ -5,6 +5,7 @@ pub struct SelectState {
     pub drag_start: Option<(f64, f64)>,
     pub drag_object_start: Option<(f64, f64)>,
     pub drag_object_id: Option<String>,
+    pub drag_starts: Vec<(String, f64, f64)>,
 }
 
 impl SelectState {
@@ -14,6 +15,7 @@ impl SelectState {
             drag_start: None,
             drag_object_start: None,
             drag_object_id: None,
+            drag_starts: Vec::new(),
         }
     }
 
@@ -28,6 +30,19 @@ impl SelectState {
 
     pub fn start_drag(&mut self, state: &mut AppState, wx: f64, wy: f64) {
         if let Some(id) = self.hit_test(state, wx, wy) {
+            self.drag_starts.clear();
+            if !state.selected_ids.contains(&id) {
+                state.selected_ids = vec![id.clone()];
+            }
+
+            for sel_id in &state.selected_ids {
+                if let Some((_, obj)) = state.document.all_objects().find(|(_, o)| &o.id == sel_id)
+                {
+                    self.drag_starts
+                        .push((sel_id.clone(), obj.transform.x, obj.transform.y));
+                }
+            }
+
             if let Some((_, obj)) = state.document.all_objects().find(|(_, o)| o.id == id) {
                 self.drag_object_start = Some((obj.transform.x, obj.transform.y));
             }
@@ -45,52 +60,44 @@ impl SelectState {
             let dx = wx - start.0;
             let dy = wy - start.1;
 
-            // Move all selected objects by the delta
-            for id in &state.selected_ids {
-                // Find the original position for this object
-                let orig = if id == self.drag_object_id.as_ref().unwrap_or(&String::new()) {
-                    self.drag_object_start
-                } else {
-                    // For other selected objects, get their current position as "start"
-                    state.document.all_objects().find(|(_, o)| &o.id == id).map(|(_, o)| (o.transform.x, o.transform.y))
-                };
-
-                if let Some(obj_start) = orig {
-                    let new_x = obj_start.0 + dx;
-                    let new_y = obj_start.1 + dy;
-                    for (_, obj) in state.document.all_objects_mut() {
-                        if obj.id == *id {
-                            obj.transform.x = new_x;
-                            obj.transform.y = new_y;
-                            break;
-                        }
+            // Move all selected objects by the delta relative to their recorded start
+            for (id, start_x, start_y) in &self.drag_starts {
+                let new_x = *start_x + dx;
+                let new_y = *start_y + dy;
+                for (_, obj) in state.document.all_objects_mut() {
+                    if &obj.id == id {
+                        obj.transform.x = new_x;
+                        obj.transform.y = new_y;
+                        break;
                     }
                 }
             }
         }
     }
 
-    pub fn end_drag(&mut self, state: &mut AppState) -> Option<(String, f64, f64, f64, f64)> {
+    pub fn end_drag(&mut self, state: &mut AppState) -> Vec<(String, f64, f64, f64, f64)> {
+        let mut moved = Vec::new();
         if self.is_dragging {
-            let old = self.drag_object_start.unwrap_or((0.0, 0.0));
-            let id = self.drag_object_id.as_ref().unwrap().clone();
-            let new = state
-                .document
-                .all_objects()
-                .find(|(_, o)| o.id == id)
-                .map(|(_, o)| (o.transform.x, o.transform.y))
-                .unwrap_or(old);
+            for (id, start_x, start_y) in self.drag_starts.drain(..) {
+                let current_pos = state
+                    .document
+                    .all_objects()
+                    .find(|(_, o)| o.id == id)
+                    .map(|(_, o)| (o.transform.x, o.transform.y))
+                    .unwrap_or((start_x, start_y));
+
+                if (current_pos.0 - start_x).abs() > 1e-4 || (current_pos.1 - start_y).abs() > 1e-4
+                {
+                    moved.push((id, start_x, start_y, current_pos.0, current_pos.1));
+                }
+            }
 
             self.is_dragging = false;
             self.drag_start = None;
             self.drag_object_start = None;
-
-            if old != new {
-                return Some((id, old.0, old.1, new.0, new.1));
-            }
             self.drag_object_id = None;
         }
-        None
+        moved
     }
 }
 

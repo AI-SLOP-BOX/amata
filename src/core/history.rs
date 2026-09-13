@@ -6,10 +6,26 @@ pub trait Command {
     fn name(&self) -> &str;
 }
 
+pub struct UndoStep {
+    pub cmd: Box<dyn Command>,
+    pub state_id_before: u64,
+    pub state_id_after: u64,
+}
+
+impl std::ops::Deref for UndoStep {
+    type Target = dyn Command;
+    fn deref(&self) -> &Self::Target {
+        &*self.cmd
+    }
+}
+
 pub struct UndoManager {
-    undo_stack: Vec<Box<dyn Command>>,
-    redo_stack: Vec<Box<dyn Command>>,
+    undo_stack: Vec<UndoStep>,
+    redo_stack: Vec<UndoStep>,
     max_steps: usize,
+    state_counter: u64,
+    current_state_id: u64,
+    saved_state_id: Option<u64>,
 }
 
 impl Default for UndoManager {
@@ -24,12 +40,37 @@ impl UndoManager {
             undo_stack: Vec::new(),
             redo_stack: Vec::new(),
             max_steps: 100,
+            state_counter: 0,
+            current_state_id: 0,
+            saved_state_id: Some(0),
         }
+    }
+
+    pub fn is_dirty(&self) -> bool {
+        match self.saved_state_id {
+            Some(saved) => saved != self.current_state_id,
+            None => true,
+        }
+    }
+
+    pub fn mark_saved(&mut self) {
+        self.saved_state_id = Some(self.current_state_id);
+    }
+
+    pub fn mark_dirty(&mut self) {
+        self.saved_state_id = None;
     }
 
     pub fn execute(&mut self, cmd: Box<dyn Command>, doc: &mut Document) {
         cmd.execute(doc);
-        self.undo_stack.push(cmd);
+        self.state_counter += 1;
+        let step = UndoStep {
+            cmd,
+            state_id_before: self.current_state_id,
+            state_id_after: self.state_counter,
+        };
+        self.current_state_id = self.state_counter;
+        self.undo_stack.push(step);
         self.redo_stack.clear();
         if self.undo_stack.len() > self.max_steps {
             self.undo_stack.remove(0);
@@ -37,10 +78,11 @@ impl UndoManager {
     }
 
     pub fn undo(&mut self, doc: &mut Document) -> Option<&str> {
-        if let Some(cmd) = self.undo_stack.pop() {
-            let name = cmd.name().to_string();
-            cmd.undo(doc);
-            self.redo_stack.push(cmd);
+        if let Some(step) = self.undo_stack.pop() {
+            let name = step.cmd.name().to_string();
+            step.cmd.undo(doc);
+            self.current_state_id = step.state_id_before;
+            self.redo_stack.push(step);
             Some(Box::leak(name.into_boxed_str()))
         } else {
             None
@@ -48,10 +90,11 @@ impl UndoManager {
     }
 
     pub fn redo(&mut self, doc: &mut Document) -> Option<&str> {
-        if let Some(cmd) = self.redo_stack.pop() {
-            let name = cmd.name().to_string();
-            cmd.execute(doc);
-            self.undo_stack.push(cmd);
+        if let Some(step) = self.redo_stack.pop() {
+            let name = step.cmd.name().to_string();
+            step.cmd.execute(doc);
+            self.current_state_id = step.state_id_after;
+            self.undo_stack.push(step);
             Some(Box::leak(name.into_boxed_str()))
         } else {
             None
@@ -75,23 +118,26 @@ impl UndoManager {
     }
 
     pub fn undo_name(&self) -> Option<&str> {
-        self.undo_stack.last().map(|c| c.name())
+        self.undo_stack.last().map(|c| c.cmd.name())
     }
 
     pub fn redo_name(&self) -> Option<&str> {
-        self.redo_stack.last().map(|c| c.name())
+        self.redo_stack.last().map(|c| c.cmd.name())
     }
 
     pub fn clear(&mut self) {
         self.undo_stack.clear();
         self.redo_stack.clear();
+        self.state_counter += 1;
+        self.current_state_id = self.state_counter;
+        self.saved_state_id = Some(self.current_state_id);
     }
 
-    pub fn undo_stack(&self) -> &[Box<dyn Command>] {
+    pub fn undo_stack(&self) -> &[UndoStep] {
         &self.undo_stack
     }
 
-    pub fn redo_stack(&self) -> &[Box<dyn Command>] {
+    pub fn redo_stack(&self) -> &[UndoStep] {
         &self.redo_stack
     }
 }
@@ -197,5 +243,85 @@ impl Command for MoveObjectCommand {
 
     fn name(&self) -> &str {
         "Move Object"
+    }
+}
+
+pub struct BatchCommand {
+    pub name: String,
+    pub commands: Vec<Box<dyn Command>>,
+}
+
+impl BatchCommand {
+    pub fn new(name: impl Into<String>, commands: Vec<Box<dyn Command>>) -> Self {
+        Self {
+            name: name.into(),
+            commands,
+        }
+    }
+}
+
+impl Command for BatchCommand {
+    fn execute(&self, doc: &mut Document) {
+        for cmd in &self.commands {
+            cmd.execute(doc);
+        }
+    }
+
+    fn undo(&self, doc: &mut Document) {
+        for cmd in self.commands.iter().rev() {
+            cmd.undo(doc);
+        }
+    }
+
+    fn name(&self) -> &str {
+        &self.name
+    }
+}
+
+pub struct ModifyPathCommand {
+    pub object_id: String,
+    pub old_elements: Vec<crate::core::path::PathElement>,
+    pub new_elements: Vec<crate::core::path::PathElement>,
+}
+
+impl ModifyPathCommand {
+    pub fn new(
+        object_id: impl Into<String>,
+        old_elements: Vec<crate::core::path::PathElement>,
+        new_elements: Vec<crate::core::path::PathElement>,
+    ) -> Self {
+        Self {
+            object_id: object_id.into(),
+            old_elements,
+            new_elements,
+        }
+    }
+}
+
+impl Command for ModifyPathCommand {
+    fn execute(&self, doc: &mut Document) {
+        for (_, obj) in doc.all_objects_mut() {
+            if obj.id == self.object_id {
+                if let crate::core::document::ObjectType::Path(ref mut p) = obj.object_type {
+                    p.elements = self.new_elements.clone();
+                }
+                break;
+            }
+        }
+    }
+
+    fn undo(&self, doc: &mut Document) {
+        for (_, obj) in doc.all_objects_mut() {
+            if obj.id == self.object_id {
+                if let crate::core::document::ObjectType::Path(ref mut p) = obj.object_type {
+                    p.elements = self.old_elements.clone();
+                }
+                break;
+            }
+        }
+    }
+
+    fn name(&self) -> &str {
+        "Edit Path Nodes"
     }
 }

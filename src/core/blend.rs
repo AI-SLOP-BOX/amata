@@ -55,10 +55,18 @@ pub fn blend_colors(src: [f32; 4], dst: [f32; 4], mode: BlendMode) -> [f32; 4] {
             BlendMode::Darken => s.min(d),
             BlendMode::Lighten => s.max(d),
             BlendMode::ColorDodge => {
-                if s >= 1.0 { 1.0 } else { (d / (1.0 - s).max(1e-5)).min(1.0) }
+                if s >= 1.0 {
+                    1.0
+                } else {
+                    (d / (1.0 - s).max(1e-5)).min(1.0)
+                }
             }
             BlendMode::ColorBurn => {
-                if s <= 0.0 { 0.0 } else { (1.0 - (1.0 - d) / s.max(1e-5)).max(0.0) }
+                if s <= 0.0 {
+                    0.0
+                } else {
+                    (1.0 - (1.0 - d) / s.max(1e-5)).max(0.0)
+                }
             }
             BlendMode::HardLight => {
                 if s < 0.5 {
@@ -85,10 +93,18 @@ pub fn blend_colors(src: [f32; 4], dst: [f32; 4], mode: BlendMode) -> [f32; 4] {
             BlendMode::LinearBurn => (d + s - 1.0).max(0.0),
             BlendMode::VividLight => {
                 if s < 0.5 {
-                    if s <= 0.0 { 0.0 } else { (1.0 - (1.0 - d) / (2.0 * s).max(1e-5)).max(0.0) }
+                    if s <= 0.0 {
+                        0.0
+                    } else {
+                        (1.0 - (1.0 - d) / (2.0 * s).max(1e-5)).max(0.0)
+                    }
                 } else {
                     let s2 = 2.0 * (s - 0.5);
-                    if s2 >= 1.0 { 1.0 } else { (d / (1.0 - s2).max(1e-5)).min(1.0) }
+                    if s2 >= 1.0 {
+                        1.0
+                    } else {
+                        (d / (1.0 - s2).max(1e-5)).min(1.0)
+                    }
                 }
             }
             BlendMode::LinearLight => (d + 2.0 * s - 1.0).clamp(0.0, 1.0),
@@ -100,7 +116,11 @@ pub fn blend_colors(src: [f32; 4], dst: [f32; 4], mode: BlendMode) -> [f32; 4] {
                 }
             }
             BlendMode::HardMix => {
-                if s + d >= 1.0 { 1.0 } else { 0.0 }
+                if s + d >= 1.0 {
+                    1.0
+                } else {
+                    0.0
+                }
             }
             BlendMode::Divide => (d / s.max(1e-5)).min(1.0),
             BlendMode::Subtract => (d - s).max(0.0),
@@ -121,5 +141,10 @@ pub fn blend_colors(src: [f32; 4], dst: [f32; 4], mode: BlendMode) -> [f32; 4] {
     let out_g = (bg * sa + dg * da * (1.0 - sa)) / out_a.max(1e-6);
     let out_b = (bb * sa + db * da * (1.0 - sa)) / out_a.max(1e-6);
 
-    [out_r.clamp(0.0, 1.0), out_g.clamp(0.0, 1.0), out_b.clamp(0.0, 1.0), out_a.clamp(0.0, 1.0)]
+    [
+        out_r.clamp(0.0, 1.0),
+        out_g.clamp(0.0, 1.0),
+        out_b.clamp(0.0, 1.0),
+        out_a.clamp(0.0, 1.0),
+    ]
 }

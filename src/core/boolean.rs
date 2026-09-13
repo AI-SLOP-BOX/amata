@@ -218,10 +218,9 @@ fn polygon_subtract(subject: &[AnchorPoint], clip: &[AnchorPoint]) -> Vec<Vec<An
 
     let mut remaining = Vec::new();
     for pt in enriched {
-        if !point_in_polygon(pt.x, pt.y, clip)
-            && remaining.last() != Some(&pt) {
-                remaining.push(pt);
-            }
+        if !point_in_polygon(pt.x, pt.y, clip) && remaining.last() != Some(&pt) {
+            remaining.push(pt);
+        }
     }
 
     let clip_is_inner_hole = clip.iter().all(|pt| point_in_polygon(pt.x, pt.y, subject));

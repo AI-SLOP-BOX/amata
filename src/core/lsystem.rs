@@ -17,31 +17,32 @@ pub fn generate_lsystem(
     cy: f64,
     step_size: f64,
 ) -> PathData {
-    let (axiom, rules, angle_deg, start_angle): (&str, HashMap<char, String>, f64, f64) = match preset {
-        LSystemPreset::Tree => {
-            let mut r = HashMap::new();
-            r.insert('X', "F+[[X]-X]-F[-FX]+X".to_string());
-            r.insert('F', "FF".to_string());
-            ("X", r, 25.0, -90.0)
-        }
-        LSystemPreset::Dragon => {
-            let mut r = HashMap::new();
-            r.insert('X', "X+YF+".to_string());
-            r.insert('Y', "-FX-Y".to_string());
-            ("FX", r, 90.0, 0.0)
-        }
-        LSystemPreset::Snowflake => {
-            let mut r = HashMap::new();
-            r.insert('F', "F+F--F+F".to_string());
-            ("F--F--F", r, 60.0, 0.0)
-        }
-        LSystemPreset::Hilbert => {
-            let mut r = HashMap::new();
-            r.insert('A', "-BF+AFA+FB-".to_string());
-            r.insert('B', "+AF-BFB-FA+".to_string());
-            ("A", r, 90.0, 0.0)
-        }
-    };
+    let (axiom, rules, angle_deg, start_angle): (&str, HashMap<char, String>, f64, f64) =
+        match preset {
+            LSystemPreset::Tree => {
+                let mut r = HashMap::new();
+                r.insert('X', "F+[[X]-X]-F[-FX]+X".to_string());
+                r.insert('F', "FF".to_string());
+                ("X", r, 25.0, -90.0)
+            }
+            LSystemPreset::Dragon => {
+                let mut r = HashMap::new();
+                r.insert('X', "X+YF+".to_string());
+                r.insert('Y', "-FX-Y".to_string());
+                ("FX", r, 90.0, 0.0)
+            }
+            LSystemPreset::Snowflake => {
+                let mut r = HashMap::new();
+                r.insert('F', "F+F--F+F".to_string());
+                ("F--F--F", r, 60.0, 0.0)
+            }
+            LSystemPreset::Hilbert => {
+                let mut r = HashMap::new();
+                r.insert('A', "-BF+AFA+FB-".to_string());
+                r.insert('B', "+AF-BFB-FA+".to_string());
+                ("A", r, 90.0, 0.0)
+            }
+        };
 
     // Expand L-System string
     let mut current = axiom.to_string();

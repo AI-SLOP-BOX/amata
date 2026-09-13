@@ -1,340 +1,5 @@
+use super::style::{AnchorPoint, BezierSegment, FillStyle, PathElement, StrokeStyle};
 use serde::{Deserialize, Serialize};
-
-// ═══════════════════════════════════════════════════════════════════
-// Pattern Fill: Repeating tile patterns
-// ═══════════════════════════════════════════════════════════════════
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
-pub enum PatternType {
-    #[default]
-    Grid,
-    Hex,
-    Brick,
-    Dots,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct PatternFill {
-    pub pattern_type: PatternType,
-    pub tile_width: f64,
-    pub tile_height: f64,
-    pub offset_x: f64,
-    pub offset_y: f64,
-    pub rotation: f64,
-    pub scale: f64,
-}
-
-impl Default for PatternFill {
-    fn default() -> Self {
-        Self {
-            pattern_type: PatternType::Grid,
-            tile_width: 40.0,
-            tile_height: 40.0,
-            offset_x: 0.0,
-            offset_y: 0.0,
-            rotation: 0.0,
-            scale: 1.0,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-pub struct AnchorPoint {
-    pub x: f64,
-    pub y: f64,
-}
-
-impl AnchorPoint {
-    pub fn new(x: f64, y: f64) -> Self {
-        Self { x, y }
-    }
-
-    pub fn to_kurbo(self) -> kurbo::Point {
-        kurbo::Point::new(self.x, self.y)
-    }
-
-    pub fn from_kurbo(p: kurbo::Point) -> Self {
-        Self { x: p.x, y: p.y }
-    }
-
-    pub fn distance(self, other: Self) -> f64 {
-        ((self.x - other.x).powi(2) + (self.y - other.y).powi(2)).sqrt()
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct BezierSegment {
-    pub start: AnchorPoint,
-    pub control1: AnchorPoint,
-    pub control2: AnchorPoint,
-    pub end: AnchorPoint,
-}
-
-impl BezierSegment {
-    pub fn line(start: AnchorPoint, end: AnchorPoint) -> Self {
-        Self {
-            start,
-            control1: start,
-            control2: end,
-            end,
-        }
-    }
-
-    pub fn cubic(start: AnchorPoint, c1: AnchorPoint, c2: AnchorPoint, end: AnchorPoint) -> Self {
-        Self {
-            start,
-            control1: c1,
-            control2: c2,
-            end,
-        }
-    }
-
-    pub fn is_line(&self) -> bool {
-        self.control1 == self.start && self.control2 == self.end
-    }
-
-    pub fn eval(&self, t: f64) -> AnchorPoint {
-        let t = t.clamp(0.0, 1.0);
-        let u = 1.0 - t;
-        let u2 = u * u;
-        let u3 = u2 * u;
-        let t2 = t * t;
-        let t3 = t2 * t;
-
-        AnchorPoint::new(
-            u3 * self.start.x + 3.0 * u2 * t * self.control1.x + 3.0 * u * t2 * self.control2.x + t3 * self.end.x,
-            u3 * self.start.y + 3.0 * u2 * t * self.control1.y + 3.0 * u * t2 * self.control2.y + t3 * self.end.y,
-        )
-    }
-
-    pub fn to_kurbo(self) -> kurbo::CubicBez {
-        kurbo::CubicBez::new(
-            self.start.to_kurbo(),
-            self.control1.to_kurbo(),
-            self.control2.to_kurbo(),
-            self.end.to_kurbo(),
-        )
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum PathElement {
-    MoveTo(AnchorPoint),
-    LineTo(AnchorPoint),
-    CurveTo(BezierSegment),
-    ClosePath,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
-pub enum FillRule {
-    NonZero,
-    #[default]
-    EvenOdd,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct GradientStop {
-    pub offset: f32, // 0.0 to 1.0
-    pub color: [f32; 4],
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct LinearGradient {
-    pub start_x: f32,
-    pub start_y: f32,
-    pub end_x: f32,
-    pub end_y: f32,
-    pub stops: Vec<GradientStop>,
-}
-
-impl Default for LinearGradient {
-    fn default() -> Self {
-        Self {
-            start_x: 0.0,
-            start_y: 0.0,
-            end_x: 1.0,
-            end_y: 1.0,
-            stops: vec![
-                GradientStop { offset: 0.0, color: [0.2, 0.6, 1.0, 1.0] },
-                GradientStop { offset: 1.0, color: [0.8, 0.2, 0.9, 1.0] },
-            ],
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct RadialGradient {
-    pub center_x: f32,
-    pub center_y: f32,
-    pub radius: f32,
-    pub focus_x: f32,
-    pub focus_y: f32,
-    pub stops: Vec<GradientStop>,
-}
-
-impl Default for RadialGradient {
-    fn default() -> Self {
-        Self {
-            center_x: 0.5,
-            center_y: 0.5,
-            radius: 0.5,
-            focus_x: 0.5,
-            focus_y: 0.5,
-            stops: vec![
-                GradientStop { offset: 0.0, color: [1.0, 1.0, 1.0, 1.0] },
-                GradientStop { offset: 1.0, color: [0.0, 0.0, 0.0, 1.0] },
-            ],
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum FillType {
-    Solid([f32; 4]),
-    Linear(LinearGradient),
-    Radial(RadialGradient),
-    Pattern(PatternFill),
-}
-
-impl Default for FillType {
-    fn default() -> Self {
-        FillType::Solid([0.0, 0.0, 0.0, 1.0])
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct FillStyle {
-    pub color: [f32; 4],
-    pub fill_type: FillType,
-    pub rule: FillRule,
-}
-
-impl Default for FillStyle {
-    fn default() -> Self {
-        Self {
-            color: [0.0, 0.0, 0.0, 1.0],
-            fill_type: FillType::Solid([0.0, 0.0, 0.0, 1.0]),
-            rule: FillRule::NonZero,
-        }
-    }
-}
-
-impl FillStyle {
-    pub fn solid(color: [f32; 4]) -> Self {
-        Self {
-            color,
-            fill_type: FillType::Solid(color),
-            rule: FillRule::NonZero,
-        }
-    }
-
-    pub fn linear_gradient(gradient: LinearGradient) -> Self {
-        let first_color = gradient.stops.first().map(|s| s.color).unwrap_or([0.0, 0.0, 0.0, 1.0]);
-        Self {
-            color: first_color,
-            fill_type: FillType::Linear(gradient),
-            rule: FillRule::NonZero,
-        }
-    }
-
-    pub fn radial_gradient(gradient: RadialGradient) -> Self {
-        let first_color = gradient.stops.first().map(|s| s.color).unwrap_or([0.0, 0.0, 0.0, 1.0]);
-        Self {
-            color: first_color,
-            fill_type: FillType::Radial(gradient),
-            rule: FillRule::NonZero,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
-pub enum StrokeCap {
-    #[default]
-    Butt,
-    Round,
-    Square,
-}
-
-impl StrokeCap {
-    pub fn name(&self) -> &'static str {
-        match self {
-            Self::Butt => "Butt",
-            Self::Round => "Round",
-            Self::Square => "Square",
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
-pub enum StrokeJoin {
-    #[default]
-    Miter,
-    Round,
-    Bevel,
-}
-
-impl StrokeJoin {
-    pub fn name(&self) -> &'static str {
-        match self {
-            Self::Miter => "Miter",
-            Self::Round => "Round",
-            Self::Bevel => "Bevel",
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
-pub enum ArrowHead {
-    #[default]
-    None,
-    Triangle,
-    Arrow,
-    Circle,
-    Diamond,
-    Square,
-    Barbed,
-}
-
-impl ArrowHead {
-    pub fn name(&self) -> &'static str {
-        match self {
-            Self::None => "None",
-            Self::Triangle => "Triangle",
-            Self::Arrow => "Arrow",
-            Self::Circle => "Circle",
-            Self::Diamond => "Diamond",
-            Self::Square => "Square",
-            Self::Barbed => "Barbed",
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct StrokeStyle {
-    pub color: [f32; 4],
-    pub width: f64,
-    pub dash_pattern: Option<Vec<f64>>,
-    pub cap: StrokeCap,
-    pub join: StrokeJoin,
-    pub miter_limit: f64,
-    pub arrow_start: ArrowHead,
-    pub arrow_end: ArrowHead,
-}
-
-impl Default for StrokeStyle {
-    fn default() -> Self {
-        Self {
-            color: [0.0, 0.0, 0.0, 1.0],
-            width: 1.0,
-            dash_pattern: None,
-            cap: StrokeCap::Butt,
-            join: StrokeJoin::Miter,
-            miter_limit: 4.0,
-            arrow_start: ArrowHead::None,
-            arrow_end: ArrowHead::None,
-        }
-    }
-}
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PathData {
@@ -365,17 +30,29 @@ impl PathData {
     }
 
     pub fn push_move_to(&mut self, x: f64, y: f64) {
-        self.elements.push(PathElement::MoveTo(AnchorPoint::new(x, y)));
+        self.elements
+            .push(PathElement::MoveTo(AnchorPoint::new(x, y)));
     }
 
     pub fn push_line_to(&mut self, x: f64, y: f64) {
-        self.elements.push(PathElement::LineTo(AnchorPoint::new(x, y)));
+        self.elements
+            .push(PathElement::LineTo(AnchorPoint::new(x, y)));
     }
 
     pub fn push_curve_to(&mut self, c1: AnchorPoint, c2: AnchorPoint, end: AnchorPoint) {
         let start = self.last_point().unwrap_or(AnchorPoint::new(0.0, 0.0));
         self.elements
-            .push(PathElement::CurveTo(BezierSegment::cubic(start, c1, c2, end)));
+            .push(PathElement::CurveTo(BezierSegment::cubic(
+                start, c1, c2, end,
+            )));
+    }
+
+    pub fn push_cubic_curve_to(&mut self, x1: f64, y1: f64, x2: f64, y2: f64, x3: f64, y3: f64) {
+        self.push_curve_to(
+            AnchorPoint::new(x1, y1),
+            AnchorPoint::new(x2, y2),
+            AnchorPoint::new(x3, y3),
+        );
     }
 
     pub fn close(&mut self) {
@@ -425,6 +102,145 @@ impl PathData {
         points
     }
 
+    /// Extract separate closed/open subpaths from PathElement sequences (handles holes/islands)
+    pub fn to_subpaths(&self, segments_per_edge: u32) -> Vec<Vec<AnchorPoint>> {
+        let mut subpaths = Vec::new();
+        let mut current = Vec::new();
+
+        for elem in &self.elements {
+            match elem {
+                PathElement::MoveTo(p) => {
+                    if current.len() >= 2 {
+                        subpaths.push(current);
+                    }
+                    current = vec![*p];
+                }
+                PathElement::LineTo(p) => {
+                    current.push(*p);
+                }
+                PathElement::CurveTo(seg) => {
+                    let n = segments_per_edge.max(1);
+                    for i in 1..=n {
+                        let t = i as f64 / n as f64;
+                        current.push(seg.eval(t));
+                    }
+                }
+                PathElement::ClosePath => {
+                    if current.len() >= 3 {
+                        // Remove trailing duplicate of first vertex if present
+                        if let Some(first) = current.first().copied() {
+                            if current.len() > 1 && current.last() == Some(&first) {
+                                current.pop();
+                            }
+                        }
+                        if current.len() >= 3 {
+                            subpaths.push(current);
+                        }
+                        current = Vec::new();
+                    }
+                }
+            }
+        }
+        if current.len() >= 3 {
+            if let Some(first) = current.first().copied() {
+                if current.last() == Some(&first) {
+                    current.pop();
+                }
+            }
+            if current.len() >= 3 {
+                subpaths.push(current);
+            }
+        }
+        subpaths
+    }
+
+    /// Triangulate path into triangle vertices (supports holes and concave geometries via Ear-Clipping and EvenOdd rules)
+    pub fn to_triangles(&self, segments_per_edge: u32) -> Vec<[AnchorPoint; 3]> {
+        let subpaths = self.to_subpaths(segments_per_edge);
+        if subpaths.is_empty() {
+            return Vec::new();
+        }
+
+        if subpaths.len() == 1 {
+            let poly = &subpaths[0];
+            let tris = crate::core::mesh3d::triangulate_polygon(poly);
+            return tris
+                .into_iter()
+                .map(|[i0, i1, i2]| [poly[i0], poly[i1], poly[i2]])
+                .collect();
+        }
+
+        // Multiple subpaths (Outer boundary + inner holes / multiple islands)
+        // Group into outer and inner holes based on area and containment
+        let mut result = Vec::new();
+        for (idx, path_a) in subpaths.iter().enumerate() {
+            let is_hole = subpaths.iter().enumerate().any(|(j, path_b)| {
+                if idx == j || path_b.len() < 3 {
+                    false
+                } else {
+                    crate::core::geometry::point_in_polygon(path_a[0].x, path_a[0].y, path_b)
+                }
+            });
+
+            if !is_hole {
+                // Find all immediate child holes inside path_a
+                let mut holes: Vec<&Vec<AnchorPoint>> = Vec::new();
+                for (j, path_b) in subpaths.iter().enumerate() {
+                    if idx != j
+                        && path_b.len() >= 3
+                        && crate::core::geometry::point_in_polygon(path_b[0].x, path_b[0].y, path_a)
+                    {
+                        holes.push(path_b);
+                    }
+                }
+
+                if holes.is_empty() {
+                    let tris = crate::core::mesh3d::triangulate_polygon(path_a);
+                    for [i0, i1, i2] in tris {
+                        result.push([path_a[i0], path_a[i1], path_a[i2]]);
+                    }
+                } else {
+                    // Bridge holes into a single polygon for ear clipping
+                    let mut bridged = path_a.clone();
+                    for hole in holes {
+                        // Find closest pair between bridged and hole
+                        let mut min_d = f64::MAX;
+                        let mut best_b_idx = 0;
+                        let mut best_h_idx = 0;
+                        for (bi, bp) in bridged.iter().enumerate() {
+                            for (hi, hp) in hole.iter().enumerate() {
+                                let d = bp.distance(*hp);
+                                if d < min_d {
+                                    min_d = d;
+                                    best_b_idx = bi;
+                                    best_h_idx = hi;
+                                }
+                            }
+                        }
+                        // Insert hole vertices reversed at best_b_idx
+                        let mut hole_cycle = Vec::new();
+                        let hn = hole.len();
+                        for step in 0..hn {
+                            let h_idx = (best_h_idx + hn - (step % hn)) % hn;
+                            hole_cycle.push(hole[h_idx]);
+                        }
+                        hole_cycle.push(hole[best_h_idx]);
+                        hole_cycle.push(bridged[best_b_idx]);
+
+                        bridged.splice(best_b_idx + 1..best_b_idx + 1, hole_cycle);
+                    }
+
+                    let tris = crate::core::mesh3d::triangulate_polygon(&bridged);
+                    for [i0, i1, i2] in tris {
+                        result.push([bridged[i0], bridged[i1], bridged[i2]]);
+                    }
+                }
+            }
+        }
+
+        result
+    }
+
     pub fn bounding_box(&self) -> Option<(AnchorPoint, AnchorPoint)> {
         let poly = self.to_polygon(8);
         if poly.is_empty() {
@@ -440,7 +256,10 @@ impl PathData {
             max_x = max_x.max(p.x);
             max_y = max_y.max(p.y);
         }
-        Some((AnchorPoint::new(min_x, min_y), AnchorPoint::new(max_x, max_y)))
+        Some((
+            AnchorPoint::new(min_x, min_y),
+            AnchorPoint::new(max_x, max_y),
+        ))
     }
 
     pub fn transform(&mut self, matrix: &[f64; 6]) {
@@ -482,7 +301,13 @@ impl PathData {
     }
 
     /// Construct a star with N points, inner and outer radii, centered at (cx, cy)
-    pub fn from_star(points: usize, inner_radius: f64, outer_radius: f64, cx: f64, cy: f64) -> Self {
+    pub fn from_star(
+        points: usize,
+        inner_radius: f64,
+        outer_radius: f64,
+        cx: f64,
+        cy: f64,
+    ) -> Self {
         let mut path = Self::new();
         let points = points.max(3);
         let total_vertices = points * 2;
@@ -490,7 +315,11 @@ impl PathData {
         let start_angle = -std::f64::consts::FRAC_PI_2;
 
         for i in 0..total_vertices {
-            let r = if i % 2 == 0 { outer_radius } else { inner_radius };
+            let r = if i % 2 == 0 {
+                outer_radius
+            } else {
+                inner_radius
+            };
             let angle = start_angle + i as f64 * angle_step;
             let px = cx + r * angle.cos();
             let py = cy + r * angle.sin();
@@ -627,14 +456,8 @@ impl PathData {
             let p2 = pts[i + 1];
             let p3 = if i + 2 < n { pts[i + 2] } else { pts[i + 1] };
 
-            let c1 = AnchorPoint::new(
-                p1.x + (p2.x - p0.x) / 6.0,
-                p1.y + (p2.y - p0.y) / 6.0,
-            );
-            let c2 = AnchorPoint::new(
-                p2.x - (p3.x - p1.x) / 6.0,
-                p2.y - (p3.y - p1.y) / 6.0,
-            );
+            let c1 = AnchorPoint::new(p1.x + (p2.x - p0.x) / 6.0, p1.y + (p2.y - p0.y) / 6.0);
+            let c2 = AnchorPoint::new(p2.x - (p3.x - p1.x) / 6.0, p2.y - (p3.y - p1.y) / 6.0);
             path.push_curve_to(c1, c2, p2);
         }
         path

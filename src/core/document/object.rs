@@ -1,5 +1,5 @@
-use super::effects::{DropShadow, GlowEffect};
-use super::path::{AnchorPoint, FillStyle, PathData, StrokeStyle};
+use super::super::effects::{DropShadow, GlowEffect};
+use crate::core::path::{AnchorPoint, FillStyle, PathData, StrokeStyle};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -48,28 +48,67 @@ impl BlendMode {
 
     pub fn all() -> &'static [BlendMode] {
         &[
-            Self::Normal, Self::Multiply, Self::Screen, Self::Overlay,
-            Self::Darken, Self::Lighten, Self::ColorDodge, Self::ColorBurn,
-            Self::HardLight, Self::SoftLight, Self::Difference, Self::Exclusion,
-            Self::Hue, Self::Saturation, Self::Color, Self::Luminosity,
+            Self::Normal,
+            Self::Multiply,
+            Self::Screen,
+            Self::Overlay,
+            Self::Darken,
+            Self::Lighten,
+            Self::ColorDodge,
+            Self::ColorBurn,
+            Self::HardLight,
+            Self::SoftLight,
+            Self::Difference,
+            Self::Exclusion,
+            Self::Hue,
+            Self::Saturation,
+            Self::Color,
+            Self::Luminosity,
         ]
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ObjectType {
     Path(PathData),
-    Rectangle { width: f64, height: f64, corner_radius: f64 },
-    Ellipse { rx: f64, ry: f64 },
-    Star { points: usize, inner_radius: f64, outer_radius: f64 },
-    Polygon { sides: usize, radius: f64 },
-    Line { x2: f64, y2: f64 },
-    Text { text: String, font_size: f64 },
+    Rectangle {
+        width: f64,
+        height: f64,
+        corner_radius: f64,
+    },
+    Ellipse {
+        rx: f64,
+        ry: f64,
+    },
+    Star {
+        points: usize,
+        inner_radius: f64,
+        outer_radius: f64,
+    },
+    Polygon {
+        sides: usize,
+        radius: f64,
+    },
+    Line {
+        x2: f64,
+        y2: f64,
+    },
+    Text {
+        text: String,
+        font_size: f64,
+    },
     Group(Vec<Object>),
-    ClippingMask { children: Vec<Object> },
+    ClippingMask {
+        children: Vec<Object>,
+    },
+    Use {
+        href: String,
+        width: Option<f64>,
+        height: Option<f64>,
+    },
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Transform {
     pub x: f64,
     pub y: f64,
@@ -100,14 +139,24 @@ impl Transform {
         let sin = self.rotation.sin();
         let skew_x_rad = self.skew_x.to_radians();
         let skew_y_rad = self.skew_y.to_radians();
-        [
-            cos * self.scale_x + skew_x_rad.sin() * self.scale_x,
-            sin * self.scale_x + skew_x_rad.cos() * self.scale_x,
-            -sin * self.scale_y + skew_y_rad.sin() * self.scale_y,
-            cos * self.scale_y + skew_y_rad.cos() * self.scale_y,
-            self.x,
-            self.y,
-        ]
+
+        // Transformation order: Scale & Skew, then Rotate, then Translate
+        // (x', y') = R * K * S * (x, y) + T
+        // skewed_x = sx * x + sy * y * sin(skew_x)
+        // skewed_y = sx * x * sin(skew_y) + sy * y
+        // x_rot = cos * skewed_x - sin * skewed_y + tx
+        // y_rot = sin * skewed_x + cos * skewed_y + ty
+        let k0 = self.scale_x;
+        let k1 = self.scale_x * skew_y_rad.sin();
+        let k2 = self.scale_y * skew_x_rad.sin();
+        let k3 = self.scale_y;
+
+        let m0 = cos * k0 - sin * k1;
+        let m1 = sin * k0 + cos * k1;
+        let m2 = cos * k2 - sin * k3;
+        let m3 = sin * k2 + cos * k3;
+
+        [m0, m1, m2, m3, self.x, self.y]
     }
 
     pub fn transform_point(&self, px: f64, py: f64) -> (f64, f64) {
@@ -132,13 +181,21 @@ impl Transform {
         let sin = (-self.rotation).sin();
         let rx = cos * dx - sin * dy;
         let ry = sin * dx + cos * dy;
-        let sx = if self.scale_x.abs() > 1e-6 { rx / self.scale_x } else { 0.0 };
-        let sy = if self.scale_y.abs() > 1e-6 { ry / self.scale_y } else { 0.0 };
+        let sx = if self.scale_x.abs() > 1e-6 {
+            rx / self.scale_x
+        } else {
+            0.0
+        };
+        let sy = if self.scale_y.abs() > 1e-6 {
+            ry / self.scale_y
+        } else {
+            0.0
+        };
         (sx, sy)
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Object {
     pub id: String,
     pub name: String,
@@ -178,8 +235,16 @@ impl Object {
         Self {
             id: Uuid::new_v4().to_string(),
             name: name.to_string(),
-            object_type: ObjectType::Rectangle { width: w, height: h, corner_radius },
-            transform: Transform { x, y, ..Default::default() },
+            object_type: ObjectType::Rectangle {
+                width: w,
+                height: h,
+                corner_radius,
+            },
+            transform: Transform {
+                x,
+                y,
+                ..Default::default()
+            },
             fill: Some(FillStyle::default()),
             stroke: Some(StrokeStyle::default()),
             shadow: None,
@@ -196,7 +261,11 @@ impl Object {
             id: Uuid::new_v4().to_string(),
             name: name.to_string(),
             object_type: ObjectType::Ellipse { rx, ry },
-            transform: Transform { x: cx, y: cy, ..Default::default() },
+            transform: Transform {
+                x: cx,
+                y: cy,
+                ..Default::default()
+            },
             fill: Some(FillStyle::default()),
             stroke: Some(StrokeStyle::default()),
             shadow: None,
@@ -208,12 +277,27 @@ impl Object {
         }
     }
 
-    pub fn new_star(name: &str, cx: f64, cy: f64, points: usize, inner_radius: f64, outer_radius: f64) -> Self {
+    pub fn new_star(
+        name: &str,
+        cx: f64,
+        cy: f64,
+        points: usize,
+        inner_radius: f64,
+        outer_radius: f64,
+    ) -> Self {
         Self {
             id: Uuid::new_v4().to_string(),
             name: name.to_string(),
-            object_type: ObjectType::Star { points, inner_radius, outer_radius },
-            transform: Transform { x: cx, y: cy, ..Default::default() },
+            object_type: ObjectType::Star {
+                points,
+                inner_radius,
+                outer_radius,
+            },
+            transform: Transform {
+                x: cx,
+                y: cy,
+                ..Default::default()
+            },
             fill: Some(FillStyle::default()),
             stroke: Some(StrokeStyle::default()),
             shadow: None,
@@ -230,7 +314,11 @@ impl Object {
             id: Uuid::new_v4().to_string(),
             name: name.to_string(),
             object_type: ObjectType::Polygon { sides, radius },
-            transform: Transform { x: cx, y: cy, ..Default::default() },
+            transform: Transform {
+                x: cx,
+                y: cy,
+                ..Default::default()
+            },
             fill: Some(FillStyle::default()),
             stroke: Some(StrokeStyle::default()),
             shadow: None,
@@ -246,8 +334,15 @@ impl Object {
         Self {
             id: Uuid::new_v4().to_string(),
             name: name.to_string(),
-            object_type: ObjectType::Line { x2: x2 - x1, y2: y2 - y1 },
-            transform: Transform { x: x1, y: y1, ..Default::default() },
+            object_type: ObjectType::Line {
+                x2: x2 - x1,
+                y2: y2 - y1,
+            },
+            transform: Transform {
+                x: x1,
+                y: y1,
+                ..Default::default()
+            },
             fill: None,
             stroke: Some(StrokeStyle::default()),
             shadow: None,
@@ -263,8 +358,15 @@ impl Object {
         Self {
             id: Uuid::new_v4().to_string(),
             name: name.to_string(),
-            object_type: ObjectType::Text { text: text.to_string(), font_size },
-            transform: Transform { x, y, ..Default::default() },
+            object_type: ObjectType::Text {
+                text: text.to_string(),
+                font_size,
+            },
+            transform: Transform {
+                x,
+                y,
+                ..Default::default()
+            },
             fill: Some(FillStyle::default()),
             stroke: None,
             shadow: None,
@@ -293,25 +395,112 @@ impl Object {
         }
     }
 
+    pub fn new_use(
+        name: &str,
+        href: &str,
+        x: f64,
+        y: f64,
+        width: Option<f64>,
+        height: Option<f64>,
+    ) -> Self {
+        Self {
+            id: Uuid::new_v4().to_string(),
+            name: name.to_string(),
+            object_type: ObjectType::Use {
+                href: href.to_string(),
+                width,
+                height,
+            },
+            transform: Transform {
+                x,
+                y,
+                ..Default::default()
+            },
+            fill: None,
+            stroke: None,
+            shadow: None,
+            glow: None,
+            opacity: 1.0,
+            blend_mode: BlendMode::Normal,
+            visible: true,
+            locked: false,
+        }
+    }
+
+    /// Combine multiple objects into a single Compound Path (holes are created where subpaths overlap using EvenOdd rule)
+    pub fn make_compound_path(objects: &[Object]) -> Option<Self> {
+        if objects.is_empty() {
+            return None;
+        }
+
+        let base = &objects[0];
+        let mut combined_path = PathData::new();
+        combined_path.fill = base.fill.clone().or_else(|| Some(FillStyle::default()));
+        if let Some(ref mut fill) = combined_path.fill {
+            fill.rule = crate::core::path::FillRule::EvenOdd;
+        }
+        combined_path.stroke = base.stroke.clone();
+
+        for obj in objects {
+            let mut p = obj.to_path_data();
+            p.transform(&obj.transform.matrix());
+            combined_path.elements.extend(p.elements);
+        }
+
+        let mut compound = Self::new_path("Compound Path", combined_path);
+        compound.shadow = base.shadow.clone();
+        compound.glow = base.glow.clone();
+        compound.opacity = base.opacity;
+        compound.blend_mode = base.blend_mode;
+        Some(compound)
+    }
+
+    /// Release a Compound Path into its component independent subpath objects
+    pub fn release_compound_path(&self) -> Vec<Self> {
+        if let ObjectType::Path(ref path) = self.object_type {
+            let subpaths = path.to_subpaths(16);
+            if subpaths.len() <= 1 {
+                return vec![self.clone()];
+            }
+
+            let mut released = Vec::new();
+            for (idx, sp) in subpaths.into_iter().enumerate() {
+                let mut p = PathData::from_polygon_points(&sp, true);
+                p.fill = self.fill.clone();
+                p.stroke = self.stroke.clone();
+                let mut obj = Self::new_path(&format!("{}_part_{}", self.name, idx + 1), p);
+                obj.transform = self.transform.clone();
+                obj.shadow = self.shadow.clone();
+                obj.glow = self.glow.clone();
+                obj.opacity = self.opacity;
+                obj.blend_mode = self.blend_mode;
+                released.push(obj);
+            }
+            released
+        } else {
+            vec![self.clone()]
+        }
+    }
+
     /// Converts this object to its canonical local PathData representation
     pub fn to_path_data(&self) -> PathData {
         match &self.object_type {
             ObjectType::Path(path) => path.clone(),
-            ObjectType::Rectangle { width, height, corner_radius } => {
-                PathData::from_rect(0.0, 0.0, *width, *height, *corner_radius)
-            }
-            ObjectType::Ellipse { rx, ry } => {
-                PathData::from_ellipse(0.0, 0.0, *rx, *ry)
-            }
-            ObjectType::Star { points, inner_radius, outer_radius } => {
-                PathData::from_star(*points, *inner_radius, *outer_radius, 0.0, 0.0)
-            }
+            ObjectType::Rectangle {
+                width,
+                height,
+                corner_radius,
+            } => PathData::from_rect(0.0, 0.0, *width, *height, *corner_radius),
+            ObjectType::Ellipse { rx, ry } => PathData::from_ellipse(0.0, 0.0, *rx, *ry),
+            ObjectType::Star {
+                points,
+                inner_radius,
+                outer_radius,
+            } => PathData::from_star(*points, *inner_radius, *outer_radius, 0.0, 0.0),
             ObjectType::Polygon { sides, radius } => {
                 PathData::from_polygon(*sides, *radius, 0.0, 0.0)
             }
-            ObjectType::Line { x2, y2 } => {
-                PathData::from_line(0.0, 0.0, *x2, *y2)
-            }
+            ObjectType::Line { x2, y2 } => PathData::from_line(0.0, 0.0, *x2, *y2),
             ObjectType::Text { text, font_size } => {
                 // Approximate bounding rect as a path
                 let width = text.chars().count() as f64 * font_size * 0.6;
@@ -336,6 +525,11 @@ impl Object {
                 }
                 combined
             }
+            ObjectType::Use { width, height, .. } => {
+                let w = width.unwrap_or(100.0);
+                let h = height.unwrap_or(100.0);
+                PathData::from_rect(0.0, 0.0, w, h, 0.0)
+            }
         }
     }
 
@@ -359,8 +553,13 @@ impl Object {
 
         match &self.object_type {
             ObjectType::Path(path) => {
-                let poly = path.to_polygon(8);
-                super::geometry::point_in_polygon(lx, ly, &poly)
+                let subpaths = path.to_subpaths(8);
+                let even_odd = path
+                    .fill
+                    .as_ref()
+                    .map(|f| matches!(f.rule, crate::core::path::FillRule::EvenOdd))
+                    .unwrap_or(true);
+                crate::core::geometry::point_in_subpaths(lx, ly, &subpaths, even_odd)
             }
             ObjectType::Rectangle { width, height, .. } => {
                 lx >= 0.0 && lx <= *width && ly >= 0.0 && ly <= *height
@@ -375,10 +574,10 @@ impl Object {
             }
             ObjectType::Star { .. } | ObjectType::Polygon { .. } => {
                 let poly = self.to_path_data().to_polygon(8);
-                super::geometry::point_in_polygon(lx, ly, &poly)
+                crate::core::geometry::point_in_polygon(lx, ly, &poly)
             }
             ObjectType::Line { x2, y2 } => {
-                let dist = super::geometry::distance_to_segment(
+                let dist = crate::core::geometry::distance_to_segment(
                     AnchorPoint::new(lx, ly),
                     AnchorPoint::new(0.0, 0.0),
                     AnchorPoint::new(*x2, *y2),
@@ -391,11 +590,12 @@ impl Object {
                 let height = *font_size;
                 lx >= 0.0 && lx <= width && ly >= -height && ly <= 0.0
             }
-            ObjectType::Group(children) => {
-                children.iter().any(|c| c.hit_test(lx, ly))
-            }
-            ObjectType::ClippingMask { children } => {
-                children.iter().any(|c| c.hit_test(lx, ly))
+            ObjectType::Group(children) => children.iter().any(|c| c.hit_test(lx, ly)),
+            ObjectType::ClippingMask { children } => children.iter().any(|c| c.hit_test(lx, ly)),
+            ObjectType::Use { width, height, .. } => {
+                let w = width.unwrap_or(100.0);
+                let h = height.unwrap_or(100.0);
+                lx >= 0.0 && lx <= w && ly >= 0.0 && ly <= h
             }
         }
     }
@@ -416,152 +616,12 @@ impl Object {
             max_y = max_y.max(p.y);
         }
         if min_x <= max_x && min_y <= max_y {
-            Some((AnchorPoint::new(min_x, min_y), AnchorPoint::new(max_x, max_y)))
+            Some((
+                AnchorPoint::new(min_x, min_y),
+                AnchorPoint::new(max_x, max_y),
+            ))
         } else {
             None
-        }
-    }
-}
-
-impl Layer {
-    pub fn new(name: &str) -> Self {
-        Self {
-            id: Uuid::new_v4().to_string(),
-            name: name.to_string(),
-            objects: Vec::new(),
-            visible: true,
-            locked: false,
-            opacity: 1.0,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Layer {
-    pub id: String,
-    pub name: String,
-    pub objects: Vec<Object>,
-    pub visible: bool,
-    pub locked: bool,
-    pub opacity: f32,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Document {
-    pub name: String,
-    pub layers: Vec<Layer>,
-    pub active_layer_idx: usize,
-    pub width: f64,
-    pub height: f64,
-}
-
-impl Default for Document {
-    fn default() -> Self {
-        let mut doc = Self {
-            name: "Untitled".to_string(),
-            layers: Vec::new(),
-            active_layer_idx: 0,
-            width: 1920.0,
-            height: 1080.0,
-        };
-        doc.layers.push(Layer::new("Layer 1"));
-        doc
-    }
-}
-
-impl Document {
-    pub fn active_layer(&self) -> &Layer {
-        &self.layers[self.active_layer_idx]
-    }
-
-    pub fn active_layer_mut(&mut self) -> &mut Layer {
-        &mut self.layers[self.active_layer_idx]
-    }
-
-    pub fn add_object(&mut self, obj: Object) {
-        self.active_layer_mut().objects.push(obj);
-    }
-
-    pub fn all_objects(&self) -> impl DoubleEndedIterator<Item = (usize, &Object)> {
-        self.layers.iter().enumerate().flat_map(|(i, layer)| {
-            layer.objects.iter().map(move |obj| (i, obj))
-        })
-    }
-
-    pub fn all_objects_mut(&mut self) -> impl Iterator<Item = (usize, &mut Object)> {
-        self.layers.iter_mut().enumerate().flat_map(|(i, layer)| {
-            layer.objects.iter_mut().map(move |obj| (i, obj))
-        })
-    }
-
-    pub fn object_by_id(&self, id: &str) -> Option<(usize, &Object)> {
-        self.all_objects().find(|(_, o)| o.id == id)
-    }
-
-    pub fn remove_object(&mut self, id: &str) -> Option<Object> {
-        for layer in &mut self.layers {
-            if let Some(pos) = layer.objects.iter().position(|o| o.id == id) {
-                return Some(layer.objects.remove(pos));
-            }
-        }
-        None
-    }
-}
-
-// ═══════════════════════════════════════════════════════════════════
-// Symbol: Reusable object definition
-// ═══════════════════════════════════════════════════════════════════
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Symbol {
-    pub id: String,
-    pub name: String,
-    pub object: Object,
-    pub use_count: usize,
-}
-
-impl Symbol {
-    pub fn new(name: &str, object: Object) -> Self {
-        Self {
-            id: Uuid::new_v4().to_string(),
-            name: name.to_string(),
-            object,
-            use_count: 0,
-        }
-    }
-}
-
-// ═══════════════════════════════════════════════════════════════════
-// Width Point: Variable stroke width
-// ═══════════════════════════════════════════════════════════════════
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct WidthPoint {
-    pub position: f64,
-    pub width: f64,
-    pub side: WidthSide,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
-pub enum WidthSide {
-    Left,
-    Right,
-    #[default]
-    Both,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct WidthProfile {
-    pub points: Vec<WidthPoint>,
-}
-
-impl Default for WidthProfile {
-    fn default() -> Self {
-        Self {
-            points: vec![
-                WidthPoint { position: 0.0, width: 1.0, side: WidthSide::Both },
-                WidthPoint { position: 1.0, width: 1.0, side: WidthSide::Both },
-            ],
         }
     }
 }

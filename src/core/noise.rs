@@ -26,12 +26,20 @@ pub fn deform_path(
 
     for i in 0..n {
         let prev = if i == 0 {
-            if path.closed { poly[n - 1] } else { poly[0] }
+            if path.closed {
+                poly[n - 1]
+            } else {
+                poly[0]
+            }
         } else {
             poly[i - 1]
         };
         let next = if i + 1 >= n {
-            if path.closed { poly[0] } else { poly[n - 1] }
+            if path.closed {
+                poly[0]
+            } else {
+                poly[n - 1]
+            }
         } else {
             poly[i + 1]
         };

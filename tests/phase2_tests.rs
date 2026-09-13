@@ -113,8 +113,16 @@ fn test_cli_phase2_subcommands() {
     let out_offset = temp_dir.join("p2_offset.svg");
     let out_outline = temp_dir.join("p2_outline.svg");
 
-    std::fs::write(&in_svg1, r##"<svg width="200" height="200"><rect x="10" y="10" width="80" height="80" /></svg>"##).unwrap();
-    std::fs::write(&in_svg2, r##"<svg width="200" height="200"><circle cx="100" cy="100" r="40" /></svg>"##).unwrap();
+    std::fs::write(
+        &in_svg1,
+        r##"<svg width="200" height="200"><rect x="10" y="10" width="80" height="80" /></svg>"##,
+    )
+    .unwrap();
+    std::fs::write(
+        &in_svg2,
+        r##"<svg width="200" height="200"><circle cx="100" cy="100" r="40" /></svg>"##,
+    )
+    .unwrap();
 
     // 1. Export 3D
     let cli_3d = Cli {

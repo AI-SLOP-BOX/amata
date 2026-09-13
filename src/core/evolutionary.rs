@@ -10,9 +10,8 @@ pub fn evolve_vector_composition(
     let poly_count = polygon_count.max(5);
     let mut objects = Vec::with_capacity(poly_count);
 
-    let pseudo_rand = |seed: f64| -> f64 {
-        ((seed * 37.123 + 12.345).sin() * 43758.5453).fract().abs()
-    };
+    let pseudo_rand =
+        |seed: f64| -> f64 { ((seed * 37.123 + 12.345).sin() * 43758.5453).fract().abs() };
 
     for i in 0..poly_count {
         let mut best_pts = Vec::new();
@@ -30,7 +29,8 @@ pub fn evolve_vector_composition(
             let mut pts = Vec::with_capacity(pt_count);
 
             for p in 0..pt_count {
-                let angle = (p as f64 / pt_count as f64) * std::f64::consts::TAU + pseudo_rand(s + p as f64 * 4.0);
+                let angle = (p as f64 / pt_count as f64) * std::f64::consts::TAU
+                    + pseudo_rand(s + p as f64 * 4.0);
                 let r = rad * (0.6 + 0.4 * pseudo_rand(s + p as f64 * 7.0));
                 pts.push(AnchorPoint::new(
                     (cx + angle.cos() * r).clamp(0.0, width),

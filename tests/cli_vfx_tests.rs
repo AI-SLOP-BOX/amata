@@ -1,7 +1,9 @@
-use irasu_illustrator::cli::{run_cli, Cli, Commands, CliBooleanOp};
+use irasu_illustrator::cli::{run_cli, Cli, CliBooleanOp, Commands};
 use irasu_illustrator::core::document::{Document, Object};
 use irasu_illustrator::core::path::{FillStyle, PathData, StrokeStyle};
-use irasu_illustrator::io::vfx::{doc_to_aevfx_comp, object_to_motion_path_keyframes, object_to_vfx_spline};
+use irasu_illustrator::io::vfx::{
+    doc_to_aevfx_comp, object_to_motion_path_keyframes, object_to_vfx_spline,
+};
 
 #[test]
 fn test_doc_to_aevfx_comp() {
@@ -92,6 +94,7 @@ fn test_cli_convert_and_info() {
         command: Some(Commands::Convert {
             input: sample_svg.clone(),
             output: sample_json.clone(),
+            scale: 1.0,
         }),
     };
     assert!(run_cli(cli_convert).is_ok());

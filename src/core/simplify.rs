@@ -22,7 +22,8 @@ pub fn simplify_polygon_visvalingam(pts: &[AnchorPoint], tolerance_area: f64) ->
             let p2 = current[i + 1];
 
             // Triangle area = 0.5 * |x0(y1 - y2) + x1(y2 - y0) + x2(y0 - y1)|
-            let area = (p0.x * (p1.y - p2.y) + p1.x * (p2.y - p0.y) + p2.x * (p0.y - p1.y)).abs() * 0.5;
+            let area =
+                (p0.x * (p1.y - p2.y) + p1.x * (p2.y - p0.y) + p2.x * (p0.y - p1.y)).abs() * 0.5;
 
             if area < min_area {
                 min_area = area;

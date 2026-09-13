@@ -160,21 +160,20 @@ impl GpuRenderer {
                 ],
             });
 
-        let blur_pipeline =
-            device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-                label: Some("Blur Compute Pipeline"),
-                layout: Some(
-                    &device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                        label: Some("Blur Pipeline Layout"),
-                        bind_group_layouts: &[&blur_bind_group_layout],
-                        push_constant_ranges: &[],
-                    }),
-                ),
-                module: &shader,
-                entry_point: Some("cs_blur"),
-                compilation_options: Default::default(),
-                cache: None,
-            });
+        let blur_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
+            label: Some("Blur Compute Pipeline"),
+            layout: Some(
+                &device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                    label: Some("Blur Pipeline Layout"),
+                    bind_group_layouts: &[&blur_bind_group_layout],
+                    push_constant_ranges: &[],
+                }),
+            ),
+            module: &shader,
+            entry_point: Some("cs_blur"),
+            compilation_options: Default::default(),
+            cache: None,
+        });
 
         let vertex_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Vertex Buffer"),
@@ -229,14 +228,7 @@ impl GpuRenderer {
         self.indices.clear();
     }
 
-    pub fn push_quad(
-        &mut self,
-        x0: f32,
-        y0: f32,
-        x1: f32,
-        y1: f32,
-        color: [f32; 4],
-    ) {
+    pub fn push_quad(&mut self, x0: f32, y0: f32, x1: f32, y1: f32, color: [f32; 4]) {
         let base = self.vertices.len() as u32;
         self.vertices.push(Vertex {
             position: [x0, y0],
@@ -289,8 +281,7 @@ impl GpuRenderer {
             color,
             tex_coord: [0.5, 1.0],
         });
-        self.indices
-            .extend_from_slice(&[base, base + 1, base + 2]);
+        self.indices.extend_from_slice(&[base, base + 1, base + 2]);
     }
 
     /// Triangulate a convex polygon and push to GPU buffers
@@ -358,14 +349,7 @@ impl GpuRenderer {
     }
 
     /// Push a circle as a triangle fan
-    pub fn push_circle(
-        &mut self,
-        cx: f32,
-        cy: f32,
-        radius: f32,
-        segments: u32,
-        color: [f32; 4],
-    ) {
+    pub fn push_circle(&mut self, cx: f32, cy: f32, radius: f32, segments: u32, color: [f32; 4]) {
         let base = self.vertices.len() as u32;
         // Center vertex
         self.vertices.push(Vertex {
@@ -381,19 +365,13 @@ impl GpuRenderer {
             self.vertices.push(Vertex {
                 position: [x, y],
                 color,
-                tex_coord: [
-                    0.5 + 0.5 * angle.cos(),
-                    0.5 + 0.5 * angle.sin(),
-                ],
+                tex_coord: [0.5 + 0.5 * angle.cos(), 0.5 + 0.5 * angle.sin()],
             });
         }
 
         for i in 1..segments {
-            self.indices.extend_from_slice(&[
-                base,
-                base + i,
-                base + i + 1,
-            ]);
+            self.indices
+                .extend_from_slice(&[base, base + i, base + i + 1]);
         }
         // Close the fan
         self.indices
@@ -439,16 +417,10 @@ impl GpuRenderer {
             .write_buffer(&self.uniform_buffer, 0, bytemuck::cast_slice(&[uniforms]));
 
         // Upload vertex and index data
-        self.queue.write_buffer(
-            &self.vertex_buffer,
-            0,
-            bytemuck::cast_slice(&self.vertices),
-        );
-        self.queue.write_buffer(
-            &self.index_buffer,
-            0,
-            bytemuck::cast_slice(&self.indices),
-        );
+        self.queue
+            .write_buffer(&self.vertex_buffer, 0, bytemuck::cast_slice(&self.vertices));
+        self.queue
+            .write_buffer(&self.index_buffer, 0, bytemuck::cast_slice(&self.indices));
 
         let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("Vector Bind Group"),
@@ -462,8 +434,7 @@ impl GpuRenderer {
         render_pass.set_pipeline(&self.pipeline);
         render_pass.set_bind_group(0, &bind_group, &[]);
         render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
-        render_pass
-            .set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
+        render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
         render_pass.draw_indexed(0..self.indices.len() as u32, 0, 0..1);
     }
 
@@ -477,8 +448,7 @@ impl GpuRenderer {
         height: u32,
         blur_radius: f32,
     ) {
-        if let (Some(pipeline), Some(layout)) =
-            (&self.blur_pipeline, &self.blur_bind_group_layout)
+        if let (Some(pipeline), Some(layout)) = (&self.blur_pipeline, &self.blur_bind_group_layout)
         {
             let uniforms = GpuUniforms {
                 resolution: [width as f32, height as f32],
@@ -495,11 +465,13 @@ impl GpuRenderer {
                 _padding: 0.0,
             };
 
-            let uniform_buf = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("Blur Uniform Buffer"),
-                contents: bytemuck::cast_slice(&[uniforms]),
-                usage: wgpu::BufferUsages::UNIFORM,
-            });
+            let uniform_buf = self
+                .device
+                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some("Blur Uniform Buffer"),
+                    contents: bytemuck::cast_slice(&[uniforms]),
+                    usage: wgpu::BufferUsages::UNIFORM,
+                });
 
             let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
                 label: Some("Blur Bind Group"),
@@ -527,11 +499,7 @@ impl GpuRenderer {
                 });
                 compute_pass.set_pipeline(pipeline);
                 compute_pass.set_bind_group(0, &bind_group, &[]);
-                compute_pass.dispatch_workgroups(
-                    width.div_ceil(8),
-                    height.div_ceil(8),
-                    1,
-                );
+                compute_pass.dispatch_workgroups(width.div_ceil(8), height.div_ceil(8), 1);
             }
         }
     }

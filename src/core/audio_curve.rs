@@ -36,7 +36,11 @@ pub fn generate_audio_waveform(
                 2.0 * p - 1.0
             }
             WaveformType::Square => {
-                if phase.sin() >= 0.0 { 1.0 } else { -1.0 }
+                if phase.sin() >= 0.0 {
+                    1.0
+                } else {
+                    -1.0
+                }
             }
             WaveformType::Triangle => {
                 let p = (phase / TAU).fract();

@@ -17,7 +17,9 @@ pub fn apply_lattice_warp(
     preset: WarpPreset,
     intensity: f64,
 ) -> Object {
-    let (min_pt, max_pt) = obj.bounding_box().unwrap_or((AnchorPoint::new(0.0, 0.0), AnchorPoint::new(100.0, 100.0)));
+    let (min_pt, max_pt) = obj
+        .bounding_box()
+        .unwrap_or((AnchorPoint::new(0.0, 0.0), AnchorPoint::new(100.0, 100.0)));
     let min_x = min_pt.x;
     let min_y = min_pt.y;
     let width = (max_pt.x - min_pt.x).max(1.0);

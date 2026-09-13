@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="minBg" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#24242A" />
+      <stop offset="100%" stop-color="#18181D" />
+    </linearGradient>
+    <linearGradient id="minA" x1="0%" y1="100%" x2="0%" y2="0%">
+      <stop offset="0%" stop-color="#FF7A33" />
+      <stop offset="100%" stop-color="#FFA834" />
+    </linearGradient>
+  </defs>
+  <rect x="24" y="24" width="464" height="464" rx="96" fill="url(#minBg)" stroke="#33333E" stroke-width="2.5" />
+  
+  <!-- Minimal Geometric A -->
+  <path d="M 160 376 L 256 136 L 352 376" fill="none" stroke="url(#minA)" stroke-width="28" stroke-linecap="round" stroke-linejoin="round" />
+  <!-- Center Accent Node -->
+  <circle cx="256" cy="288" r="14" fill="#4E9FFF" stroke="#FFFFFF" stroke-width="3" />
+  <text x="256" y="436" text-anchor="middle" font-family="system-ui, sans-serif" font-size="24" font-weight="700" letter-spacing="10" fill="#FFFFFF">AMATA</text>
+</svg>

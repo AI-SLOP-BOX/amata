@@ -1,6 +1,4 @@
-use irasu_illustrator::cli::{
-    run_cli, Cli, CliAxonometricMode, CliGradientMeshPreset, Commands,
-};
+use irasu_illustrator::cli::{run_cli, Cli, CliAxonometricMode, CliGradientMeshPreset, Commands};
 use irasu_illustrator::core::axonometric::{apply_axonometric_projection, AxonometricMode};
 use irasu_illustrator::core::document::{Document, Object};
 use irasu_illustrator::core::evolutionary::evolve_vector_composition;

@@ -1,0 +1,84 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <!-- Left Spine Gradient: Vibrant Electric Cyan to Royal Blue -->
+    <linearGradient id="leftSpineGrad" x1="0%" y1="100%" x2="80%" y2="0%">
+      <stop offset="0%" stop-color="#00D2D8" />
+      <stop offset="35%" stop-color="#14B8E4" />
+      <stop offset="70%" stop-color="#0088F0" />
+      <stop offset="100%" stop-color="#0066E0" />
+    </linearGradient>
+
+    <!-- Crossbar Arch Gradient: Bright Sky Blue to Rich Indigo-Purple -->
+    <linearGradient id="archGrad" x1="5%" y1="90%" x2="95%" y2="20%">
+      <stop offset="0%" stop-color="#00AEEF" />
+      <stop offset="30%" stop-color="#0072CE" />
+      <stop offset="65%" stop-color="#4F46E5" />
+      <stop offset="100%" stop-color="#7C3AED" />
+    </linearGradient>
+
+    <!-- Descending Right Ribbon Gradient: Indigo -> Fuchsia -> Coral -> Tangerine Orange -->
+    <linearGradient id="ribbonGrad" x1="15%" y1="0%" x2="85%" y2="100%">
+      <stop offset="0%" stop-color="#4F46E5" />
+      <stop offset="24%" stop-color="#7C3AED" />
+      <stop offset="48%" stop-color="#C026D3" />
+      <stop offset="70%" stop-color="#E11D48" />
+      <stop offset="88%" stop-color="#F97316" />
+      <stop offset="100%" stop-color="#FB923C" />
+    </linearGradient>
+
+    <!-- Modern Clean Flat Anchor Nodes (Vector Anchor Points) -->
+    <linearGradient id="nodeTop" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#2563EB" />
+      <stop offset="100%" stop-color="#1D4ED8" />
+    </linearGradient>
+
+    <linearGradient id="nodeBL" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#06B6D4" />
+      <stop offset="100%" stop-color="#0891B2" />
+    </linearGradient>
+
+    <linearGradient id="nodeBR" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#FB923C" />
+      <stop offset="100%" stop-color="#EA580C" />
+    </linearGradient>
+  </defs>
+
+  <g id="amata-emblem">
+    <!-- 1. Left Outer Curved Spine -->
+    <path d="M 99 364 C 104 290, 168 180, 264 113" 
+          fill="none" 
+          stroke="url(#leftSpineGrad)" 
+          stroke-width="14" 
+          stroke-linecap="round" />
+
+    <!-- 2. Central Vector Crossbar Arch (Clean crisp path without muddy dark layers) -->
+    <path d="M 114 342 
+             C 136 298, 185 252, 244 244 
+             C 280 239, 318 252, 348 274 
+             C 328 295, 298 294, 268 282 
+             C 218 264, 165 295, 114 342 
+             Z" 
+          fill="url(#archGrad)" />
+
+    <!-- 3. Broad Descending Right Ribbon (Slimmed 12% for elegant balanced weight) -->
+    <path d="M 261 115 
+             C 265 158, 275 212, 287 258 
+             C 300 302, 330 345, 374 372 
+             C 390 380, 406 378, 419 373 
+             C 405 352, 376 325, 351 287 
+             C 326 244, 301 188, 280 115 
+             Z" 
+          fill="url(#ribbonGrad)" 
+          opacity="0.96" />
+
+    <!-- 4. Three Modern Vector Anchor Nodes (Flat, Crisp & Clean) -->
+    <!-- Top Apex Node -->
+    <circle cx="264" cy="113" r="25" fill="url(#nodeTop)" />
+
+    <!-- Bottom Left Node -->
+    <circle cx="99" cy="364" r="24" fill="url(#nodeBL)" />
+
+    <!-- Bottom Right Node -->
+    <circle cx="419" cy="373" r="23" fill="url(#nodeBR)" />
+  </g>
+</svg>

@@ -1,0 +1,579 @@
+use crate::core::state::AppState;
+use eframe::egui::{self, Color32, Pos2, Rect, RichText, Stroke, StrokeKind, Vec2};
+
+pub struct NewDocModal {
+    pub is_open: bool,
+    pub active_tab: NewDocCategory,
+    pub doc_name: String,
+    pub width: f64,
+    pub height: f64,
+    pub unit: String,
+    pub orientation: Orientation,
+    pub artboard_count: usize,
+    pub bleed_top: f64,
+    pub bleed_bottom: f64,
+    pub bleed_left: f64,
+    pub bleed_right: f64,
+    pub bleed_linked: bool,
+    pub color_mode: String,
+    pub raster_dpi: String,
+    pub preview_mode: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NewDocCategory {
+    Print,
+    Web,
+    Mobile,
+    Social,
+    Custom,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Orientation {
+    Portrait,
+    Landscape,
+}
+
+impl Default for NewDocModal {
+    fn default() -> Self {
+        Self {
+            is_open: false,
+            active_tab: NewDocCategory::Print,
+            doc_name: "名称未設定-2".to_string(),
+            width: 210.0,
+            height: 297.0,
+            unit: "ミリメートル".to_string(),
+            orientation: Orientation::Portrait,
+            artboard_count: 1,
+            bleed_top: 3.0,
+            bleed_bottom: 3.0,
+            bleed_left: 3.0,
+            bleed_right: 3.0,
+            bleed_linked: true,
+            color_mode: "RGB カラー".to_string(),
+            raster_dpi: "高解像度 (300 ppi)".to_string(),
+            preview_mode: "デフォルト".to_string(),
+        }
+    }
+}
+
+impl NewDocModal {
+    pub fn show(&mut self, ctx: &egui::Context, state: &mut AppState) {
+        if !self.is_open {
+            return;
+        }
+
+        let mut is_open = self.is_open;
+        egui::Window::new("新規ドキュメント")
+            .open(&mut is_open)
+            .collapsible(false)
+            .resizable(false)
+            .fixed_size(Vec2::new(940.0, 580.0))
+            .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
+            .show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    // Left Presets Area (620px)
+                    ui.vertical(|ui| {
+                        ui.set_width(630.0);
+
+                        // Category Tabs: 印刷 | Web | モバイル | ソーシャル | カスタム
+                        ui.horizontal(|ui| {
+                            let tabs = [
+                                (NewDocCategory::Print, "印刷"),
+                                (NewDocCategory::Web, "Web"),
+                                (NewDocCategory::Mobile, "モバイル"),
+                                (NewDocCategory::Social, "ソーシャル"),
+                                (NewDocCategory::Custom, "カスタム"),
+                            ];
+                            for (cat, name) in tabs {
+                                let is_active = self.active_tab == cat;
+                                let txt = if is_active {
+                                    RichText::new(name)
+                                        .strong()
+                                        .color(Color32::WHITE)
+                                        .size(12.5)
+                                } else {
+                                    RichText::new(name)
+                                        .color(Color32::from_rgb(170, 170, 170))
+                                        .size(12.5)
+                                };
+                                if ui.selectable_label(is_active, txt).clicked() {
+                                    self.active_tab = cat;
+                                }
+                            }
+                        });
+
+                        ui.add_space(8.0);
+                        ui.label(
+                            RichText::new("空白のドキュメントプリセット")
+                                .strong()
+                                .size(11.5)
+                                .color(Color32::from_rgb(200, 200, 200)),
+                        );
+                        ui.add_space(6.0);
+
+                        let presets = [
+                            ("doc", "A4", "210 × 297 mm", 210.0, 297.0, "ミリメートル"),
+                            ("doc", "A3", "297 × 420 mm", 297.0, 420.0, "ミリメートル"),
+                            ("doc", "A5", "148 × 210 mm", 148.0, 210.0, "ミリメートル"),
+                            ("doc", "B5", "182 × 257 mm", 182.0, 257.0, "ミリメートル"),
+                            ("doc", "US レター", "8.5 × 11 in", 612.0, 792.0, "ポイント"),
+                            (
+                                "doc",
+                                "US リーガル",
+                                "8.5 × 14 in",
+                                612.0,
+                                1008.0,
+                                "ポイント",
+                            ),
+                            (
+                                "desktop",
+                                "Web (横長)",
+                                "1920 × 1080 px",
+                                1920.0,
+                                1080.0,
+                                "ピクセル",
+                            ),
+                            (
+                                "desktop",
+                                "Web (正方形)",
+                                "1080 × 1080 px",
+                                1080.0,
+                                1080.0,
+                                "ピクセル",
+                            ),
+                            (
+                                "phone",
+                                "iPhone 15",
+                                "1179 × 2556 px",
+                                1179.0,
+                                2556.0,
+                                "ピクセル",
+                            ),
+                            (
+                                "camera",
+                                "Instagram 投稿",
+                                "1080 × 1080 px",
+                                1080.0,
+                                1080.0,
+                                "ピクセル",
+                            ),
+                            (
+                                "camera",
+                                "Instagram ストーリー",
+                                "1080 × 1920 px",
+                                1080.0,
+                                1920.0,
+                                "ピクセル",
+                            ),
+                            (
+                                "more",
+                                "その他のプリセット",
+                                "カスタム",
+                                800.0,
+                                600.0,
+                                "ピクセル",
+                            ),
+                        ];
+
+                        egui::Grid::new("new_doc_presets_grid")
+                            .spacing(Vec2::new(10.0, 10.0))
+                            .show(ui, |ui| {
+                                for (idx, (icon_type, name, dim, w, h, u)) in
+                                    presets.iter().enumerate()
+                                {
+                                    let is_sel = self.width == *w && self.height == *h;
+                                    let (rect, resp) = ui.allocate_exact_size(
+                                        Vec2::new(145.0, 100.0),
+                                        egui::Sense::click(),
+                                    );
+                                    let hovered = resp.hovered();
+
+                                    let bg_c = if is_sel {
+                                        Color32::from_rgb(26, 42, 66)
+                                    } else if hovered {
+                                        Color32::from_rgb(44, 44, 48)
+                                    } else {
+                                        Color32::from_rgb(33, 33, 35)
+                                    };
+
+                                    let stroke_c = if is_sel {
+                                        Color32::from_rgb(20, 115, 230)
+                                    } else if hovered {
+                                        Color32::from_rgb(80, 80, 85)
+                                    } else {
+                                        Color32::from_rgb(46, 46, 50)
+                                    };
+
+                                    ui.painter().rect_filled(rect, 4.0, bg_c);
+                                    ui.painter().rect_stroke(
+                                        rect,
+                                        4.0,
+                                        Stroke::new(
+                                            if is_sel { 1.5_f32 } else { 1.0_f32 },
+                                            stroke_c,
+                                        ),
+                                        StrokeKind::Inside,
+                                    );
+
+                                    // Draw crisp vector preset icon
+                                    let icon_box = Rect::from_center_size(
+                                        Pos2::new(rect.center().x, rect.min.y + 24.0),
+                                        Vec2::splat(26.0),
+                                    );
+                                    let icon_col = if is_sel {
+                                        Color32::from_rgb(20, 115, 230)
+                                    } else if hovered {
+                                        Color32::WHITE
+                                    } else {
+                                        Color32::from_gray(180)
+                                    };
+                                    match *icon_type {
+                                        "doc" => crate::app::icons::icon_document(
+                                            ui.painter(),
+                                            icon_box,
+                                            icon_col,
+                                        ),
+                                        "desktop" => crate::app::icons::icon_desktop(
+                                            ui.painter(),
+                                            icon_box,
+                                            icon_col,
+                                        ),
+                                        "phone" => crate::app::icons::icon_phone(
+                                            ui.painter(),
+                                            icon_box,
+                                            icon_col,
+                                        ),
+                                        "camera" => crate::app::icons::icon_camera(
+                                            ui.painter(),
+                                            icon_box,
+                                            icon_col,
+                                        ),
+                                        _ => crate::app::icons::icon_more_dots(
+                                            ui.painter(),
+                                            icon_box,
+                                            icon_col,
+                                        ),
+                                    }
+
+                                    // Name
+                                    ui.painter().text(
+                                        Pos2::new(rect.center().x, rect.min.y + 58.0),
+                                        egui::Align2::CENTER_CENTER,
+                                        *name,
+                                        egui::FontId::proportional(11.0),
+                                        Color32::WHITE,
+                                    );
+                                    // Dimension
+                                    ui.painter().text(
+                                        Pos2::new(rect.center().x, rect.min.y + 78.0),
+                                        egui::Align2::CENTER_CENTER,
+                                        *dim,
+                                        egui::FontId::proportional(9.5),
+                                        Color32::from_rgb(140, 140, 140),
+                                    );
+
+                                    if resp.clicked() {
+                                        self.width = *w;
+                                        self.height = *h;
+                                        self.unit = u.to_string();
+                                    }
+
+                                    if (idx + 1) % 4 == 0 {
+                                        ui.end_row();
+                                    }
+                                }
+                            });
+
+                        ui.add_space(14.0);
+                        ui.horizontal(|ui| {
+                            ui.label(
+                                RichText::new("🔍 他のテンプレートを検索")
+                                    .size(11.0)
+                                    .color(Color32::from_rgb(160, 160, 160)),
+                            );
+                            ui.with_layout(
+                                egui::Layout::right_to_left(egui::Align::Center),
+                                |ui| {
+                                    ui.label(
+                                        RichText::new("Adobe Stock でテンプレートを探す ➔")
+                                            .size(11.0)
+                                            .color(Color32::from_rgb(20, 115, 230)),
+                                    );
+                                },
+                            );
+                        });
+                    });
+
+                    ui.separator();
+
+                    // Right Document Details Sidebar (270px)
+                    ui.vertical(|ui| {
+                        ui.set_width(260.0);
+                        ui.label(
+                            RichText::new("ドキュメントの詳細")
+                                .strong()
+                                .size(12.5)
+                                .color(Color32::WHITE),
+                        );
+                        ui.add_space(8.0);
+
+                        ui.label(
+                            RichText::new("名前 (N)")
+                                .size(10.5)
+                                .color(Color32::from_rgb(170, 170, 170)),
+                        );
+                        ui.text_edit_singleline(&mut self.doc_name);
+                        ui.add_space(6.0);
+
+                        ui.horizontal(|ui| {
+                            ui.vertical(|ui| {
+                                ui.set_width(120.0);
+                                ui.label(
+                                    RichText::new("幅 (W)")
+                                        .size(10.5)
+                                        .color(Color32::from_rgb(170, 170, 170)),
+                                );
+                                ui.add(
+                                    egui::DragValue::new(&mut self.width)
+                                        .speed(1.0)
+                                        .range(10.0..=10000.0),
+                                );
+                            });
+                            ui.vertical(|ui| {
+                                ui.set_width(120.0);
+                                ui.label(
+                                    RichText::new("単位")
+                                        .size(10.5)
+                                        .color(Color32::from_rgb(170, 170, 170)),
+                                );
+                                egui::ComboBox::from_id_salt("doc_unit")
+                                    .selected_text(&self.unit)
+                                    .width(110.0)
+                                    .show_ui(ui, |ui| {
+                                        ui.selectable_value(
+                                            &mut self.unit,
+                                            "ミリメートル".into(),
+                                            "ミリメートル",
+                                        );
+                                        ui.selectable_value(
+                                            &mut self.unit,
+                                            "ピクセル".into(),
+                                            "ピクセル",
+                                        );
+                                        ui.selectable_value(
+                                            &mut self.unit,
+                                            "ポイント".into(),
+                                            "ポイント",
+                                        );
+                                        ui.selectable_value(
+                                            &mut self.unit,
+                                            "インチ".into(),
+                                            "インチ",
+                                        );
+                                    });
+                            });
+                        });
+
+                        ui.add_space(4.0);
+                        ui.horizontal(|ui| {
+                            ui.vertical(|ui| {
+                                ui.set_width(120.0);
+                                ui.label(
+                                    RichText::new("高さ (H)")
+                                        .size(10.5)
+                                        .color(Color32::from_rgb(170, 170, 170)),
+                                );
+                                ui.add(
+                                    egui::DragValue::new(&mut self.height)
+                                        .speed(1.0)
+                                        .range(10.0..=10000.0),
+                                );
+                            });
+                            ui.vertical(|ui| {
+                                ui.set_width(120.0);
+                                ui.label(
+                                    RichText::new("方向")
+                                        .size(10.5)
+                                        .color(Color32::from_rgb(170, 170, 170)),
+                                );
+                                ui.horizontal(|ui| {
+                                    let p_sel = self.orientation == Orientation::Portrait;
+                                    if ui.selectable_label(p_sel, "▯ 縦").clicked() {
+                                        self.orientation = Orientation::Portrait;
+                                        if self.width > self.height {
+                                            std::mem::swap(&mut self.width, &mut self.height);
+                                        }
+                                    }
+                                    let l_sel = self.orientation == Orientation::Landscape;
+                                    if ui.selectable_label(l_sel, "▭ 横").clicked() {
+                                        self.orientation = Orientation::Landscape;
+                                        if self.height > self.width {
+                                            std::mem::swap(&mut self.width, &mut self.height);
+                                        }
+                                    }
+                                });
+                            });
+                        });
+
+                        ui.add_space(6.0);
+                        ui.horizontal(|ui| {
+                            ui.label(RichText::new("アートボード数 (A):").size(10.5));
+                            ui.add(egui::DragValue::new(&mut self.artboard_count).range(1..=100));
+                        });
+
+                        ui.add_space(6.0);
+                        ui.separator();
+                        ui.add_space(6.0);
+
+                        // 塗り足し (Bleed)
+                        ui.horizontal(|ui| {
+                            ui.label(
+                                RichText::new("塗り足し (B)")
+                                    .size(10.5)
+                                    .color(Color32::from_rgb(170, 170, 170)),
+                            );
+                            ui.with_layout(
+                                egui::Layout::right_to_left(egui::Align::Center),
+                                |ui| {
+                                    let link_sym = if self.bleed_linked { "🔗" } else { "⛓" };
+                                    if ui.selectable_label(self.bleed_linked, link_sym).clicked() {
+                                        self.bleed_linked = !self.bleed_linked;
+                                    }
+                                },
+                            );
+                        });
+
+                        ui.horizontal(|ui| {
+                            ui.label(RichText::new("上:").size(10.0));
+                            if ui
+                                .add(egui::DragValue::new(&mut self.bleed_top).speed(0.5))
+                                .changed()
+                                && self.bleed_linked
+                            {
+                                self.bleed_bottom = self.bleed_top;
+                                self.bleed_left = self.bleed_top;
+                                self.bleed_right = self.bleed_top;
+                            }
+                            ui.label(RichText::new("下:").size(10.0));
+                            if ui
+                                .add(egui::DragValue::new(&mut self.bleed_bottom).speed(0.5))
+                                .changed()
+                                && self.bleed_linked
+                            {
+                                self.bleed_top = self.bleed_bottom;
+                                self.bleed_left = self.bleed_bottom;
+                                self.bleed_right = self.bleed_bottom;
+                            }
+                        });
+                        ui.horizontal(|ui| {
+                            ui.label(RichText::new("左:").size(10.0));
+                            if ui
+                                .add(egui::DragValue::new(&mut self.bleed_left).speed(0.5))
+                                .changed()
+                                && self.bleed_linked
+                            {
+                                self.bleed_top = self.bleed_left;
+                                self.bleed_bottom = self.bleed_left;
+                                self.bleed_right = self.bleed_left;
+                            }
+                            ui.label(RichText::new("右:").size(10.0));
+                            if ui
+                                .add(egui::DragValue::new(&mut self.bleed_right).speed(0.5))
+                                .changed()
+                                && self.bleed_linked
+                            {
+                                self.bleed_top = self.bleed_right;
+                                self.bleed_bottom = self.bleed_right;
+                                self.bleed_left = self.bleed_right;
+                            }
+                        });
+
+                        ui.add_space(6.0);
+                        ui.separator();
+                        ui.add_space(6.0);
+
+                        // Color mode & Raster effects
+                        ui.label(
+                            RichText::new("カラーモード (C)")
+                                .size(10.5)
+                                .color(Color32::from_rgb(170, 170, 170)),
+                        );
+                        egui::ComboBox::from_id_salt("doc_color_mode")
+                            .selected_text(&self.color_mode)
+                            .width(240.0)
+                            .show_ui(ui, |ui| {
+                                ui.selectable_value(
+                                    &mut self.color_mode,
+                                    "RGB カラー".into(),
+                                    "RGB カラー (sRGB)",
+                                );
+                                ui.selectable_value(
+                                    &mut self.color_mode,
+                                    "CMYK カラー".into(),
+                                    "CMYK カラー (印刷用)",
+                                );
+                            });
+
+                        ui.add_space(4.0);
+                        ui.label(
+                            RichText::new("ラスタライズ効果 (R)")
+                                .size(10.5)
+                                .color(Color32::from_rgb(170, 170, 170)),
+                        );
+                        egui::ComboBox::from_id_salt("doc_raster_dpi")
+                            .selected_text(&self.raster_dpi)
+                            .width(240.0)
+                            .show_ui(ui, |ui| {
+                                ui.selectable_value(
+                                    &mut self.raster_dpi,
+                                    "高解像度 (300 ppi)".into(),
+                                    "高解像度 (300 ppi)",
+                                );
+                                ui.selectable_value(
+                                    &mut self.raster_dpi,
+                                    "スクリーン (72 ppi)".into(),
+                                    "スクリーン (72 ppi)",
+                                );
+                            });
+
+                        ui.add_space(18.0);
+
+                        // Footer Cancel / Create Button
+                        ui.horizontal(|ui| {
+                            if ui
+                                .add(
+                                    egui::Button::new("キャンセル").min_size(Vec2::new(95.0, 28.0)),
+                                )
+                                .clicked()
+                            {
+                                self.is_open = false;
+                            }
+                            if ui
+                                .add(
+                                    egui::Button::new(
+                                        RichText::new("作成").strong().color(Color32::WHITE),
+                                    )
+                                    .fill(Color32::from_rgb(20, 115, 230))
+                                    .min_size(Vec2::new(115.0, 28.0)),
+                                )
+                                .clicked()
+                            {
+                                state.document.width = self.width;
+                                state.document.height = self.height;
+                                state.document.layers.clear();
+                                state
+                                    .document
+                                    .layers
+                                    .push(crate::core::document::Layer::new("レイヤー 1"));
+                                state.selected_ids.clear();
+                                self.is_open = false;
+                            }
+                        });
+                    });
+                });
+            });
+        self.is_open = is_open;
+    }
+}

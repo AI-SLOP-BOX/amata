@@ -1,10 +1,18 @@
 [package]
-name = "irasu-illustrator"
+name = "amata"
 version = "0.1.0"
 edition = "2021"
-description = "Adobe Illustrator alternative — Pure Rust + egui vector graphics editor with Animation Timeline & VFX integration"
+description = "Amata (数多) — Pure Rust + egui + wgpu professional vector graphics design studio"
 license = "MIT"
-authors = ["IRASU Contributors"]
+authors = ["Amata Contributors"]
+
+[lib]
+name = "irasu_illustrator"
+path = "src/lib.rs"
+
+[[bin]]
+name = "amata"
+path = "src/main.rs"
 
 [dependencies]
 eframe = { version = "0.31", default-features = false, features = [
@@ -29,3 +37,6 @@ image = { version = "0.25", default-features = false, features = ["png", "jpeg"]
 qrcode = { version = "0.14", default-features = false }
 rhai = { version = "1.20", features = ["sync", "serde", "metadata"] }
 toml = "0.8"
+resvg = { version = "0.48", default-features = false, features = ["raster-images", "text"] }
+fontdb = { version = "0.24", features = ["fs", "memmap"] }
+

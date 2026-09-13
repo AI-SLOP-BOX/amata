@@ -78,7 +78,12 @@ impl PenState {
         }
     }
 
-    pub fn finish_path(&mut self, fill_color: [f32; 4], stroke_color: [f32; 4], stroke_width: f64) -> Option<Object> {
+    pub fn finish_path(
+        &mut self,
+        fill_color: [f32; 4],
+        stroke_color: [f32; 4],
+        stroke_width: f64,
+    ) -> Option<Object> {
         if self.points.len() >= 2 {
             let mut path = PathData::new();
 
@@ -142,4 +147,3 @@ impl Default for PenState {
         Self::new()
     }
 }
-

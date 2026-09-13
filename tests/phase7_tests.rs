@@ -34,11 +34,13 @@ fn test_flowfield_generation() {
     assert_eq!(vortex.len(), 20);
 
     // 2. Magnetic
-    let magnetic = generate_flowfield_streamlines(FlowFieldPreset::MagneticDipole, 400.0, 400.0, 15, 50, 4.0);
+    let magnetic =
+        generate_flowfield_streamlines(FlowFieldPreset::MagneticDipole, 400.0, 400.0, 15, 50, 4.0);
     assert_eq!(magnetic.len(), 15);
 
     // 3. Cyber
-    let cyber = generate_flowfield_streamlines(FlowFieldPreset::CyberChaos, 400.0, 400.0, 15, 50, 4.0);
+    let cyber =
+        generate_flowfield_streamlines(FlowFieldPreset::CyberChaos, 400.0, 400.0, 15, 50, 4.0);
     assert_eq!(cyber.len(), 15);
 }
 

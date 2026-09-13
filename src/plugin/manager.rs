@@ -41,7 +41,12 @@ impl PluginManager {
         state: &mut AppState,
     ) {
         let info = plugin.info();
-        log::info!("Registering plugin: {} v{} by {}", info.name, info.version, info.author);
+        log::info!(
+            "Registering plugin: {} v{} by {}",
+            info.name,
+            info.version,
+            info.author
+        );
 
         let selected = state.selected_ids.clone();
         let mut ctx = PluginContextMut {
@@ -66,12 +71,7 @@ impl PluginManager {
     }
 
     /// Unregister a plugin by ID
-    pub fn unregister(
-        &mut self,
-        plugin_id: &str,
-        document: &mut Document,
-        state: &mut AppState,
-    ) {
+    pub fn unregister(&mut self, plugin_id: &str, document: &mut Document, state: &mut AppState) {
         if let Some(idx) = self.plugins.iter().position(|p| p.info().id == plugin_id) {
             let selected = state.selected_ids.clone();
             let mut ctx = PluginContextMut {
@@ -138,9 +138,7 @@ impl PluginManager {
     }
 
     /// Collect all menu entries from active plugins
-    pub fn collect_menu_entries(
-        &self,
-    ) -> Vec<(String, super::api::PluginMenuEntry)> {
+    pub fn collect_menu_entries(&self) -> Vec<(String, super::api::PluginMenuEntry)> {
         let mut entries = Vec::new();
         for &idx in &self.active_plugins {
             let plugin = &self.plugins[idx];
@@ -153,9 +151,7 @@ impl PluginManager {
     }
 
     /// Collect all panel definitions from active plugins
-    pub fn collect_panels(
-        &self,
-    ) -> Vec<super::api::PluginPanel> {
+    pub fn collect_panels(&self) -> Vec<super::api::PluginPanel> {
         let mut panels = Vec::new();
         for &idx in &self.active_plugins {
             panels.extend(self.plugins[idx].ui_panels());

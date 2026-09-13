@@ -48,7 +48,9 @@ pub fn scatter_brush_along_path(
                 let dy = p1.y - p0.y;
                 let angle = if follow_tangent { dy.atan2(dx) } else { 0.0 };
 
-                let hash = ((i as f64 * 37.891 + 13.77).sin() * 43758.5453).fract().abs();
+                let hash = ((i as f64 * 37.891 + 13.77).sin() * 43758.5453)
+                    .fract()
+                    .abs();
                 let scale_mod = 1.0 + (hash - 0.5) * jitter_scale;
 
                 let mut clone = motif.clone();
@@ -61,14 +63,12 @@ pub fn scatter_brush_along_path(
                 let sin = angle.sin() * scale_mod;
 
                 let transform_pt = |p: AnchorPoint| -> AnchorPoint {
-                    AnchorPoint::new(
-                        px + p.x * cos - p.y * sin,
-                        py + p.x * sin + p.y * cos,
-                    )
+                    AnchorPoint::new(px + p.x * cos - p.y * sin, py + p.x * sin + p.y * cos)
                 };
 
                 path.elements.iter_mut().for_each(|elem| match elem {
-                    crate::core::path::PathElement::MoveTo(p) | crate::core::path::PathElement::LineTo(p) => {
+                    crate::core::path::PathElement::MoveTo(p)
+                    | crate::core::path::PathElement::LineTo(p) => {
                         *p = transform_pt(*p);
                     }
                     crate::core::path::PathElement::CurveTo(seg) => {

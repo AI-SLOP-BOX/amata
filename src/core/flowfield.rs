@@ -22,8 +22,14 @@ pub fn generate_flowfield_streamlines(
     let cy = height * 0.5;
 
     for i in 0..line_count {
-        let seed_x = ((i as f64 * 37.123 + 12.34).sin() * 43758.5453).fract().abs() * width;
-        let seed_y = ((i as f64 * 91.567 + 84.12).sin() * 43758.5453).fract().abs() * height;
+        let seed_x = ((i as f64 * 37.123 + 12.34).sin() * 43758.5453)
+            .fract()
+            .abs()
+            * width;
+        let seed_y = ((i as f64 * 91.567 + 84.12).sin() * 43758.5453)
+            .fract()
+            .abs()
+            * height;
 
         let mut x = seed_x;
         let mut y = seed_y;
@@ -36,7 +42,8 @@ pub fn generate_flowfield_streamlines(
                     let dx = x - cx;
                     let dy = y - cy;
                     let dist = (dx * dx + dy * dy).sqrt().max(10.0);
-                    let angle = dy.atan2(dx) + std::f64::consts::FRAC_PI_2 + (dist * 0.01).sin() * 0.4;
+                    let angle =
+                        dy.atan2(dx) + std::f64::consts::FRAC_PI_2 + (dist * 0.01).sin() * 0.4;
                     (angle.cos(), angle.sin())
                 }
                 FlowFieldPreset::MagneticDipole => {
@@ -54,7 +61,8 @@ pub fn generate_flowfield_streamlines(
                     (fx / flen, fy / flen)
                 }
                 FlowFieldPreset::CyberChaos => {
-                    let angle = ((x * 0.005).sin() + (y * 0.005).cos()) * std::f64::consts::PI * 2.0;
+                    let angle =
+                        ((x * 0.005).sin() + (y * 0.005).cos()) * std::f64::consts::PI * 2.0;
                     (angle.cos(), angle.sin())
                 }
             };

@@ -33,7 +33,8 @@ pub fn apply_polar_transform(
                 let dx = p.x - cx;
                 let dy = p.y - cy;
                 let r = (dx * dx + dy * dy).sqrt().min(max_radius);
-                let theta = (dy.atan2(dx) + std::f64::consts::FRAC_PI_2).rem_euclid(std::f64::consts::TAU);
+                let theta =
+                    (dy.atan2(dx) + std::f64::consts::FRAC_PI_2).rem_euclid(std::f64::consts::TAU);
 
                 let u = theta / std::f64::consts::TAU;
                 let v = 1.0 - (r / max_radius);

@@ -1,0 +1,421 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg"
+     xmlns:xlink="http://www.w3.org/1999/xlink"
+     width="1191" height="1684"
+     viewBox="0 0 1191 1684"
+     xml:space="preserve">
+
+  <defs>
+    <!-- Background Space Gradient -->
+    <radialGradient id="bgGlow" cx="50%" cy="42%" r="55%">
+      <stop offset="0%" stop-color="#141026" stop-opacity="1.0" />
+      <stop offset="60%" stop-color="#090812" stop-opacity="1.0" />
+      <stop offset="100%" stop-color="#040308" stop-opacity="1.0" />
+    </radialGradient>
+
+    <!-- Main Gradient 1: Acid Lime to Cyan -->
+    <linearGradient id="sonicWaveGrad1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#d4ff00" />
+      <stop offset="50%" stop-color="#00f5ff" />
+      <stop offset="100%" stop-color="#0044ff" />
+    </linearGradient>
+
+    <!-- Main Gradient 2: Cobalt to Violet -->
+    <linearGradient id="sonicWaveGrad2" x1="100%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#00f5ff" />
+      <stop offset="45%" stop-color="#7928ca" />
+      <stop offset="100%" stop-color="#d4ff00" />
+    </linearGradient>
+
+    <!-- Accent Radial Core -->
+    <radialGradient id="portalGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#d4ff00" stop-opacity="0.35" />
+      <stop offset="40%" stop-color="#00f5ff" stop-opacity="0.15" />
+      <stop offset="100%" stop-color="#000000" stop-opacity="0.0" />
+    </radialGradient>
+
+    <!-- Spectrum Bar Gradient -->
+    <linearGradient id="barGrad" x1="0%" y1="100%" x2="0%" y2="0%">
+      <stop offset="0%" stop-color="#0044ff" stop-opacity="0.2" />
+      <stop offset="50%" stop-color="#00f5ff" stop-opacity="0.8" />
+      <stop offset="100%" stop-color="#d4ff00" stop-opacity="1.0" />
+    </linearGradient>
+
+    <!-- Sonic Aperture Mask / Clipping Path -->
+    <clipPath id="sonicPortalClip">
+      <circle cx="595.5" cy="720" r="260" />
+    </clipPath>
+
+    <!-- Technical Cross Symbol -->
+    <g id="regCross">
+      <line x1="-12" y1="0" x2="12" y2="0" stroke="#d4ff00" stroke-width="1.2" opacity="0.6" />
+      <line x1="0" y1="-12" x2="0" y2="12" stroke="#d4ff00" stroke-width="1.2" opacity="0.6" />
+      <circle cx="0" cy="0" r="6" fill="none" stroke="#d4ff00" stroke-width="0.8" opacity="0.4" />
+    </g>
+  </defs>
+
+  <!-- ======================================================== -->
+  <!-- LAYER 1: BACKGROUND & TECHNICAL GRID                     -->
+  <!-- ======================================================== -->
+  <g id="layer-background">
+    <!-- Deep Backdrop -->
+    <rect width="1191" height="1684" fill="url(#bgGlow)" />
+
+    <!-- Ambient Core Glow -->
+    <circle cx="595.5" cy="720" r="480" fill="url(#portalGlow)" />
+
+    <!-- Technical Margin Guides & Frame -->
+    <rect x="54" y="54" width="1083" height="1576"
+          fill="none" stroke="#ffffff" stroke-width="0.75" opacity="0.18" />
+    <rect x="62" y="62" width="1067" height="1560"
+          fill="none" stroke="#d4ff00" stroke-width="0.5" stroke-dasharray="4 8" opacity="0.25" />
+
+    <!-- Registration Corner Marks -->
+    <use href="#regCross" x="54" y="54" />
+    <use href="#regCross" x="1137" y="54" />
+    <use href="#regCross" x="54" y="1630" />
+    <use href="#regCross" x="1137" y="1630" />
+    <use href="#regCross" x="595.5" y="54" />
+    <use href="#regCross" x="595.5" y="1630" />
+
+    <!-- Coordinate & Micro Data Annotations -->
+    <text x="80" y="80" font-family="'Helvetica Neue', 'Inter', Arial, sans-serif"
+          font-size="10" font-weight="600" fill="#d4ff00" letter-spacing="3" opacity="0.7">
+      SYS.REF // 35.6284° N, 139.7745° E
+    </text>
+    <text x="1111" y="80" text-anchor="end" font-family="'Helvetica Neue', 'Inter', Arial, sans-serif"
+          font-size="10" font-weight="600" fill="#ffffff" letter-spacing="2" opacity="0.5">
+      AUDIOVISUAL EXPERIMENT // VOL. 08
+    </text>
+
+    <text x="80" y="1624" font-family="'Helvetica Neue', 'Inter', Arial, sans-serif"
+          font-size="9" font-weight="500" fill="#ffffff" letter-spacing="2" opacity="0.4">
+      AMBISONICS 128CH // SPATIALIZED SOUNDSCAPE
+    </text>
+    <text x="1111" y="1624" text-anchor="end" font-family="'Helvetica Neue', 'Inter', Arial, sans-serif"
+          font-size="9" font-weight="500" fill="#d4ff00" letter-spacing="2" opacity="0.6">
+      420 × 594 MM // DIN A2 FORMAT
+    </text>
+  </g>
+
+  <!-- ======================================================== -->
+  <!-- LAYER 2: TOP HEADER & MONUMENTAL TYPOGRAPHY              -->
+  <!-- ======================================================== -->
+  <g id="layer-header-typography">
+    <!-- Top Category Ribbon -->
+    <text x="595.5" y="138" text-anchor="middle"
+          font-family="'Helvetica Neue', 'Inter', Arial, sans-serif"
+          font-size="13" font-weight="700" fill="#00f5ff" letter-spacing="8" opacity="0.9">
+      INTERNATIONAL FESTIVAL OF AVANT-GARDE &amp; SPATIAL SOUND
+    </text>
+
+    <line x1="180" y1="156" x2="1011" y2="156"
+          stroke="#ffffff" stroke-width="0.5" opacity="0.25" />
+
+    <!-- Main Title Line 1: HIRARI -->
+    <text x="595.5" y="278" text-anchor="middle"
+          font-family="'Helvetica Neue', 'Inter', 'Impact', sans-serif"
+          font-size="132" font-weight="900" fill="#ffffff" letter-spacing="18">
+      HIRARI
+    </text>
+
+    <!-- Main Title Line 2: SOUND + Accent 2026 -->
+    <text x="500" y="386" text-anchor="middle"
+          font-family="'Helvetica Neue', 'Inter', 'Impact', sans-serif"
+          font-size="118" font-weight="900" fill="url(#sonicWaveGrad1)" letter-spacing="14">
+      SOUND
+    </text>
+
+    <!-- Year Badge 2026 -->
+    <g transform="translate(860, 310)">
+      <rect x="0" y="0" width="170" height="74" rx="37"
+            fill="none" stroke="#d4ff00" stroke-width="2.5" opacity="0.85" />
+      <text x="85" y="49" text-anchor="middle"
+            font-family="'Helvetica Neue', 'Inter', Arial, sans-serif"
+            font-size="42" font-weight="800" fill="#d4ff00" letter-spacing="4">
+        2026
+      </text>
+    </g>
+
+    <!-- Edition / Manifest Line -->
+    <text x="595.5" y="440" text-anchor="middle"
+          font-family="'Helvetica Neue', 'Inter', Arial, sans-serif"
+          font-size="12" font-weight="500" fill="#ffffff" letter-spacing="5" opacity="0.65">
+      OCTOBER 16–18, 2026 // TOKYO BAY WATERFRONT AUDITORIUM
+    </text>
+  </g>
+
+  <!-- ======================================================== -->
+  <!-- LAYER 3: FREQUENCY SPECTRUM BARS (HARMONIC GRID)         -->
+  <!-- ======================================================== -->
+  <g id="layer-frequency-bars" opacity="0.75">
+    <!-- Equalizer Harmonic Columns behind portal -->
+    <rect x="255" y="680" width="6" height="80" rx="3" fill="url(#barGrad)" />
+    <rect x="275" y="650" width="6" height="140" rx="3" fill="url(#barGrad)" />
+    <rect x="295" y="620" width="6" height="200" rx="3" fill="url(#barGrad)" />
+    <rect x="315" y="660" width="6" height="120" rx="3" fill="url(#barGrad)" />
+    <rect x="335" y="590" width="6" height="260" rx="3" fill="url(#barGrad)" />
+    <rect x="355" y="560" width="6" height="320" rx="3" fill="url(#barGrad)" />
+    <rect x="375" y="630" width="6" height="180" rx="3" fill="url(#barGrad)" />
+    <rect x="395" y="540" width="6" height="360" rx="3" fill="url(#barGrad)" />
+
+    <rect x="790" y="540" width="6" height="360" rx="3" fill="url(#barGrad)" />
+    <rect x="810" y="630" width="6" height="180" rx="3" fill="url(#barGrad)" />
+    <rect x="830" y="560" width="6" height="320" rx="3" fill="url(#barGrad)" />
+    <rect x="850" y="590" width="6" height="260" rx="3" fill="url(#barGrad)" />
+    <rect x="870" y="660" width="6" height="120" rx="3" fill="url(#barGrad)" />
+    <rect x="890" y="620" width="6" height="200" rx="3" fill="url(#barGrad)" />
+    <rect x="910" y="650" width="6" height="140" rx="3" fill="url(#barGrad)" />
+    <rect x="930" y="680" width="6" height="80" rx="3" fill="url(#barGrad)" />
+  </g>
+
+  <!-- ======================================================== -->
+  <!-- LAYER 4: CUBIC BÉZIER SOUNDWAVES (OUTSIDE MASK)          -->
+  <!-- ======================================================== -->
+  <g id="layer-soundwaves-ambient" opacity="0.6">
+    <!-- Wave Ribbon A (Broad Flow) -->
+    <path d="M 80,720
+             C 240,520 400,920 595.5,720
+             S 951,520 1111,720"
+          fill="none" stroke="url(#sonicWaveGrad1)" stroke-width="2.5" />
+
+    <path d="M 80,740
+             C 240,560 400,940 595.5,740
+             S 951,540 1111,740"
+          fill="none" stroke="url(#sonicWaveGrad1)" stroke-width="1.5" opacity="0.7" />
+
+    <path d="M 80,700
+             C 240,480 400,900 595.5,700
+             S 951,500 1111,700"
+          fill="none" stroke="url(#sonicWaveGrad1)" stroke-width="1.5" opacity="0.7" />
+
+    <!-- Wave Ribbon B (Counter Harmonic) -->
+    <path d="M 80,660
+             C 320,860 440,540 595.5,720
+             S 871,900 1111,660"
+          fill="none" stroke="url(#sonicWaveGrad2)" stroke-width="3.0" />
+
+    <path d="M 80,680
+             C 320,880 440,560 595.5,740
+             S 871,920 1111,680"
+          fill="none" stroke="url(#sonicWaveGrad2)" stroke-width="1.8" opacity="0.7" />
+
+    <path d="M 80,640
+             C 320,840 440,520 595.5,700
+             S 871,880 1111,640"
+          fill="none" stroke="url(#sonicWaveGrad2)" stroke-width="1.8" opacity="0.7" />
+
+    <!-- High Frequency Resonant Strands -->
+    <path d="M 80,780
+             C 280,620 460,860 595.5,730
+             S 911,600 1111,770"
+          fill="none" stroke="#d4ff00" stroke-width="1.2" stroke-dasharray="6 6" opacity="0.5" />
+    <path d="M 80,610
+             C 280,780 460,590 595.5,710
+             S 911,830 1111,630"
+          fill="none" stroke="#00f5ff" stroke-width="1.2" stroke-dasharray="8 4" opacity="0.5" />
+  </g>
+
+  <!-- ======================================================== -->
+  <!-- LAYER 5: CLIPPED SONIC PORTAL (APERTURE INTERFERENCE)    -->
+  <!-- ======================================================== -->
+  <g id="layer-clipped-portal">
+    <!-- Portal Outer Orbit Rings -->
+    <circle cx="595.5" cy="720" r="280" fill="none" stroke="#d4ff00" stroke-width="1.5"
+            stroke-dasharray="4 12" opacity="0.4" />
+    <circle cx="595.5" cy="720" r="265" fill="none" stroke="#00f5ff" stroke-width="0.8" opacity="0.6" />
+    <circle cx="595.5" cy="720" r="260" fill="none" stroke="#ffffff" stroke-width="2.5" opacity="0.8" />
+
+    <!-- Clipped Concentrated Core -->
+    <g clip-path="url(#sonicPortalClip)">
+      <!-- Saturated Backdrop inside portal -->
+      <rect x="300" y="420" width="600" height="600" fill="#0d0822" />
+      <circle cx="595.5" cy="720" r="240" fill="url(#portalGlow)" opacity="0.9" />
+
+      <!-- Concentric Resonator Rings -->
+      <circle cx="595.5" cy="720" r="210" fill="none" stroke="#00f5ff" stroke-width="1.5" opacity="0.5" />
+      <circle cx="595.5" cy="720" r="160" fill="none" stroke="#d4ff00" stroke-width="2.0" opacity="0.7" />
+      <circle cx="595.5" cy="720" r="110" fill="none" stroke="#ffffff" stroke-width="1.2" stroke-dasharray="5 5" opacity="0.8" />
+      <circle cx="595.5" cy="720" r="60"  fill="none" stroke="#d4ff00" stroke-width="2.5" opacity="0.9" />
+      <circle cx="595.5" cy="720" r="16"  fill="#d4ff00" />
+
+      <!-- Dense High-Amplitude Bézier Streams inside Portal -->
+      <path d="M 335,720
+               C 420,500 500,940 595.5,720
+               S 771,500 856,720"
+            fill="none" stroke="#ffffff" stroke-width="4.0" />
+
+      <path d="M 335,700
+               C 420,480 500,920 595.5,700
+               S 771,480 856,700"
+            fill="none" stroke="#d4ff00" stroke-width="2.5" />
+
+      <path d="M 335,740
+               C 420,520 500,960 595.5,740
+               S 771,520 856,740"
+            fill="none" stroke="#00f5ff" stroke-width="2.5" />
+
+      <path d="M 335,660
+               C 440,900 510,540 595.5,720
+               S 751,900 856,660"
+            fill="none" stroke="#d4ff00" stroke-width="3.0" opacity="0.9" />
+
+      <path d="M 335,780
+               C 440,540 510,900 595.5,720
+               S 751,540 856,780"
+            fill="none" stroke="#00f5ff" stroke-width="3.0" opacity="0.9" />
+    </g>
+
+    <!-- Angular Horizon Axis across portal -->
+    <line x1="260" y1="720" x2="330" y2="720" stroke="#d4ff00" stroke-width="2" />
+    <line x1="861" y1="720" x2="931" y2="720" stroke="#d4ff00" stroke-width="2" />
+    <circle cx="260" cy="720" r="4" fill="#d4ff00" />
+    <circle cx="931" cy="720" r="4" fill="#d4ff00" />
+  </g>
+
+  <!-- ======================================================== -->
+  <!-- LAYER 6: LINEUP & ARTISTS TYPOGRAPHY                     -->
+  <!-- ======================================================== -->
+  <g id="layer-lineup">
+    <!-- Lineup Section Header -->
+    <rect x="54" y="1030" width="1083" height="42" fill="#d4ff00" />
+    <text x="74" y="1058" font-family="'Helvetica Neue', 'Inter', Arial, sans-serif"
+          font-size="16" font-weight="900" fill="#040308" letter-spacing="4">
+      FEATURED ARTISTS &amp; CURATED AUDIOVISUAL PERFORMANCES
+    </text>
+    <text x="1117" y="1057" text-anchor="end" font-family="'Helvetica Neue', 'Inter', Arial, sans-serif"
+          font-size="13" font-weight="700" fill="#040308" letter-spacing="2">
+      OCT 16–18 [3 STAGES]
+    </text>
+
+    <!-- HEADLINERS (Hierarchy Level 1) -->
+    <g transform="translate(0, 1120)">
+      <text x="595.5" y="0" text-anchor="middle"
+            font-family="'Helvetica Neue', 'Inter', 'Impact', sans-serif"
+            font-size="44" font-weight="900" fill="#ffffff" letter-spacing="3">
+        ALVA NOTO + RYUJI IKEDA
+      </text>
+      <text x="595.5" y="52" text-anchor="middle"
+            font-family="'Helvetica Neue', 'Inter', 'Impact', sans-serif"
+            font-size="40" font-weight="900" fill="#d4ff00" letter-spacing="3">
+        CATERINA BARBIERI <tspan fill="#ffffff" font-weight="300">×</tspan> RUBEN SPINI
+      </text>
+      <text x="595.5" y="102" text-anchor="middle"
+            font-family="'Helvetica Neue', 'Inter', 'Impact', sans-serif"
+            font-size="38" font-weight="900" fill="#00f5ff" letter-spacing="3">
+        AOKI TAKAMASA &amp; SAKAMOTO SOUND ARCHIVE
+      </text>
+    </g>
+
+    <!-- Divider Bar -->
+    <line x1="120" y1="1260" x2="1071" y2="1260" stroke="#ffffff" stroke-width="1" opacity="0.3" />
+
+    <!-- SUPPORTING ACTS (Hierarchy Level 2 - 3 Columns) -->
+    <g transform="translate(0, 1300)"
+       font-family="'Helvetica Neue', 'Inter', Arial, sans-serif"
+       font-size="20" font-weight="700" fill="#ffffff" letter-spacing="2">
+      <!-- Column 1 -->
+      <text x="120" y="0">ONEOTRIX POINT NEVER</text>
+      <text x="120" y="34" fill="#d4ff00">SQUAREPUSHER <tspan font-size="13" fill="#ffffff">[AV LIVE]</tspan></text>
+      <text x="120" y="68">TIM HECKER</text>
+
+      <!-- Column 2 -->
+      <text x="480" y="0">KORELESS</text>
+      <text x="480" y="34" fill="#00f5ff">LORRAINE JAMES</text>
+      <text x="480" y="68">ACTRESS</text>
+
+      <!-- Column 3 -->
+      <text x="790" y="0">SURGEON &amp; LADY STARLIGHT</text>
+      <text x="790" y="34" fill="#d4ff00">MAX COOPER <tspan font-size="13" fill="#ffffff">[3D AV]</tspan></text>
+      <text x="790" y="68">BEN FROST</text>
+    </g>
+
+    <!-- EXPERIMENTAL & SPECIAL PROJECTS (Hierarchy Level 3) -->
+    <g transform="translate(0, 1405)">
+      <rect x="120" y="0" width="951" height="1" fill="#d4ff00" opacity="0.4" />
+      <text x="595.5" y="28" text-anchor="middle"
+            font-family="'Helvetica Neue', 'Inter', Arial, sans-serif"
+            font-size="13" font-weight="600" fill="#00f5ff" letter-spacing="4">
+        SPECIAL PROJECTS: KMRU • LUCRECIA DALT • MARK FELL • SHYGIRL • YASUAKI SHIMIZU
+      </text>
+    </g>
+  </g>
+
+  <!-- ======================================================== -->
+  <!-- LAYER 7: FOOTER, TICKETING & PROTOCOL METADATA           -->
+  <!-- ======================================================== -->
+  <g id="layer-footer">
+    <!-- Ticketing Box Grid -->
+    <g transform="translate(80, 1465)">
+      <!-- Tier 1 -->
+      <rect x="0" y="0" width="230" height="96" fill="#110e22" stroke="#ffffff" stroke-width="0.75" opacity="0.9" />
+      <text x="16" y="26" font-family="'Helvetica Neue', 'Inter', Arial, sans-serif"
+            font-size="11" font-weight="700" fill="#d4ff00" letter-spacing="2">EARLY TIER PASS</text>
+      <text x="16" y="58" font-family="'Helvetica Neue', 'Inter', Arial, sans-serif"
+            font-size="24" font-weight="900" fill="#ffffff">¥18,000</text>
+      <text x="16" y="82" font-family="'Helvetica Neue', 'Inter', Arial, sans-serif"
+            font-size="10" font-weight="500" fill="#ffffff" opacity="0.5">LIMITED 500 PASSES</text>
+
+      <!-- Tier 2 -->
+      <rect x="245" y="0" width="230" height="96" fill="#110e22" stroke="#d4ff00" stroke-width="1.2" opacity="0.9" />
+      <text x="261" y="26" font-family="'Helvetica Neue', 'Inter', Arial, sans-serif"
+            font-size="11" font-weight="700" fill="#d4ff00" letter-spacing="2">3-DAY ALL ACCESS</text>
+      <text x="261" y="58" font-family="'Helvetica Neue', 'Inter', Arial, sans-serif"
+            font-size="24" font-weight="900" fill="#d4ff00">¥32,000</text>
+      <text x="261" y="82" font-family="'Helvetica Neue', 'Inter', Arial, sans-serif"
+            font-size="10" font-weight="500" fill="#ffffff" opacity="0.7">FULL STAGE + WORKSHOPS</text>
+
+      <!-- Tier 3 -->
+      <rect x="490" y="0" width="230" height="96" fill="#110e22" stroke="#00f5ff" stroke-width="0.75" opacity="0.9" />
+      <text x="506" y="26" font-family="'Helvetica Neue', 'Inter', Arial, sans-serif"
+            font-size="11" font-weight="700" fill="#00f5ff" letter-spacing="2">VIP IMMERSIVE DOME</text>
+      <text x="506" y="58" font-family="'Helvetica Neue', 'Inter', Arial, sans-serif"
+            font-size="24" font-weight="900" fill="#ffffff">¥50,000</text>
+      <text x="506" y="82" font-family="'Helvetica Neue', 'Inter', Arial, sans-serif"
+            font-size="10" font-weight="500" fill="#ffffff" opacity="0.5">BINAURAL PRIORITY PASS</text>
+
+      <!-- Information Column -->
+      <g transform="translate(740, 6)"
+         font-family="'Helvetica Neue', 'Inter', Arial, sans-serif"
+         font-size="10" font-weight="500" fill="#ffffff" opacity="0.75" letter-spacing="1">
+        <text x="0" y="16">VENUE: TOKYO BAY WATERFRONT OPEN-AIR STAGE</text>
+        <text x="0" y="36">DOORS: 11:00 AM / SOUND CURFEW: 22:30 PM</text>
+        <text x="0" y="56">OFFICIAL PORTAL: WWW.HIRARISOUND2026.JP</text>
+        <text x="0" y="76" fill="#d4ff00" font-weight="700">TICKETS ON SALE: 2026.05.01 12:00 JST</text>
+      </g>
+    </g>
+
+    <!-- Bottom Stylized Vector Barcode Block -->
+    <g transform="translate(80, 1580)">
+      <rect x="0" y="0" width="4" height="26" fill="#d4ff00" />
+      <rect x="7" y="0" width="8" height="26" fill="#ffffff" />
+      <rect x="18" y="0" width="3" height="26" fill="#d4ff00" />
+      <rect x="24" y="0" width="10" height="26" fill="#ffffff" />
+      <rect x="38" y="0" width="5" height="26" fill="#d4ff00" />
+      <rect x="47" y="0" width="2" height="26" fill="#ffffff" />
+      <rect x="53" y="0" width="9" height="26" fill="#d4ff00" />
+      <rect x="66" y="0" width="4" height="26" fill="#ffffff" />
+      <rect x="74" y="0" width="12" height="26" fill="#d4ff00" />
+      <rect x="90" y="0" width="5" height="26" fill="#ffffff" />
+      <rect x="99" y="0" width="3" height="26" fill="#d4ff00" />
+      <rect x="106" y="0" width="8" height="26" fill="#ffffff" />
+      <rect x="118" y="0" width="2" height="26" fill="#d4ff00" />
+      <rect x="124" y="0" width="7" height="26" fill="#ffffff" />
+
+      <text x="145" y="18" font-family="'Helvetica Neue', 'Inter', Arial, sans-serif"
+            font-size="11" font-weight="700" fill="#ffffff" letter-spacing="4" opacity="0.6">
+        HASH: 8F26-HS-2026-AVX // TOKYO
+      </text>
+    </g>
+
+    <!-- Partner Audio Tags -->
+    <g transform="translate(820, 1582)"
+       font-family="'Helvetica Neue', 'Inter', Arial, sans-serif"
+       font-size="10" font-weight="700" fill="#d4ff00" letter-spacing="2" opacity="0.7">
+      <text x="0" y="14">[D&amp;B SOUNDSCAPE]</text>
+      <text x="130" y="14">[L-ISA IMMERSIVE]</text>
+      <text x="260" y="14">[AMBISONIC]</text>
+    </g>
+  </g>
+
+</svg>

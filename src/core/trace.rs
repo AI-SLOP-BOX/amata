@@ -12,9 +12,7 @@ pub fn trace_bitmap_to_polygons(
         return Vec::new();
     }
 
-    let sample = |x: usize, y: usize| -> bool {
-        pixels[y * width + x] >= threshold
-    };
+    let sample = |x: usize, y: usize| -> bool { pixels[y * width + x] >= threshold };
 
     let mut segments: Vec<((i64, i64), (i64, i64))> = Vec::new();
 
@@ -82,7 +80,10 @@ pub fn trace_bitmap_to_polygons(
 
         while let Some(&next) = edge_map.get(&current) {
             visited.insert(current);
-            loop_pts.push(AnchorPoint::new(current.0 as f64 * 0.5, current.1 as f64 * 0.5));
+            loop_pts.push(AnchorPoint::new(
+                current.0 as f64 * 0.5,
+                current.1 as f64 * 0.5,
+            ));
             current = next;
 
             if current == start_pt || visited.contains(&current) {
@@ -136,12 +137,7 @@ pub fn simplify_polygon(pts: &[AnchorPoint], tolerance: f64) -> Vec<AnchorPoint>
 }
 
 /// Convert bitmap contours into a composite PathData
-pub fn trace_bitmap_to_path(
-    width: usize,
-    height: usize,
-    pixels: &[u8],
-    threshold: u8,
-) -> PathData {
+pub fn trace_bitmap_to_path(width: usize, height: usize, pixels: &[u8], threshold: u8) -> PathData {
     let polys = trace_bitmap_to_polygons(width, height, pixels, threshold);
     let mut combined = PathData::new();
 

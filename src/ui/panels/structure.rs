@@ -1,0 +1,667 @@
+use crate::core::boolean::{execute_pathfinder, BooleanOp};
+use crate::core::document::{Object, ObjectType};
+use crate::core::morph::morph_paths;
+use crate::core::offset::{offset_path, outline_stroke};
+use crate::core::state::AppState;
+use egui::{Color32, RichText, Ui, Vec2};
+
+pub struct LayerPanel;
+
+impl LayerPanel {
+    pub fn show(ui: &mut Ui, state: &mut AppState) {
+        ui.label(
+            RichText::new("レイヤー")
+                .strong()
+                .size(13.0)
+                .color(Color32::WHITE),
+        );
+        ui.separator();
+
+        let layer_count = state.document.layers.len();
+        let active_idx = state.document.active_layer_idx;
+
+        let mut to_add_layer = false;
+        let mut to_remove_layer = false;
+        let mut to_move_layer_up: Option<usize> = None;
+        let mut to_move_layer_down: Option<usize> = None;
+        let mut to_move_obj_up: Option<(usize, usize)> = None;
+        let mut to_move_obj_down: Option<(usize, usize)> = None;
+        let mut to_duplicate_layer: Option<usize> = None;
+        let mut to_select_obj: Option<String> = None;
+        let mut to_remove_obj: Option<(usize, usize)> = None;
+        let mut to_toggle_vis: Option<usize> = None;
+        let mut to_toggle_lock: Option<usize> = None;
+        let mut to_toggle_obj_vis: Option<String> = None;
+        let mut to_toggle_obj_lock: Option<String> = None;
+
+        for (i, layer) in state.document.layers.iter().enumerate() {
+            let is_active = i == active_idx;
+            let obj_count = layer.objects.len();
+            let text = if is_active {
+                RichText::new(format!("📁 {} ({})", layer.name, obj_count))
+                    .strong()
+                    .color(Color32::from_rgb(100, 180, 255))
+            } else {
+                RichText::new(format!("📁 {} ({})", layer.name, obj_count))
+            };
+
+            ui.horizontal(|ui| {
+                if ui.selectable_label(is_active, text).clicked() {
+                    state.document.active_layer_idx = i;
+                }
+
+                if ui
+                    .small_button("▲")
+                    .on_hover_text("Move Layer Up")
+                    .clicked()
+                    && i + 1 < layer_count
+                {
+                    to_move_layer_up = Some(i);
+                }
+                if ui
+                    .small_button("▼")
+                    .on_hover_text("Move Layer Down")
+                    .clicked()
+                    && i > 0
+                {
+                    to_move_layer_down = Some(i);
+                }
+
+                let vis_icon = if layer.visible { "👁" } else { "🚫" };
+                if ui
+                    .small_button(vis_icon)
+                    .on_hover_text("Toggle Visibility")
+                    .clicked()
+                {
+                    to_toggle_vis = Some(i);
+                }
+
+                let lock_icon = if layer.locked { "🔒" } else { "🔓" };
+                if ui
+                    .small_button(lock_icon)
+                    .on_hover_text("Toggle Lock")
+                    .clicked()
+                {
+                    to_toggle_lock = Some(i);
+                }
+
+                if ui
+                    .small_button("⧉")
+                    .on_hover_text("Duplicate Layer")
+                    .clicked()
+                {
+                    to_duplicate_layer = Some(i);
+                }
+            });
+
+            if is_active {
+                ui.indent("objects", |ui| {
+                    for (j, obj) in layer.objects.iter().enumerate() {
+                        let is_selected = state.selected_ids.contains(&obj.id);
+                        let icon = match &obj.object_type {
+                            ObjectType::Path(_) => "✒",
+                            ObjectType::Rectangle { .. } => "▭",
+                            ObjectType::Ellipse { .. } => "◯",
+                            ObjectType::Star { .. } => "★",
+                            ObjectType::Polygon { .. } => "⬡",
+                            ObjectType::Line { .. } => "╱",
+                            ObjectType::Text { .. } => "𝐓",
+                            ObjectType::Group(_) => "🗂",
+                            ObjectType::ClippingMask { .. } => "🎭",
+                            ObjectType::Use { .. } => "❖",
+                        };
+                        let obj_text = format!("{icon} {}", obj.name);
+
+                        ui.horizontal(|ui| {
+                            if ui.selectable_label(is_selected, &obj_text).clicked() {
+                                to_select_obj = Some(obj.id.clone());
+                            }
+
+                            if ui
+                                .small_button("↑")
+                                .on_hover_text("Bring Forward")
+                                .clicked()
+                                && j + 1 < layer.objects.len()
+                            {
+                                to_move_obj_up = Some((i, j));
+                            }
+                            if ui
+                                .small_button("↓")
+                                .on_hover_text("Send Backward")
+                                .clicked()
+                                && j > 0
+                            {
+                                to_move_obj_down = Some((i, j));
+                            }
+
+                            let o_vis_icon = if obj.visible { "👁" } else { "🚫" };
+                            if ui
+                                .small_button(o_vis_icon)
+                                .on_hover_text("Toggle Object Visibility")
+                                .clicked()
+                            {
+                                to_toggle_obj_vis = Some(obj.id.clone());
+                            }
+
+                            let o_lock_icon = if obj.locked { "🔒" } else { "🔓" };
+                            if ui
+                                .small_button(o_lock_icon)
+                                .on_hover_text("Toggle Object Lock")
+                                .clicked()
+                            {
+                                to_toggle_obj_lock = Some(obj.id.clone());
+                            }
+
+                            if ui.small_button("×").on_hover_text("Delete").clicked() {
+                                to_remove_obj = Some((i, j));
+                            }
+                        });
+                    }
+                });
+            }
+        }
+
+        if let Some(id) = to_select_obj {
+            state.selected_ids.clear();
+            state.selected_ids.push(id);
+        }
+
+        if let Some((layer_idx, obj_idx)) = to_remove_obj {
+            let obj = state.document.layers[layer_idx].objects.remove(obj_idx);
+            let cmd = Box::new(crate::core::history::RemoveObjectCommand::new(
+                obj, layer_idx, obj_idx,
+            ));
+            state.undo_manager.execute(cmd, &mut state.document);
+        }
+
+        if let Some(i) = to_toggle_vis {
+            state.document.layers[i].visible = !state.document.layers[i].visible;
+        }
+
+        if let Some(i) = to_toggle_lock {
+            state.document.layers[i].locked = !state.document.layers[i].locked;
+        }
+
+        if let Some(id) = to_toggle_obj_vis {
+            for (_, obj) in state.document.all_objects_mut() {
+                if obj.id == id {
+                    obj.visible = !obj.visible;
+                    break;
+                }
+            }
+        }
+
+        if let Some(id) = to_toggle_obj_lock {
+            for (_, obj) in state.document.all_objects_mut() {
+                if obj.id == id {
+                    obj.locked = !obj.locked;
+                    break;
+                }
+            }
+        }
+
+        if let Some(i) = to_move_layer_up {
+            state.document.move_layer_up(i);
+        }
+
+        if let Some(i) = to_move_layer_down {
+            state.document.move_layer_down(i);
+        }
+
+        if let Some((l, o)) = to_move_obj_up {
+            state.document.move_object_up(l, o);
+        }
+
+        if let Some((l, o)) = to_move_obj_down {
+            state.document.move_object_down(l, o);
+        }
+
+        if let Some(i) = to_duplicate_layer {
+            let new_name = format!("{} (copy)", state.document.layers[i].name);
+            let mut new_layer = crate::core::document::Layer::new(&new_name);
+            for obj in &state.document.layers[i].objects {
+                let mut dup = obj.clone();
+                dup.id = uuid::Uuid::new_v4().to_string();
+                dup.name = format!("{} (copy)", obj.name);
+                new_layer.objects.push(dup);
+            }
+            new_layer.visible = state.document.layers[i].visible;
+            new_layer.locked = state.document.layers[i].locked;
+            state.document.layers.push(new_layer);
+            state.document.active_layer_idx = state.document.layers.len() - 1;
+        }
+
+        ui.separator();
+
+        ui.horizontal(|ui| {
+            if ui.button("+ New Layer").clicked() {
+                to_add_layer = true;
+            }
+            if ui.button("- Delete Layer").clicked() && layer_count > 1 {
+                to_remove_layer = true;
+            }
+        });
+
+        if to_add_layer {
+            let name = format!("Layer {}", layer_count + 1);
+            state
+                .document
+                .layers
+                .push(crate::core::document::Layer::new(&name));
+            state.document.active_layer_idx = state.document.layers.len() - 1;
+        }
+
+        if to_remove_layer {
+            let idx = state.document.active_layer_idx;
+            state.document.layers.remove(idx);
+            state.document.active_layer_idx = state
+                .document
+                .active_layer_idx
+                .min(state.document.layers.len() - 1);
+        }
+    }
+}
+
+pub struct HistoryPanel;
+
+impl HistoryPanel {
+    pub fn show(ui: &mut Ui, state: &mut AppState) {
+        ui.heading(RichText::new("↩ History").strong());
+        ui.add_space(4.0);
+
+        let undo_depth = state.undo_manager.undo_depth();
+        let redo_depth = state.undo_manager.redo_depth();
+
+        ui.label(RichText::new(format!("Undo: {} | Redo: {}", undo_depth, redo_depth)).weak());
+        ui.separator();
+
+        if undo_depth == 0 && redo_depth == 0 {
+            ui.label(RichText::new("No history yet").weak());
+            return;
+        }
+
+        ui.collapsing(format!("Undo Stack ({})", undo_depth), |ui| {
+            let names: Vec<String> = state
+                .undo_manager
+                .undo_stack()
+                .iter()
+                .map(|c| c.name().to_string())
+                .collect();
+            for (i, name) in names.iter().enumerate() {
+                let is_last = i == names.len() - 1;
+                let text = if is_last {
+                    RichText::new(format!("{}. {} ●", i + 1, name))
+                        .strong()
+                        .color(Color32::from_rgb(100, 180, 255))
+                } else {
+                    RichText::new(format!("{}. {}", i + 1, name))
+                };
+                ui.label(text);
+            }
+        });
+
+        ui.collapsing(format!("Redo Stack ({})", redo_depth), |ui| {
+            let names: Vec<String> = state
+                .undo_manager
+                .redo_stack()
+                .iter()
+                .rev()
+                .map(|c| c.name().to_string())
+                .collect();
+            for (i, name) in names.iter().enumerate() {
+                let text = RichText::new(format!("{}. {}", i + 1, name));
+                ui.label(text);
+            }
+        });
+    }
+}
+
+pub struct ClippingMaskPanel;
+
+impl ClippingMaskPanel {
+    pub fn show(ui: &mut Ui, state: &mut AppState) {
+        ui.heading(RichText::new("✂ Clipping Mask").strong());
+        ui.add_space(4.0);
+
+        let sel_count = state.selected_ids.len();
+        let has_mask_shape = sel_count >= 2;
+
+        ui.label("Select a mask shape (top) and content objects (below).");
+        ui.label(
+            RichText::new("Ctrl+7 or click below to create mask")
+                .weak()
+                .size(11.0),
+        );
+        ui.add_space(4.0);
+
+        if ui
+            .add_enabled(has_mask_shape, egui::Button::new("Create Clipping Mask"))
+            .clicked()
+        {
+            // The first selected object is the mask, rest are content
+            let mask_id = state.selected_ids[0].clone();
+            let content_ids: Vec<String> = state.selected_ids[1..].to_vec();
+
+            let mut mask_obj = None;
+            let mut content_objs = Vec::new();
+            let mut ids_to_remove = Vec::new();
+
+            for (_, obj) in state.document.all_objects() {
+                if obj.id == mask_id {
+                    mask_obj = Some(obj.clone());
+                } else if content_ids.contains(&obj.id) {
+                    content_objs.push(obj.clone());
+                }
+            }
+
+            if let Some(mask) = mask_obj {
+                ids_to_remove.push(mask_id.clone());
+                ids_to_remove.extend(content_ids.clone());
+
+                let mask_path = mask.to_path_data();
+                let mut children = vec![Object::new_path("Mask", mask_path)];
+                children.extend(content_objs);
+
+                let clipping = Object {
+                    id: uuid::Uuid::new_v4().to_string(),
+                    name: "Clipping Mask".into(),
+                    object_type: ObjectType::ClippingMask { children },
+                    ..Object::new_rect("Clipping Mask", 0.0, 0.0, 100.0, 100.0, 0.0)
+                };
+
+                for remove_id in &ids_to_remove {
+                    state.document.remove_object(remove_id);
+                }
+
+                let cmd = Box::new(crate::core::history::AddObjectCommand::new(clipping));
+                state.undo_manager.execute(cmd, &mut state.document);
+            }
+        }
+
+        ui.add_space(4.0);
+        ui.label(RichText::new(format!("Selected: {} objects", sel_count)).weak());
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// AppearancePanel: Multiple fills/strokes per object
+// ═══════════════════════════════════════════════════════════════════
+
+pub struct PathfinderPanel;
+
+impl PathfinderPanel {
+    pub fn show(ui: &mut Ui, state: &mut AppState) {
+        ui.heading(RichText::new("✂ Pathfinder").strong());
+        ui.label(
+            RichText::new("Combine 2 or more vector shapes")
+                .weak()
+                .size(11.0),
+        );
+        ui.add_space(4.0);
+
+        let sel_count = state.selected_ids.len();
+        let is_enabled = sel_count >= 2;
+
+        let ops = [
+            (BooleanOp::Union, "Unite", "Combine all shapes into one"),
+            (
+                BooleanOp::Subtract,
+                "Minus Front",
+                "Subtract front shapes from back",
+            ),
+            (BooleanOp::Intersect, "Intersect", "Keep overlapping area"),
+            (BooleanOp::Exclude, "Exclude", "Exclude overlapping area"),
+        ];
+
+        ui.horizontal_wrapped(|ui| {
+            for (op, name, tooltip) in ops {
+                let btn =
+                    egui::Button::new(RichText::new(format!("{} {}", op.icon(), name)).strong())
+                        .min_size(Vec2::new(95.0, 26.0));
+
+                let clicked = ui
+                    .add_enabled(is_enabled, btn)
+                    .on_hover_text(tooltip)
+                    .clicked();
+
+                if clicked {
+                    Self::apply_op(state, op);
+                }
+            }
+        });
+    }
+
+    pub fn apply_op(state: &mut AppState, op: BooleanOp) {
+        let mut selected_objs: Vec<Object> = Vec::new();
+        for id in &state.selected_ids {
+            if let Some((_, obj)) = state.document.all_objects().find(|(_, o)| &o.id == id) {
+                selected_objs.push(obj.clone());
+            }
+        }
+
+        if selected_objs.len() < 2 {
+            return;
+        }
+
+        let obj_refs: Vec<&Object> = selected_objs.iter().collect();
+        if let Some(result_obj) = execute_pathfinder(&obj_refs, op) {
+            for id in &state.selected_ids {
+                state.document.remove_object(id);
+            }
+            let new_id = result_obj.id.clone();
+            let cmd = Box::new(crate::core::history::AddObjectCommand::new(result_obj));
+            state.undo_manager.execute(cmd, &mut state.document);
+            state.selected_ids = vec![new_id];
+        }
+    }
+}
+
+pub struct OffsetPanel;
+
+impl OffsetPanel {
+    pub fn show(ui: &mut Ui, state: &mut AppState) {
+        ui.heading(RichText::new("📐 Path Tools").strong());
+        ui.add_space(4.0);
+
+        let has_sel = !state.selected_ids.is_empty();
+
+        ui.horizontal(|ui| {
+            if ui
+                .add_enabled(has_sel, egui::Button::new("Outline Stroke"))
+                .clicked()
+            {
+                let targets: Vec<crate::core::document::Object> = state
+                    .selected_ids
+                    .iter()
+                    .filter_map(|id| {
+                        state
+                            .document
+                            .all_objects()
+                            .find(|(_, o)| &o.id == id)
+                            .map(|(_, o)| o.clone())
+                    })
+                    .collect();
+
+                for obj in targets {
+                    let stroke_w = obj.stroke.as_ref().map(|s| s.width).unwrap_or(2.0);
+                    let path = obj.to_path_data();
+                    let outlined = outline_stroke(&path, stroke_w);
+                    let mut new_obj =
+                        Object::new_path(&format!("{} (Outlined)", obj.name), outlined);
+                    new_obj.transform = obj.transform.clone();
+                    let cmd = Box::new(crate::core::history::AddObjectCommand::new(new_obj));
+                    state.undo_manager.execute(cmd, &mut state.document);
+                }
+            }
+
+            if ui
+                .add_enabled(has_sel, egui::Button::new("Offset Path (+10px)"))
+                .clicked()
+            {
+                let targets: Vec<crate::core::document::Object> = state
+                    .selected_ids
+                    .iter()
+                    .filter_map(|id| {
+                        state
+                            .document
+                            .all_objects()
+                            .find(|(_, o)| &o.id == id)
+                            .map(|(_, o)| o.clone())
+                    })
+                    .collect();
+
+                for obj in targets {
+                    let path = obj.to_path_data();
+                    let offset = offset_path(&path, 10.0);
+                    let mut new_obj = Object::new_path(&format!("{} (Offset)", obj.name), offset);
+                    new_obj.transform = obj.transform.clone();
+                    let cmd = Box::new(crate::core::history::AddObjectCommand::new(new_obj));
+                    state.undo_manager.execute(cmd, &mut state.document);
+                }
+            }
+        });
+    }
+}
+
+pub struct MorphPanel;
+
+impl MorphPanel {
+    pub fn show(ui: &mut Ui, state: &mut AppState) {
+        ui.heading(RichText::new("🧬 Shape Morphing").strong());
+        ui.add_space(4.0);
+
+        let sel_count = state.selected_ids.len();
+        if sel_count == 2 {
+            ui.label("Select 2 shapes to interpolate/morph between them:");
+            let mut t = 0.5;
+            ui.add(
+                egui::Slider::new(&mut t, 0.0..=1.0)
+                    .text("Morph (t)")
+                    .step_by(0.05),
+            );
+
+            if ui.button("Create Morphed In-between Shape").clicked() {
+                let obj1 = state
+                    .document
+                    .all_objects()
+                    .find(|(_, o)| o.id == state.selected_ids[0])
+                    .map(|(_, o)| o.clone());
+                let obj2 = state
+                    .document
+                    .all_objects()
+                    .find(|(_, o)| o.id == state.selected_ids[1])
+                    .map(|(_, o)| o.clone());
+
+                if let (Some(o1), Some(o2)) = (obj1, obj2) {
+                    let mut path1 = o1.to_path_data();
+                    path1.transform(&o1.transform.matrix());
+                    let mut path2 = o2.to_path_data();
+                    path2.transform(&o2.transform.matrix());
+
+                    let morphed = morph_paths(&path1, &path2, t);
+                    let new_obj = Object::new_path("Morph In-Between", morphed);
+                    let cmd = Box::new(crate::core::history::AddObjectCommand::new(new_obj));
+                    state.undo_manager.execute(cmd, &mut state.document);
+                }
+            }
+        } else {
+            ui.label(RichText::new("Select exactly 2 objects to morph").weak());
+        }
+    }
+}
+
+pub struct KnifePanel;
+
+impl KnifePanel {
+    pub fn show(ui: &mut Ui, state: &mut AppState) {
+        ui.heading(RichText::new("✂️ Knife & Vector Slicer").strong());
+        ui.add_space(4.0);
+
+        let has_sel = !state.selected_ids.is_empty();
+
+        if let Some(id) = state.selected_ids.first().cloned() {
+            let target_obj = state
+                .document
+                .all_objects()
+                .find(|(_, o)| o.id == id)
+                .map(|(_, o)| o.clone());
+            ui.horizontal(|ui| {
+                if ui
+                    .add_enabled(has_sel, egui::Button::new("Slice Horizontally"))
+                    .clicked()
+                {
+                    if let Some(obj) = &target_obj {
+                        if let Some((min, max)) = obj.bounding_box() {
+                            let mid_y = (min.y + max.y) * 0.5;
+                            let p1 = crate::core::path::AnchorPoint::new(min.x - 10.0, mid_y);
+                            let p2 = crate::core::path::AnchorPoint::new(max.x + 10.0, mid_y);
+
+                            if let Some((part_a, part_b)) =
+                                crate::core::knife::slice_object_with_line(obj, p1, p2)
+                            {
+                                let cmd1 =
+                                    Box::new(crate::core::history::RemoveObjectCommand::new(
+                                        obj.clone(),
+                                        0,
+                                        0,
+                                    ));
+                                state.undo_manager.execute(cmd1, &mut state.document);
+
+                                let cmd2 =
+                                    Box::new(crate::core::history::AddObjectCommand::new(part_a));
+                                state.undo_manager.execute(cmd2, &mut state.document);
+
+                                let cmd3 =
+                                    Box::new(crate::core::history::AddObjectCommand::new(part_b));
+                                state.undo_manager.execute(cmd3, &mut state.document);
+                            }
+                        }
+                    }
+                }
+
+                if ui
+                    .add_enabled(has_sel, egui::Button::new("Slice Vertically"))
+                    .clicked()
+                {
+                    if let Some(obj) = &target_obj {
+                        if let Some((min, max)) = obj.bounding_box() {
+                            let mid_x = (min.x + max.x) * 0.5;
+                            let p1 = crate::core::path::AnchorPoint::new(mid_x, min.y - 10.0);
+                            let p2 = crate::core::path::AnchorPoint::new(mid_x, max.y + 10.0);
+
+                            if let Some((part_a, part_b)) =
+                                crate::core::knife::slice_object_with_line(obj, p1, p2)
+                            {
+                                let cmd1 =
+                                    Box::new(crate::core::history::RemoveObjectCommand::new(
+                                        obj.clone(),
+                                        0,
+                                        0,
+                                    ));
+                                state.undo_manager.execute(cmd1, &mut state.document);
+
+                                let cmd2 =
+                                    Box::new(crate::core::history::AddObjectCommand::new(part_a));
+                                state.undo_manager.execute(cmd2, &mut state.document);
+
+                                let cmd3 =
+                                    Box::new(crate::core::history::AddObjectCommand::new(part_b));
+                                state.undo_manager.execute(cmd3, &mut state.document);
+                            }
+                        }
+                    }
+                }
+            });
+        } else {
+            ui.label(
+                RichText::new("Select an object to slice in half")
+                    .weak()
+                    .size(11.0),
+            );
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// SymbolsPanel: Reusable object library
+// ═══════════════════════════════════════════════════════════════════

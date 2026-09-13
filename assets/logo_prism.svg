@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="p1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FF6B4A" />
+      <stop offset="100%" stop-color="#8B5CF6" />
+    </linearGradient>
+    <linearGradient id="p2" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38BDF8" />
+      <stop offset="100%" stop-color="#2563EB" />
+    </linearGradient>
+    <linearGradient id="p3" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#06B6D4" />
+      <stop offset="100%" stop-color="#3B82F6" />
+    </linearGradient>
+    <linearGradient id="p4" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#F59E0B" />
+      <stop offset="100%" stop-color="#F43F5E" />
+    </linearGradient>
+  </defs>
+  <rect x="24" y="24" width="464" height="464" rx="96" fill="#1C1C22" stroke="#2E2E38" stroke-width="2.5" />
+  
+  <!-- Facets (数多 - Amata Facets) -->
+  <polygon points="256,124 176,288 256,260" fill="url(#p1)" opacity="0.9" />
+  <polygon points="256,124 336,288 256,260" fill="url(#p2)" opacity="0.9" />
+  <polygon points="176,288 140,368 224,368 256,260" fill="url(#p4)" opacity="0.9" />
+  <polygon points="336,288 372,368 288,368 256,260" fill="url(#p3)" opacity="0.9" />
+  
+  <text x="256" y="432" text-anchor="middle" font-family="system-ui, sans-serif" font-size="24" font-weight="700" letter-spacing="10" fill="#FFFFFF">AMATA</text>
+  <text x="256" y="454" text-anchor="middle" font-family="system-ui, sans-serif" font-size="10" font-weight="600" letter-spacing="3.5" fill="#8E8E9A">FACETS EDITION</text>
+</svg>

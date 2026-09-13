@@ -47,7 +47,7 @@ pub fn generate_halftone_from_path(
                 let cy = (min_y + max_y) * 0.5;
                 let dist_c = ((x - cx).powi(2) + (y - cy).powi(2)).sqrt();
                 let max_dist = ((max_x - min_x).hypot(max_y - min_y) * 0.5).max(1.0);
-                let factor = (1.0 - (dist_c / max_dist).clamp(0.0, 0.8)).powf(1.2);
+                let factor = (1.0_f64 - (dist_c / max_dist).clamp(0.0, 0.8)).powf(1.2);
                 let dot_r = r_max * factor;
 
                 if dot_r > 0.5 {

@@ -60,8 +60,12 @@ pub fn generate_particle_trail(
                 let ny = dx / len;
 
                 // Randomness hash for seed stability
-                let hash = ((i as f64 * 12.9898 + 78.233).sin() * 43758.5453).fract().abs();
-                let hash2 = ((i as f64 * 39.346 + 11.135).sin() * 43758.5453).fract().abs();
+                let hash = ((i as f64 * 12.9898 + 78.233).sin() * 43758.5453)
+                    .fract()
+                    .abs();
+                let hash2 = ((i as f64 * 39.346 + 11.135).sin() * 43758.5453)
+                    .fract()
+                    .abs();
 
                 let offset_perp = (hash - 0.5) * 2.0 * spread;
                 let v_speed = speed * (0.8 + 0.4 * hash2);
@@ -74,12 +78,7 @@ pub fn generate_particle_trail(
                     velocity: [vx, vy, (hash2 - 0.5) * speed * 0.5],
                     lifetime: 1.5 + hash * 1.5,
                     size: 3.0 + hash2 * 4.0,
-                    color: [
-                        0.2 + 0.8 * hash as f32,
-                        0.5 + 0.5 * hash2 as f32,
-                        1.0,
-                        0.9,
-                    ],
+                    color: [0.2 + 0.8 * hash as f32, 0.5 + 0.5 * hash2 as f32, 1.0, 0.9],
                 });
                 break;
             }

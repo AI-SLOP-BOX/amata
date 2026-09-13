@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600">
+  <defs>
+    <linearGradient id="neon_accent" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#00f5d4" />
+      <stop offset="100%" stop-color="#7b2cbf" />
+    </linearGradient>
+    <symbol id="audio-pill">
+      <rect x="0" y="0" width="140" height="48" rx="24" ry="24" fill="url(#neon_accent)" />
+      <text x="70" y="30" font-size="14" font-family="system-ui, -apple-system, sans-serif" fill="#ffffff" text-anchor="middle">LIVE SET</text>
+    </symbol>
+  </defs>
+  <rect width="800" height="600" fill="#0b0f19" />
+  <use href="#audio-pill" x="50" y="50" />
+  <use href="#audio-pill" x="220" y="50" />
+  <use href="#audio-pill" x="390" y="50" />
+  <use href="#audio-pill" x="560" y="50" />
+  <text x="400" y="300" font-size="32" font-family="system-ui, -apple-system, sans-serif" fill="#ffffff" text-anchor="middle">COMPONENT INSTANCE DEMO</text>
+</svg>

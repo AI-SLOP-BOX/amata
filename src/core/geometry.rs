@@ -41,6 +41,57 @@ pub fn point_in_polygon(px: f64, py: f64, verts: &[AnchorPoint]) -> bool {
     inside
 }
 
+/// Check if point is inside multi-contour/hole-bearing subpaths using the specified fill rule (EvenOdd or NonZero)
+pub fn point_in_subpaths(px: f64, py: f64, subpaths: &[Vec<AnchorPoint>], even_odd: bool) -> bool {
+    if even_odd {
+        let mut inside = false;
+        for poly in subpaths {
+            if poly.len() < 3 {
+                continue;
+            }
+            let n = poly.len();
+            let mut j = n - 1;
+            for i in 0..n {
+                let xi = poly[i].x;
+                let yi = poly[i].y;
+                let xj = poly[j].x;
+                let yj = poly[j].y;
+                if ((yi > py) != (yj > py)) && (px < (xj - xi) * (py - yi) / (yj - yi) + xi) {
+                    inside = !inside;
+                }
+                j = i;
+            }
+        }
+        inside
+    } else {
+        let mut winding = 0;
+        for poly in subpaths {
+            if poly.len() < 3 {
+                continue;
+            }
+            let n = poly.len();
+            for i in 0..n {
+                let p1 = poly[i];
+                let p2 = poly[(i + 1) % n];
+                if p1.y <= py {
+                    if p2.y > py {
+                        let cross = (p2.x - p1.x) * (py - p1.y) - (px - p1.x) * (p2.y - p1.y);
+                        if cross > 0.0 {
+                            winding += 1;
+                        }
+                    }
+                } else if p2.y <= py {
+                    let cross = (p2.x - p1.x) * (py - p1.y) - (px - p1.x) * (p2.y - p1.y);
+                    if cross < 0.0 {
+                        winding -= 1;
+                    }
+                }
+            }
+        }
+        winding != 0
+    }
+}
+
 pub fn signed_polygon_area(verts: &[AnchorPoint]) -> f64 {
     let mut area = 0.0;
     let n = verts.len();

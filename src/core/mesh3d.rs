@@ -30,7 +30,10 @@ impl Mesh3D {
         obj.push('\n');
 
         for f in &self.faces {
-            obj.push_str(&format!("f {}//{} {}//{} {}//{}\n", f[0], f[0], f[1], f[1], f[2], f[2]));
+            obj.push_str(&format!(
+                "f {}//{} {}//{} {}//{}\n",
+                f[0], f[0], f[1], f[1], f[2], f[2]
+            ));
         }
 
         obj
@@ -85,6 +88,16 @@ pub fn triangulate_polygon(poly: &[AnchorPoint]) -> Vec<[usize; 3]> {
                     continue;
                 }
                 let pt = poly[indices[j]];
+                // Vertices coincident with corners of the triangle (e.g. from bridged seams) are ignored
+                if (pt.x - a.x).abs() < 1e-6 && (pt.y - a.y).abs() < 1e-6 {
+                    continue;
+                }
+                if (pt.x - b.x).abs() < 1e-6 && (pt.y - b.y).abs() < 1e-6 {
+                    continue;
+                }
+                if (pt.x - c.x).abs() < 1e-6 && (pt.y - c.y).abs() < 1e-6 {
+                    continue;
+                }
                 if is_point_in_triangle(pt, a, b, c) {
                     inside = true;
                     break;
@@ -152,7 +165,8 @@ pub fn extrude_polygon_3d(poly: &[AnchorPoint], depth: f64, bevel: f64) -> Mesh3
 
     // Back faces (flipped winding)
     for tri in &cap_tris {
-        mesh.faces.push([n + tri[2] + 1, n + tri[1] + 1, n + tri[0] + 1]);
+        mesh.faces
+            .push([n + tri[2] + 1, n + tri[1] + 1, n + tri[0] + 1]);
     }
 
     // 3. Side Walls

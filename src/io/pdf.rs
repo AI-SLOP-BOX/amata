@@ -61,7 +61,12 @@ pub fn export_pdf(doc: &Document) -> Vec<u8> {
                         let _ = writeln!(
                             stream_content,
                             "{:.2} {:.2} {:.2} {:.2} {:.2} {:.2} c",
-                            seg.control1.x, seg.control1.y, seg.control2.x, seg.control2.y, seg.end.x, seg.end.y
+                            seg.control1.x,
+                            seg.control1.y,
+                            seg.control2.x,
+                            seg.control2.y,
+                            seg.end.x,
+                            seg.end.y
                         );
                     }
                     PathElement::ClosePath => {

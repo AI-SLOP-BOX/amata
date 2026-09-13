@@ -106,11 +106,7 @@ impl HookManager {
         self.hooks.retain(|h| h.plugin_id != plugin_id);
     }
 
-    pub fn invoke(
-        &self,
-        point: &HookPoint,
-        ctx: &mut HookContext,
-    ) -> HookResult {
+    pub fn invoke(&self, point: &HookPoint, ctx: &mut HookContext) -> HookResult {
         for hook in &self.hooks {
             if &hook.point == point {
                 match (hook.handler)(point, ctx) {

@@ -18,6 +18,8 @@ pub enum Tool {
     Hand,
     Brush,
     Eraser,
+    ShapeBuilder,
+    Zoom,
 }
 
 impl Tool {
@@ -37,25 +39,29 @@ impl Tool {
             Tool::Hand => "Hand",
             Tool::Brush => "Brush",
             Tool::Eraser => "Eraser",
+            Tool::ShapeBuilder => "Shape Builder",
+            Tool::Zoom => "Zoom",
         }
     }
 
     pub fn icon(&self) -> &'static str {
         match self {
-            Tool::Select => "⬚",
-            Tool::Node => "◆",
+            Tool::Select => "↖",
+            Tool::Node => "⇱",
             Tool::Pen => "✒",
             Tool::Pencil => "✎",
             Tool::Rectangle => "▭",
-            Tool::Ellipse => "◯",
+            Tool::Ellipse => "○",
             Tool::Star => "★",
             Tool::Polygon => "⬡",
             Tool::Line => "╱",
-            Tool::Text => "𝐓",
-            Tool::Eyedropper => "💧",
+            Tool::Text => "T",
+            Tool::Eyedropper => "⚗",
             Tool::Hand => "✋",
-            Tool::Brush => "🖌",
-            Tool::Eraser => "🧹",
+            Tool::Brush => "∂",
+            Tool::Eraser => "⌫",
+            Tool::ShapeBuilder => "⊕",
+            Tool::Zoom => "⊕",
         }
     }
 
@@ -75,6 +81,8 @@ impl Tool {
             Tool::Hand => "H",
             Tool::Brush => "B",
             Tool::Eraser => "E",
+            Tool::ShapeBuilder => "M",
+            Tool::Zoom => "Z",
         }
     }
 }
@@ -161,6 +169,20 @@ pub struct AppState {
     // Canvas center (set each frame)
     pub canvas_center_x: f32,
     pub canvas_center_y: f32,
+    // Live cursor position in world coordinates (updated each frame by canvas)
+    pub cursor_world: Option<(f64, f64)>,
+    // Floating toast notification feedback
+    pub toast: Option<ToastNotification>,
+    // Active visual diff overlay on canvas
+    pub active_diff: Option<crate::core::diff::SemanticDiff>,
+    pub is_comparing_diff: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct ToastNotification {
+    pub message: String,
+    pub is_error: bool,
+    pub created_at: std::time::Instant,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -177,7 +199,10 @@ pub enum GuideOrientation {
 
 impl Default for Guide {
     fn default() -> Self {
-        Self { orientation: GuideOrientation::Horizontal, position: 0.0 }
+        Self {
+            orientation: GuideOrientation::Horizontal,
+            position: 0.0,
+        }
     }
 }
 
@@ -224,7 +249,52 @@ impl Default for AppState {
             clipboard: Vec::new(),
             timeline: super::timeline::Timeline::default(),
             show_timeline: true,
-            symbols: Vec::new(),
+            symbols: vec![
+                crate::core::document::Symbol::new(
+                    "ハート (Heart)",
+                    crate::core::presets::PresetLibrary::heart("Heart", 0.0, 0.0, 80.0),
+                ),
+                crate::core::document::Symbol::new(
+                    "矢印 (Arrow)",
+                    crate::core::presets::PresetLibrary::arrow("Arrow", 0.0, 0.0, 100.0, 30.0),
+                ),
+                crate::core::document::Symbol::new(
+                    "ギア (Gear)",
+                    crate::core::presets::PresetLibrary::gear("Gear", 0.0, 0.0, 8, 25.0, 45.0),
+                ),
+                crate::core::document::Symbol::new(
+                    "吹き出し (Bubble)",
+                    crate::core::presets::PresetLibrary::speech_bubble(
+                        "Bubble", 0.0, 0.0, 100.0, 60.0,
+                    ),
+                ),
+                crate::core::document::Symbol::new(
+                    "ポータル (Hex Ring)",
+                    crate::core::presets::PresetLibrary::vfx_portal("Portal", 0.0, 0.0, 50.0),
+                ),
+                crate::core::document::Symbol::new(
+                    "検索アイコン (Search)",
+                    crate::core::presets::PresetLibrary::search_icon("Search", 0.0, 0.0, 40.0),
+                ),
+                crate::core::document::Symbol::new(
+                    "ユーザー (User)",
+                    crate::core::presets::PresetLibrary::user_avatar("User", 0.0, 0.0, 50.0),
+                ),
+                crate::core::document::Symbol::new(
+                    "クラウド (Cloud)",
+                    crate::core::presets::PresetLibrary::cloud("Cloud", 0.0, 0.0, 90.0),
+                ),
+                crate::core::document::Symbol::new(
+                    "カート (Shopping Cart)",
+                    crate::core::presets::PresetLibrary::shopping_cart("Cart", 0.0, 0.0, 60.0),
+                ),
+                crate::core::document::Symbol::new(
+                    "リボンバッジ (Ribbon)",
+                    crate::core::presets::PresetLibrary::ribbon_badge(
+                        "Ribbon", 0.0, 0.0, 110.0, 45.0,
+                    ),
+                ),
+            ],
             width_profiles: std::collections::HashMap::new(),
             guides: Vec::new(),
             export_format: "SVG".into(),
@@ -246,11 +316,47 @@ impl Default for AppState {
             repeat_start_angle: 0.0,
             canvas_center_x: 0.0,
             canvas_center_y: 0.0,
+            cursor_world: None,
+            toast: None,
+            active_diff: None,
+            is_comparing_diff: false,
         }
     }
 }
 
 impl AppState {
+    pub fn notify_info(&mut self, message: impl Into<String>) {
+        self.toast = Some(ToastNotification {
+            message: message.into(),
+            is_error: false,
+            created_at: std::time::Instant::now(),
+        });
+    }
+
+    pub fn notify_success(&mut self, message: impl Into<String>) {
+        self.toast = Some(ToastNotification {
+            message: message.into(),
+            is_error: false,
+            created_at: std::time::Instant::now(),
+        });
+    }
+
+    pub fn notify_error(&mut self, message: impl Into<String>) {
+        self.toast = Some(ToastNotification {
+            message: message.into(),
+            is_error: true,
+            created_at: std::time::Instant::now(),
+        });
+    }
+
+    pub fn clear_toast_if_expired(&mut self) {
+        if let Some(toast) = &self.toast {
+            if toast.created_at.elapsed().as_secs_f32() > 3.5 {
+                self.toast = None;
+            }
+        }
+    }
+
     pub fn screen_to_world(&self, sx: f32, sy: f32) -> (f64, f64) {
         let wx = (sx - self.canvas_center_x - self.pan_x) as f64 / self.zoom as f64;
         let wy = (sy - self.canvas_center_y - self.pan_y) as f64 / self.zoom as f64;
@@ -274,7 +380,9 @@ impl AppState {
         };
 
         if self.snap_to_objects {
-            let objects: Vec<&crate::core::document::Object> = self.document.all_objects()
+            let objects: Vec<&crate::core::document::Object> = self
+                .document
+                .all_objects()
                 .filter(|(_, o)| o.visible && !o.locked)
                 .map(|(_, o)| o)
                 .collect();
@@ -292,7 +400,12 @@ impl AppState {
 
     /// Snaps to the nearest object edge or center within a threshold (5px in world space).
     /// Returns the snapped position, or the original position if nothing is close enough.
-    pub fn snap_to_object_edges(&self, x: f64, y: f64, objects: &[&crate::core::document::Object]) -> (f64, f64) {
+    pub fn snap_to_object_edges(
+        &self,
+        x: f64,
+        y: f64,
+        objects: &[&crate::core::document::Object],
+    ) -> (f64, f64) {
         let threshold = 5.0;
         let mut best_x = x;
         let mut best_y = y;
@@ -304,15 +417,15 @@ impl AppState {
                 let cy = (bb_min.y + bb_max.y) / 2.0;
 
                 let edges = [
-                    (bb_min.x, cy),   // left edge center
-                    (bb_max.x, cy),   // right edge center
-                    (cx, bb_min.y),   // top edge center
-                    (cx, bb_max.y),   // bottom edge center
+                    (bb_min.x, cy),       // left edge center
+                    (bb_max.x, cy),       // right edge center
+                    (cx, bb_min.y),       // top edge center
+                    (cx, bb_max.y),       // bottom edge center
                     (bb_min.x, bb_min.y), // top-left corner
                     (bb_max.x, bb_min.y), // top-right corner
                     (bb_min.x, bb_max.y), // bottom-left corner
                     (bb_max.x, bb_max.y), // bottom-right corner
-                    (cx, cy),         // center
+                    (cx, cy),             // center
                 ];
 
                 for (ex, ey) in edges {
@@ -352,12 +465,20 @@ impl AppState {
             let center_x = (min_x + max_x) / 2.0;
             let center_y = (min_y + max_y) / 2.0;
             self.target_zoom = new_zoom;
-            self.target_pan_x = cw / 2.0 - center_x as f32 * new_zoom;
-            self.target_pan_y = ch / 2.0 - center_y as f32 * new_zoom;
+            self.target_pan_x = -center_x as f32 * new_zoom;
+            self.target_pan_y = -center_y as f32 * new_zoom;
         } else {
             self.target_zoom = 1.0;
             self.target_pan_x = 0.0;
             self.target_pan_y = 0.0;
         }
+    }
+
+    pub fn is_dirty(&self) -> bool {
+        self.undo_manager.is_dirty()
+    }
+
+    pub fn mark_saved(&mut self) {
+        self.undo_manager.mark_saved();
     }
 }

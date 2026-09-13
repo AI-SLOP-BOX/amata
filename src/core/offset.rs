@@ -37,7 +37,8 @@ pub fn offset_polygon(poly: &[AnchorPoint], delta: f64) -> Vec<AnchorPoint> {
         // Miter factor
         let cos_half = (n1.x * n2.x + n1.y * n2.y).clamp(-1.0, 1.0);
         let miter_len = if cos_half > -0.99 {
-            (delta / (1.0 + cos_half).sqrt().max(0.1)).clamp(-5.0 * delta.abs(), 5.0 * delta.abs())
+            (delta / (1.0_f64 + cos_half).sqrt().max(0.1))
+                .clamp(-5.0 * delta.abs(), 5.0 * delta.abs())
         } else {
             delta
         };
@@ -80,7 +81,11 @@ pub fn outline_stroke(path: &PathData, stroke_width: f64) -> PathData {
         let mut inner_path = PathData::from_polygon_points(&inner, true);
         combined.elements.append(&mut outer_path.elements);
         combined.elements.append(&mut inner_path.elements);
-        combined.fill = path.stroke.as_ref().map(|s| FillStyle::solid(s.color)).or_else(|| path.fill.clone());
+        combined.fill = path
+            .stroke
+            .as_ref()
+            .map(|s| FillStyle::solid(s.color))
+            .or_else(|| path.fill.clone());
         combined.stroke = None;
         combined
     } else {
@@ -110,7 +115,11 @@ pub fn outline_stroke(path: &PathData, stroke_width: f64) -> PathData {
         left_side.extend(right_side);
 
         let mut out_path = PathData::from_polygon_points(&left_side, true);
-        out_path.fill = path.stroke.as_ref().map(|s| FillStyle::solid(s.color)).or_else(|| path.fill.clone());
+        out_path.fill = path
+            .stroke
+            .as_ref()
+            .map(|s| FillStyle::solid(s.color))
+            .or_else(|| path.fill.clone());
         out_path.stroke = None;
         out_path
     }

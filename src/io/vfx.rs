@@ -64,7 +64,11 @@ pub struct AevfxComp {
 /// Convert an IRASU Illustrator document into an AEVFX Studio compatible composition
 pub fn doc_to_aevfx_comp(doc: &Document, fps: f64, duration_sec: f64) -> AevfxComp {
     let fps = if fps > 0.0 { fps } else { 60.0 };
-    let duration_sec = if duration_sec > 0.0 { duration_sec } else { 5.0 };
+    let duration_sec = if duration_sec > 0.0 {
+        duration_sec
+    } else {
+        5.0
+    };
     let total_frames = (fps * duration_sec).round() as usize;
 
     let mut vfx_layers = Vec::new();
@@ -81,13 +85,23 @@ pub fn doc_to_aevfx_comp(doc: &Document, fps: f64, duration_sec: f64) -> AevfxCo
 
             let layer_type = match &obj.object_type {
                 ObjectType::Text { .. } => "Text",
-                ObjectType::Path(_) | ObjectType::Star { .. } | ObjectType::Polygon { .. } => "Extrusion3D",
+                ObjectType::Path(_) | ObjectType::Star { .. } | ObjectType::Polygon { .. } => {
+                    "Extrusion3D"
+                }
                 ObjectType::Line { .. } => "Vector",
                 _ => "Shape",
             };
 
-            let fill_col = obj.fill.as_ref().map(|f| f.color).unwrap_or([1.0, 1.0, 1.0, 1.0]);
-            let stroke_col = obj.stroke.as_ref().map(|s| s.color).unwrap_or([0.0, 0.0, 0.0, 1.0]);
+            let fill_col = obj
+                .fill
+                .as_ref()
+                .map(|f| f.color)
+                .unwrap_or([1.0, 1.0, 1.0, 1.0]);
+            let stroke_col = obj
+                .stroke
+                .as_ref()
+                .map(|s| s.color)
+                .unwrap_or([0.0, 0.0, 0.0, 1.0]);
             let stroke_w = obj.stroke.as_ref().map(|s| s.width).unwrap_or(1.0);
 
             let (text_content, font_size) = match &obj.object_type {
@@ -223,10 +237,7 @@ pub fn object_to_motion_path_keyframes(
                 let seg_t = (target_dist - d0) / seg_len;
                 let p0 = poly[i];
                 let p1 = poly[i + 1];
-                pt = AnchorPoint::new(
-                    p0.x + seg_t * (p1.x - p0.x),
-                    p0.y + seg_t * (p1.y - p0.y),
-                );
+                pt = AnchorPoint::new(p0.x + seg_t * (p1.x - p0.x), p0.y + seg_t * (p1.y - p0.y));
                 let dx = p1.x - p0.x;
                 let dy = p1.y - p0.y;
                 let len = (dx * dx + dy * dy).sqrt().max(1e-6);
@@ -250,7 +261,10 @@ pub fn object_to_motion_path_keyframes(
 /// Export all visible objects in a document as a combined 3D OBJ mesh file
 pub fn export_doc_to_obj(doc: &Document, depth: f64, bevel: f64) -> String {
     let mut out = String::new();
-    out.push_str(&format!("# IRASU Illustrator 3D Mesh Export: {}\n\n", doc.name));
+    out.push_str(&format!(
+        "# IRASU Illustrator 3D Mesh Export: {}\n\n",
+        doc.name
+    ));
 
     let mut total_verts: Vec<[f64; 3]> = Vec::new();
     let mut total_normals: Vec<[f64; 3]> = Vec::new();
@@ -297,7 +311,10 @@ pub fn export_doc_to_obj(doc: &Document, depth: f64, bevel: f64) -> String {
     out.push('\n');
 
     for f in &total_faces {
-        out.push_str(&format!("f {}//{} {}//{} {}//{}\n", f[0], f[0], f[1], f[1], f[2], f[2]));
+        out.push_str(&format!(
+            "f {}//{} {}//{} {}//{}\n",
+            f[0], f[0], f[1], f[1], f[2], f[2]
+        ));
     }
 
     out

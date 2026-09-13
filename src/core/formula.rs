@@ -107,15 +107,10 @@ impl FormulaCurves {
     }
 
     /// Rose / Rhodonea Flower Curve
-    pub fn rose_curve(
-        cx: f64,
-        cy: f64,
-        petals_k: f64,
-        radius: f64,
-        samples: usize,
-    ) -> PathData {
+    pub fn rose_curve(cx: f64, cy: f64, petals_k: f64, radius: f64, samples: usize) -> PathData {
         let samples = samples.max(64);
-        let max_theta = if (petals_k - petals_k.round()).abs() < 1e-4 && (petals_k as i64) % 2 != 0 {
+        let max_theta = if (petals_k - petals_k.round()).abs() < 1e-4 && (petals_k as i64) % 2 != 0
+        {
             std::f64::consts::PI
         } else {
             TAU

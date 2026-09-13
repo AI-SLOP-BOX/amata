@@ -43,13 +43,7 @@ pub fn generate_vector_qr(
 }
 
 /// Generate Code-128 standard vector barcode
-pub fn generate_vector_barcode(
-    data: &str,
-    cx: f64,
-    cy: f64,
-    width: f64,
-    height: f64,
-) -> PathData {
+pub fn generate_vector_barcode(data: &str, cx: f64, cy: f64, width: f64, height: f64) -> PathData {
     let mut bits = Vec::new();
     // Start code B + encoded bytes + checksum + stop code
     bits.extend_from_slice(&[1, 1, 0, 1, 0, 0, 1, 0, 0, 0, 0]); // Start code
