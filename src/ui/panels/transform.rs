@@ -477,12 +477,20 @@ impl TransformPanel {
         ui.collapsing("Position", |ui| {
             ui.horizontal(|ui| {
                 ui.label("X:");
-                if ui.add(egui::DragValue::new(&mut tx).speed(1.0)).changed() {
-                    Self::set_transform(state, &id, |t| t.x = tx);
+                let tx_resp = ui.add(egui::DragValue::new(&mut tx).speed(1.0));
+                if tx_resp.changed() {
+                    Self::transform_drag(state, &id, &tx_resp, |t| t.x = tx);
+                }
+                if tx_resp.drag_stopped() {
+                    Self::commit_transform(state);
                 }
                 ui.label("Y:");
-                if ui.add(egui::DragValue::new(&mut ty).speed(1.0)).changed() {
-                    Self::set_transform(state, &id, |t| t.y = ty);
+                let ty_resp = ui.add(egui::DragValue::new(&mut ty).speed(1.0));
+                if ty_resp.changed() {
+                    Self::transform_drag(state, &id, &ty_resp, |t| t.y = ty);
+                }
+                if ty_resp.drag_stopped() {
+                    Self::commit_transform(state);
                 }
             });
         });
@@ -491,26 +499,28 @@ impl TransformPanel {
         ui.collapsing("Scale", |ui| {
             ui.horizontal(|ui| {
                 ui.label("W:");
-                if ui
-                    .add(
-                        egui::DragValue::new(&mut sx)
-                            .speed(0.01)
-                            .range(0.001..=100.0),
-                    )
-                    .changed()
-                {
-                    Self::set_transform(state, &id, |t| t.scale_x = sx);
+                let sx_resp = ui.add(
+                    egui::DragValue::new(&mut sx)
+                        .speed(0.01)
+                        .range(0.001..=100.0),
+                );
+                if sx_resp.changed() {
+                    Self::transform_drag(state, &id, &sx_resp, |t| t.scale_x = sx);
+                }
+                if sx_resp.drag_stopped() {
+                    Self::commit_transform(state);
                 }
                 ui.label("H:");
-                if ui
-                    .add(
-                        egui::DragValue::new(&mut sy)
-                            .speed(0.01)
-                            .range(0.001..=100.0),
-                    )
-                    .changed()
-                {
-                    Self::set_transform(state, &id, |t| t.scale_y = sy);
+                let sy_resp = ui.add(
+                    egui::DragValue::new(&mut sy)
+                        .speed(0.01)
+                        .range(0.001..=100.0),
+                );
+                if sy_resp.changed() {
+                    Self::transform_drag(state, &id, &sy_resp, |t| t.scale_y = sy);
+                }
+                if sy_resp.drag_stopped() {
+                    Self::commit_transform(state);
                 }
             });
             ui.horizontal(|ui| {
@@ -520,12 +530,14 @@ impl TransformPanel {
                         t.scale_x = avg;
                         t.scale_y = avg;
                     });
+                    Self::commit_transform(state);
                 }
                 if ui.button("Reset Scale").clicked() {
                     Self::set_transform(state, &id, |t| {
                         t.scale_x = 1.0;
                         t.scale_y = 1.0;
                     });
+                    Self::commit_transform(state);
                 }
             });
         });
@@ -534,30 +546,37 @@ impl TransformPanel {
         ui.collapsing("Rotation", |ui| {
             ui.horizontal(|ui| {
                 ui.label("°");
-                if ui
-                    .add(
-                        egui::DragValue::new(&mut rot)
-                            .speed(1.0)
-                            .range(-360.0..=360.0)
-                            .suffix("°"),
-                    )
-                    .changed()
-                {
-                    Self::set_transform(state, &id, |t| t.rotation = rot.to_radians());
+                let rot_resp = ui.add(
+                    egui::DragValue::new(&mut rot)
+                        .speed(1.0)
+                        .range(-360.0..=360.0)
+                        .suffix("°"),
+                );
+                if rot_resp.changed() {
+                    Self::transform_drag(state, &id, &rot_resp, |t| {
+                        t.rotation = rot.to_radians()
+                    });
+                }
+                if rot_resp.drag_stopped() {
+                    Self::commit_transform(state);
                 }
             });
             ui.horizontal(|ui| {
                 if ui.button("0°").clicked() {
                     Self::set_transform(state, &id, |t| t.rotation = 0.0);
+                    Self::commit_transform(state);
                 }
                 if ui.button("45°").clicked() {
                     Self::set_transform(state, &id, |t| t.rotation = std::f64::consts::FRAC_PI_4);
+                    Self::commit_transform(state);
                 }
                 if ui.button("90°").clicked() {
                     Self::set_transform(state, &id, |t| t.rotation = std::f64::consts::FRAC_PI_2);
+                    Self::commit_transform(state);
                 }
                 if ui.button("180°").clicked() {
                     Self::set_transform(state, &id, |t| t.rotation = std::f64::consts::PI);
+                    Self::commit_transform(state);
                 }
             });
         });
@@ -566,30 +585,32 @@ impl TransformPanel {
         ui.collapsing("Skew", |ui| {
             ui.horizontal(|ui| {
                 ui.label("Skew X:");
-                if ui
-                    .add(
-                        egui::DragValue::new(&mut skew_x)
-                            .speed(1.0)
-                            .range(-89.0..=89.0)
-                            .suffix("°"),
-                    )
-                    .changed()
-                {
-                    Self::set_transform(state, &id, |t| t.skew_x = skew_x);
+                let skx_resp = ui.add(
+                    egui::DragValue::new(&mut skew_x)
+                        .speed(1.0)
+                        .range(-89.0..=89.0)
+                        .suffix("°"),
+                );
+                if skx_resp.changed() {
+                    Self::transform_drag(state, &id, &skx_resp, |t| t.skew_x = skew_x);
+                }
+                if skx_resp.drag_stopped() {
+                    Self::commit_transform(state);
                 }
             });
             ui.horizontal(|ui| {
                 ui.label("Skew Y:");
-                if ui
-                    .add(
-                        egui::DragValue::new(&mut skew_y)
-                            .speed(1.0)
-                            .range(-89.0..=89.0)
-                            .suffix("°"),
-                    )
-                    .changed()
-                {
-                    Self::set_transform(state, &id, |t| t.skew_y = skew_y);
+                let sky_resp = ui.add(
+                    egui::DragValue::new(&mut skew_y)
+                        .speed(1.0)
+                        .range(-89.0..=89.0)
+                        .suffix("°"),
+                );
+                if sky_resp.changed() {
+                    Self::transform_drag(state, &id, &sky_resp, |t| t.skew_y = skew_y);
+                }
+                if sky_resp.drag_stopped() {
+                    Self::commit_transform(state);
                 }
             });
         });
@@ -599,9 +620,11 @@ impl TransformPanel {
         ui.horizontal(|ui| {
             if ui.button("Flip H").clicked() {
                 Self::set_transform(state, &id, |t| t.scale_x = -t.scale_x);
+                Self::commit_transform(state);
             }
             if ui.button("Flip V").clicked() {
                 Self::set_transform(state, &id, |t| t.scale_y = -t.scale_y);
+                Self::commit_transform(state);
             }
             if ui.button("Reset All").clicked() {
                 Self::set_transform(state, &id, |t| {
@@ -613,20 +636,39 @@ impl TransformPanel {
                     t.skew_x = 0.0;
                     t.skew_y = 0.0;
                 });
+                Self::commit_transform(state);
             }
         });
     }
 
+    /// Snapshot + mutate a transform. The caller commits via
+    /// `commit_transform` on drag-stop (coalesced to one undo step) or
+    /// immediately for discrete clicks/keys.
     fn set_transform(
         state: &mut AppState,
         obj_id: &str,
         f: impl FnOnce(&mut crate::core::document::Transform),
     ) {
-        for (_, obj) in state.document.all_objects_mut() {
-            if obj.id == obj_id {
-                f(&mut obj.transform);
-                break;
-            }
+        state.ensure_transform_snapshot(obj_id);
+        if let Some(obj) = state.document.find_object_mut(obj_id) {
+            f(&mut obj.transform);
+        }
+    }
+
+    fn commit_transform(state: &mut AppState) {
+        state.commit_transform_edits("Edit Transform");
+    }
+
+    /// Wire a DragValue response to snapshot/mutate/commit.
+    fn transform_drag(
+        state: &mut AppState,
+        obj_id: &str,
+        resp: &egui::Response,
+        f: impl FnOnce(&mut crate::core::document::Transform),
+    ) {
+        Self::set_transform(state, obj_id, f);
+        if !resp.dragged() || resp.drag_stopped() {
+            Self::commit_transform(state);
         }
     }
 }

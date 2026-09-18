@@ -1,5 +1,5 @@
-use super::document::Document;
-use super::history::UndoManager;
+use super::document::{Document, Transform};
+use super::history::{BatchCommand, Command, TransformCommand, UndoManager};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -176,6 +176,9 @@ pub struct AppState {
     // Active visual diff overlay on canvas
     pub active_diff: Option<crate::core::diff::SemanticDiff>,
     pub is_comparing_diff: bool,
+    // In-progress panel transform gesture: (object id, transform at gesture
+    // start). Committed as one undo step when the gesture ends.
+    pub pending_transforms: Vec<(String, Transform)>,
 }
 
 #[derive(Debug, Clone)]
@@ -320,11 +323,62 @@ impl Default for AppState {
             toast: None,
             active_diff: None,
             is_comparing_diff: false,
+            pending_transforms: Vec::new(),
         }
     }
 }
 
 impl AppState {
+    /// Snapshot the object's transform at the start of a panel gesture.
+    /// Called before every mutation; keeps the first snapshot only.
+    pub fn ensure_transform_snapshot(&mut self, id: &str) {
+        if !self.pending_transforms.iter().any(|(pid, _)| pid == id) {
+            if let Some(t) = self.document.find_object(id).map(|o| o.transform.clone()) {
+                self.pending_transforms.push((id.to_string(), t));
+            }
+        }
+    }
+
+    /// Record the gesture from the snapshots as one undo step (no-op when
+    /// nothing actually changed, e.g. a drag that returned to start).
+    pub fn commit_transform_edits(&mut self, label: &str) {
+        let pending = std::mem::take(&mut self.pending_transforms);
+        let mut cmds: Vec<(String, Transform, Transform)> = Vec::new();
+        for (id, old) in pending {
+            if let Some(obj) = self.document.find_object(&id) {
+                if obj.transform != old {
+                    cmds.push((id, old, obj.transform.clone()));
+                }
+            }
+        }
+        if cmds.len() == 1 {
+            let (id, old, new) = cmds.into_iter().next().unwrap();
+            self.undo_manager.execute(
+                Box::new(TransformCommand {
+                    object_id: id,
+                    old_t: old,
+                    new_t: new,
+                }),
+                &mut self.document,
+            );
+        } else if !cmds.is_empty() {
+            let batch: Vec<Box<dyn Command>> = cmds
+                .into_iter()
+                .map(|(id, old, new)| {
+                    Box::new(TransformCommand {
+                        object_id: id,
+                        old_t: old,
+                        new_t: new,
+                    }) as Box<dyn Command>
+                })
+                .collect();
+            self.undo_manager.execute(
+                Box::new(BatchCommand::new(label, batch)),
+                &mut self.document,
+            );
+        }
+    }
+
     pub fn notify_info(&mut self, message: impl Into<String>) {
         self.toast = Some(ToastNotification {
             message: message.into(),

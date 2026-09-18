@@ -186,6 +186,35 @@ fn test_nan_gradient_offset_sanitized() {
 }
 
 #[test]
+fn test_transform_gesture_coalesces_to_one_undo_step() {
+    use irasu_illustrator::core::state::AppState;
+    let mut state = AppState::default();
+    state.document.add_object(Object::new_rect("R", 10.0, 20.0, 30.0, 40.0, 0.0));
+    let id = state.document.all_objects().next().unwrap().1.id.clone();
+
+    // Simulate a drag gesture: many live mutations, one commit.
+    for i in 1..=10 {
+        state.ensure_transform_snapshot(&id);
+        if let Some(o) = state.document.find_object_mut(&id) {
+            o.transform.x = 10.0 + i as f64;
+        }
+    }
+    state.commit_transform_edits("Edit Transform");
+    assert_eq!(state.undo_manager.undo_depth(), 1);
+    assert!(state.undo_manager.is_dirty());
+
+    state.undo_manager.undo(&mut state.document);
+    let obj = state.document.find_object(&id).unwrap();
+    assert!((obj.transform.x - 10.0).abs() < 1e-9);
+    assert!(!state.undo_manager.is_dirty());
+
+    // No-op gesture records nothing.
+    state.ensure_transform_snapshot(&id);
+    state.commit_transform_edits("Edit Transform");
+    assert_eq!(state.undo_manager.undo_depth(), 0);
+}
+
+#[test]
 fn test_undo_redo_return_owned_names() {
     let mut doc = Document::default();
     let mut mgr = irasu_illustrator::core::history::UndoManager::new();

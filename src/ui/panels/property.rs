@@ -116,10 +116,10 @@ impl PropertyPanel {
                                 .color(Color32::from_rgb(150, 150, 150)),
                         );
                         let mut x_val = tx;
-                        if ui
-                            .add(egui::DragValue::new(&mut x_val).speed(0.5).suffix(" mm"))
-                            .changed()
-                        {
+                        let x_resp = ui.add(
+                            egui::DragValue::new(&mut x_val).speed(0.5).suffix(" mm"),
+                        );
+                        if x_resp.changed() {
                             // Move every selected object by the same delta so
                             // multi-selection keeps its relative layout.
                             // (Previously all objects were stacked onto the
@@ -127,12 +127,17 @@ impl PropertyPanel {
                             let dx = x_val - tx;
                             let sel = state.selected_ids.clone();
                             for id in &sel {
-                                for (_, o) in state.document.all_objects_mut() {
-                                    if &o.id == id {
-                                        o.transform.x += dx;
-                                    }
+                                state.ensure_transform_snapshot(id);
+                                if let Some(o) = state.document.find_object_mut(id) {
+                                    o.transform.x += dx;
                                 }
                             }
+                            if !x_resp.dragged() {
+                                state.commit_transform_edits("Edit Transform");
+                            }
+                        }
+                        if x_resp.drag_stopped() {
+                            state.commit_transform_edits("Edit Transform");
                         }
                         ui.add_space(4.0);
                         ui.label(
@@ -141,20 +146,24 @@ impl PropertyPanel {
                                 .color(Color32::from_rgb(150, 150, 150)),
                         );
                         let mut w_val = bw;
-                        if ui
-                            .add(egui::DragValue::new(&mut w_val).speed(0.5).suffix(" mm"))
-                            .changed()
-                            && bw > 0.0
-                        {
+                        let w_resp = ui.add(
+                            egui::DragValue::new(&mut w_val).speed(0.5).suffix(" mm"),
+                        );
+                        if w_resp.changed() && bw > 0.0 {
                             let scale = w_val / bw;
                             let sel = state.selected_ids.clone();
                             for id in &sel {
-                                for (_, o) in state.document.all_objects_mut() {
-                                    if &o.id == id {
-                                        o.transform.scale_x *= scale;
-                                    }
+                                state.ensure_transform_snapshot(id);
+                                if let Some(o) = state.document.find_object_mut(id) {
+                                    o.transform.scale_x *= scale;
                                 }
                             }
+                            if !w_resp.dragged() {
+                                state.commit_transform_edits("Edit Transform");
+                            }
+                        }
+                        if w_resp.drag_stopped() {
+                            state.commit_transform_edits("Edit Transform");
                         }
                     });
 
@@ -165,19 +174,24 @@ impl PropertyPanel {
                                 .color(Color32::from_rgb(150, 150, 150)),
                         );
                         let mut y_val = ty;
-                        if ui
-                            .add(egui::DragValue::new(&mut y_val).speed(0.5).suffix(" mm"))
-                            .changed()
-                        {
+                        let y_resp = ui.add(
+                            egui::DragValue::new(&mut y_val).speed(0.5).suffix(" mm"),
+                        );
+                        if y_resp.changed() {
                             let dy = y_val - ty;
                             let sel = state.selected_ids.clone();
                             for id in &sel {
-                                for (_, o) in state.document.all_objects_mut() {
-                                    if &o.id == id {
-                                        o.transform.y += dy;
-                                    }
+                                state.ensure_transform_snapshot(id);
+                                if let Some(o) = state.document.find_object_mut(id) {
+                                    o.transform.y += dy;
                                 }
                             }
+                            if !y_resp.dragged() {
+                                state.commit_transform_edits("Edit Transform");
+                            }
+                        }
+                        if y_resp.drag_stopped() {
+                            state.commit_transform_edits("Edit Transform");
                         }
                         ui.add_space(4.0);
                         ui.label(
@@ -186,20 +200,24 @@ impl PropertyPanel {
                                 .color(Color32::from_rgb(150, 150, 150)),
                         );
                         let mut h_val = bh;
-                        if ui
-                            .add(egui::DragValue::new(&mut h_val).speed(0.5).suffix(" mm"))
-                            .changed()
-                            && bh > 0.0
-                        {
+                        let h_resp = ui.add(
+                            egui::DragValue::new(&mut h_val).speed(0.5).suffix(" mm"),
+                        );
+                        if h_resp.changed() && bh > 0.0 {
                             let scale = h_val / bh;
                             let sel = state.selected_ids.clone();
                             for id in &sel {
-                                for (_, o) in state.document.all_objects_mut() {
-                                    if &o.id == id {
-                                        o.transform.scale_y *= scale;
-                                    }
+                                state.ensure_transform_snapshot(id);
+                                if let Some(o) = state.document.find_object_mut(id) {
+                                    o.transform.scale_y *= scale;
                                 }
                             }
+                            if !h_resp.dragged() {
+                                state.commit_transform_edits("Edit Transform");
+                            }
+                        }
+                        if h_resp.drag_stopped() {
+                            state.commit_transform_edits("Edit Transform");
                         }
                     });
 
@@ -210,18 +228,23 @@ impl PropertyPanel {
                                 .color(Color32::from_rgb(150, 150, 150)),
                         );
                         let mut r_val = rot;
-                        if ui
-                            .add(egui::DragValue::new(&mut r_val).speed(1.0).suffix("°"))
-                            .changed()
-                        {
+                        let r_resp = ui.add(
+                            egui::DragValue::new(&mut r_val).speed(1.0).suffix("°"),
+                        );
+                        if r_resp.changed() {
                             let sel = state.selected_ids.clone();
                             for id in &sel {
-                                for (_, o) in state.document.all_objects_mut() {
-                                    if &o.id == id {
-                                        o.transform.rotation = r_val.to_radians();
-                                    }
+                                state.ensure_transform_snapshot(id);
+                                if let Some(o) = state.document.find_object_mut(id) {
+                                    o.transform.rotation = r_val.to_radians();
                                 }
                             }
+                            if !r_resp.dragged() {
+                                state.commit_transform_edits("Edit Transform");
+                            }
+                        }
+                        if r_resp.drag_stopped() {
+                            state.commit_transform_edits("Edit Transform");
                         }
                     });
                 });

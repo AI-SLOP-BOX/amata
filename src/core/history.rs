@@ -1,4 +1,4 @@
-use super::document::Document;
+use super::document::{Document, Transform};
 
 pub trait Command {
     fn execute(&self, doc: &mut Document);
@@ -237,6 +237,32 @@ impl Command for MoveObjectCommand {
 
     fn name(&self) -> &str {
         "Move Object"
+    }
+}
+
+/// Whole-transform edit (panel widgets, align tools). Recorded once per
+/// gesture so dragging a value does not flood the undo stack.
+pub struct TransformCommand {
+    pub object_id: String,
+    pub old_t: Transform,
+    pub new_t: Transform,
+}
+
+impl Command for TransformCommand {
+    fn execute(&self, doc: &mut Document) {
+        if let Some(obj) = doc.find_object_mut(&self.object_id) {
+            obj.transform = self.new_t.clone();
+        }
+    }
+
+    fn undo(&self, doc: &mut Document) {
+        if let Some(obj) = doc.find_object_mut(&self.object_id) {
+            obj.transform = self.old_t.clone();
+        }
+    }
+
+    fn name(&self) -> &str {
+        "Edit Transform"
     }
 }
 
