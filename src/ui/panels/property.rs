@@ -275,10 +275,8 @@ impl PropertyPanel {
                     (fill_c[2] * 255.0) as u8,
                     (fill_c[3] * 255.0) as u8,
                 ];
-                if ui
-                    .color_edit_button_srgba_unmultiplied(&mut c_rgba)
-                    .changed()
-                {
+                let fill_resp = ui.color_edit_button_srgba_unmultiplied(&mut c_rgba);
+                if fill_resp.changed() {
                     let new_fill = [
                         c_rgba[0] as f32 / 255.0,
                         c_rgba[1] as f32 / 255.0,
@@ -287,13 +285,12 @@ impl PropertyPanel {
                     ];
                     state.fill_color = new_fill;
                     let sel = state.selected_ids.clone();
-                    for id in &sel {
-                        for (_, o) in state.document.all_objects_mut() {
-                            if &o.id == id {
-                                o.fill = Some(FillStyle::solid(new_fill));
-                            }
-                        }
-                    }
+                    state.objects_edit(&sel, &fill_resp, |o| {
+                        o.fill = Some(FillStyle::solid(new_fill));
+                    });
+                }
+                if fill_resp.drag_stopped() {
+                    state.commit_object_edits("Edit Object");
                 }
                 ui.label(RichText::new("塗り").size(11.0).color(Color32::WHITE));
             });
@@ -310,10 +307,8 @@ impl PropertyPanel {
                     (stroke_c[2] * 255.0) as u8,
                     (stroke_c[3] * 255.0) as u8,
                 ];
-                if ui
-                    .color_edit_button_srgba_unmultiplied(&mut sc_rgba)
-                    .changed()
-                {
+                let sc_resp = ui.color_edit_button_srgba_unmultiplied(&mut sc_rgba);
+                if sc_resp.changed() {
                     let new_sc = [
                         sc_rgba[0] as f32 / 255.0,
                         sc_rgba[1] as f32 / 255.0,
@@ -321,22 +316,22 @@ impl PropertyPanel {
                         sc_rgba[3] as f32 / 255.0,
                     ];
                     state.stroke_color = new_sc;
+                    let default_w = state.stroke_width.max(1.0);
                     let sel = state.selected_ids.clone();
-                    for id in &sel {
-                        for (_, o) in state.document.all_objects_mut() {
-                            if &o.id == id {
-                                if let Some(ref mut s) = o.stroke {
-                                    s.color = new_sc;
-                                } else {
-                                    o.stroke = Some(crate::core::path::StrokeStyle {
-                                        color: new_sc,
-                                        width: state.stroke_width.max(1.0),
-                                        ..Default::default()
-                                    });
-                                }
-                            }
+                    state.objects_edit(&sel, &sc_resp, |o| {
+                        if let Some(ref mut s) = o.stroke {
+                            s.color = new_sc;
+                        } else {
+                            o.stroke = Some(crate::core::path::StrokeStyle {
+                                color: new_sc,
+                                width: default_w,
+                                ..Default::default()
+                            });
                         }
-                    }
+                    });
+                }
+                if sc_resp.drag_stopped() {
+                    state.commit_object_edits("Edit Object");
                 }
                 ui.label(RichText::new("線").size(11.0).color(Color32::WHITE));
 
@@ -344,32 +339,30 @@ impl PropertyPanel {
                     .as_ref()
                     .map(|s| s.width)
                     .unwrap_or(state.stroke_width);
-                if ui
-                    .add(
-                        egui::DragValue::new(&mut sw)
-                            .speed(0.2)
-                            .range(0.0..=100.0)
-                            .suffix(" pt"),
-                    )
-                    .changed()
-                {
+                let sw_resp = ui.add(
+                    egui::DragValue::new(&mut sw)
+                        .speed(0.2)
+                        .range(0.0..=100.0)
+                        .suffix(" pt"),
+                );
+                if sw_resp.changed() {
                     state.stroke_width = sw;
+                    let sc = state.stroke_color;
                     let sel = state.selected_ids.clone();
-                    for id in &sel {
-                        for (_, o) in state.document.all_objects_mut() {
-                            if &o.id == id {
-                                if let Some(ref mut s) = o.stroke {
-                                    s.width = sw;
-                                } else if sw > 0.0 {
-                                    o.stroke = Some(crate::core::path::StrokeStyle {
-                                        color: state.stroke_color,
-                                        width: sw,
-                                        ..Default::default()
-                                    });
-                                }
-                            }
+                    state.objects_edit(&sel, &sw_resp, |o| {
+                        if let Some(ref mut s) = o.stroke {
+                            s.width = sw;
+                        } else if sw > 0.0 {
+                            o.stroke = Some(crate::core::path::StrokeStyle {
+                                color: sc,
+                                width: sw,
+                                ..Default::default()
+                            });
                         }
-                    }
+                    });
+                }
+                if sw_resp.drag_stopped() {
+                    state.commit_object_edits("Edit Object");
                 }
             });
 
@@ -381,22 +374,19 @@ impl PropertyPanel {
                         .color(Color32::from_rgb(180, 180, 180)),
                 );
                 let mut op = opac;
-                if ui
-                    .add(
-                        egui::Slider::new(&mut op, 0.0..=1.0)
-                            .custom_formatter(|n, _| format!("{:.0}%", n * 100.0)),
-                    )
-                    .changed()
-                {
+                let op_resp = ui.add(
+                    egui::Slider::new(&mut op, 0.0..=1.0)
+                        .custom_formatter(|n, _| format!("{:.0}%", n * 100.0)),
+                );
+                if op_resp.changed() {
                     state.opacity = op;
                     let sel = state.selected_ids.clone();
-                    for id in &sel {
-                        for (_, o) in state.document.all_objects_mut() {
-                            if &o.id == id {
-                                o.opacity = op;
-                            }
-                        }
-                    }
+                    state.objects_edit(&sel, &op_resp, |o| {
+                        o.opacity = op;
+                    });
+                }
+                if op_resp.drag_stopped() {
+                    state.commit_object_edits("Edit Object");
                 }
             });
 

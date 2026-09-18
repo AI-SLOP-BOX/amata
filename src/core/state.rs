@@ -1,5 +1,5 @@
-use super::document::{Document, Transform};
-use super::history::{BatchCommand, Command, TransformCommand, UndoManager};
+use super::document::{Document, Object, Transform};
+use super::history::{BatchCommand, Command, ObjectCommand, TransformCommand, UndoManager};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -179,6 +179,8 @@ pub struct AppState {
     // In-progress panel transform gesture: (object id, transform at gesture
     // start). Committed as one undo step when the gesture ends.
     pub pending_transforms: Vec<(String, Transform)>,
+    // Same mechanism for whole-object panel edits (opacity, stroke, fill…).
+    pub pending_objects: Vec<(String, Object)>,
 }
 
 #[derive(Debug, Clone)]
@@ -324,6 +326,7 @@ impl Default for AppState {
             active_diff: None,
             is_comparing_diff: false,
             pending_transforms: Vec::new(),
+            pending_objects: Vec::new(),
         }
     }
 }
@@ -376,6 +379,94 @@ impl AppState {
                 Box::new(BatchCommand::new(label, batch)),
                 &mut self.document,
             );
+        }
+    }
+
+    /// Snapshot a whole object before a non-transform panel edit.
+    pub fn ensure_object_snapshot(&mut self, id: &str) {
+        if !self.pending_objects.iter().any(|(pid, _)| pid == id) {
+            if let Some(o) = self.document.find_object(id) {
+                self.pending_objects.push((id.to_string(), o.clone()));
+            }
+        }
+    }
+
+    /// Record pending whole-object gestures as one undo step (or a batch).
+    pub fn commit_object_edits(&mut self, label: &str) {
+        let pending = std::mem::take(&mut self.pending_objects);
+        let mut cmds: Vec<(String, Object, Object)> = Vec::new();
+        for (id, old) in pending {
+            if let Some(obj) = self.document.find_object(&id) {
+                if obj != &old {
+                    cmds.push((id, old, obj.clone()));
+                }
+            }
+        }
+        if cmds.len() == 1 {
+            let (id, old, new) = cmds.into_iter().next().unwrap();
+            self.undo_manager.execute(
+                Box::new(ObjectCommand {
+                    object_id: id,
+                    old_obj: old,
+                    new_obj: new,
+                }),
+                &mut self.document,
+            );
+        } else if !cmds.is_empty() {
+            let batch: Vec<Box<dyn Command>> = cmds
+                .into_iter()
+                .map(|(id, old, new)| {
+                    Box::new(ObjectCommand {
+                        object_id: id,
+                        old_obj: old,
+                        new_obj: new,
+                    }) as Box<dyn Command>
+                })
+                .collect();
+            self.undo_manager.execute(
+                Box::new(BatchCommand::new(label, batch)),
+                &mut self.document,
+            );
+        }
+    }
+
+    /// Panel-widget edit of one object with drag coalescing.
+    /// Mutate via `f`, then the gesture commits as one undo step
+    /// (immediately for keyboard/click edits, on drag-stop for drags).
+    /// Callers must additionally call `commit_object_edits` when
+    /// `resp.drag_stopped()` fires outside a `changed()` frame.
+    pub fn object_edit(
+        &mut self,
+        id: &str,
+        resp: &egui::Response,
+        f: impl FnOnce(&mut Object),
+    ) {
+        self.ensure_object_snapshot(id);
+        if let Some(o) = self.document.find_object_mut(id) {
+            f(o);
+        }
+        if !resp.dragged() {
+            self.commit_object_edits("Edit Object");
+        }
+    }
+
+    /// Multi-selection variant: one undo step total, never one per object.
+    pub fn objects_edit(
+        &mut self,
+        ids: &[String],
+        resp: &egui::Response,
+        mut f: impl FnMut(&mut Object),
+    ) {
+        for id in ids {
+            self.ensure_object_snapshot(id);
+        }
+        for id in ids {
+            if let Some(o) = self.document.find_object_mut(id) {
+                f(o);
+            }
+        }
+        if !resp.dragged() {
+            self.commit_object_edits("Edit Object");
         }
     }
 

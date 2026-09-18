@@ -266,6 +266,33 @@ impl Command for TransformCommand {
     }
 }
 
+/// Whole-object edit for panel widgets that touch non-transform fields
+/// (opacity, stroke width, fill, typography…). Coalesced per gesture like
+/// TransformCommand.
+pub struct ObjectCommand {
+    pub object_id: String,
+    pub old_obj: super::document::Object,
+    pub new_obj: super::document::Object,
+}
+
+impl Command for ObjectCommand {
+    fn execute(&self, doc: &mut Document) {
+        if let Some(obj) = doc.find_object_mut(&self.object_id) {
+            *obj = self.new_obj.clone();
+        }
+    }
+
+    fn undo(&self, doc: &mut Document) {
+        if let Some(obj) = doc.find_object_mut(&self.object_id) {
+            *obj = self.old_obj.clone();
+        }
+    }
+
+    fn name(&self) -> &str {
+        "Edit Object"
+    }
+}
+
 pub struct BatchCommand {
     pub name: String,
     pub commands: Vec<Box<dyn Command>>,

@@ -215,6 +215,50 @@ fn test_transform_gesture_coalesces_to_one_undo_step() {
 }
 
 #[test]
+fn test_object_gesture_coalesces_to_one_undo_step() {
+    use irasu_illustrator::core::state::AppState;
+    let mut state = AppState::default();
+    state.document.add_object(Object::new_rect("R", 0.0, 0.0, 10.0, 10.0, 0.0));
+    state.document.add_object(Object::new_rect("S", 50.0, 50.0, 10.0, 10.0, 0.0));
+    let ids: Vec<String> = state
+        .document
+        .all_objects()
+        .map(|(_, o)| o.id.clone())
+        .collect();
+
+    // Simulate a slider drag touching both objects over many frames.
+    for i in 1..=20 {
+        for id in &ids {
+            state.ensure_object_snapshot(id);
+        }
+        for id in &ids {
+            if let Some(o) = state.document.find_object_mut(id) {
+                o.opacity = i as f32 / 40.0;
+            }
+        }
+    }
+    state.commit_object_edits("Edit Object");
+    assert_eq!(state.undo_manager.undo_depth(), 1);
+
+    state.undo_manager.undo(&mut state.document);
+    for (_, o) in state.document.all_objects() {
+        assert!((o.opacity - 1.0).abs() < 1e-6);
+    }
+
+    // Whole-object undo also restores nested children.
+    let mut inner = Object::new_rect("Inner", 0.0, 0.0, 5.0, 5.0, 0.0);
+    let inner_id = inner.id.clone();
+    state.document.add_object(Object::new_group("G", vec![inner]));
+    state.ensure_object_snapshot(&inner_id);
+    if let Some(o) = state.document.find_object_mut(&inner_id) {
+        o.opacity = 0.25;
+    }
+    state.commit_object_edits("Edit Object");
+    state.undo_manager.undo(&mut state.document);
+    assert!((state.document.find_object(&inner_id).unwrap().opacity - 1.0).abs() < 1e-6);
+}
+
+#[test]
 fn test_undo_redo_return_owned_names() {
     let mut doc = Document::default();
     let mut mgr = irasu_illustrator::core::history::UndoManager::new();

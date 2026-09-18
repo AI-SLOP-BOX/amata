@@ -345,15 +345,14 @@ impl AppearancePanel {
                     break;
                 }
             }
-            if ui
-                .add(egui::Slider::new(&mut opac, 0.0..=1.0).show_value(true))
-                .changed()
-            {
-                for (_, obj) in state.document.all_objects_mut() {
-                    if obj.id == id {
-                        obj.opacity = opac;
-                    }
-                }
+            let opac_resp = ui.add(egui::Slider::new(&mut opac, 0.0..=1.0).show_value(true));
+            if opac_resp.changed() {
+                state.object_edit(&id, &opac_resp, |o| {
+                    o.opacity = opac;
+                });
+            }
+            if opac_resp.drag_stopped() {
+                state.commit_object_edits("Edit Object");
             }
         });
 
@@ -363,23 +362,22 @@ impl AppearancePanel {
         ui.label(RichText::new("Fill").strong());
         ui.horizontal(|ui| {
             let mut fill_color = state.fill_color;
-            if ui
-                .color_edit_button_rgba_premultiplied(&mut fill_color)
-                .changed()
-            {
+            let fill_resp = ui.color_edit_button_rgba_premultiplied(&mut fill_color);
+            if fill_resp.changed() {
                 state.fill_color = fill_color;
-                for (_, obj) in state.document.all_objects_mut() {
-                    if obj.id == id {
-                        obj.fill = Some(FillStyle::solid(fill_color));
-                    }
-                }
+                state.object_edit(&id, &fill_resp, |o| {
+                    o.fill = Some(FillStyle::solid(fill_color));
+                });
+            }
+            if fill_resp.drag_stopped() {
+                state.commit_object_edits("Edit Object");
             }
             if ui.button("No Fill").clicked() {
-                for (_, obj) in state.document.all_objects_mut() {
-                    if obj.id == id {
-                        obj.fill = None;
-                    }
+                state.ensure_object_snapshot(&id);
+                if let Some(o) = state.document.find_object_mut(&id) {
+                    o.fill = None;
                 }
+                state.commit_object_edits("Edit Object");
             }
         });
 
@@ -389,30 +387,29 @@ impl AppearancePanel {
         ui.label(RichText::new("Stroke").strong());
         ui.horizontal(|ui| {
             let mut stroke_color = state.stroke_color;
-            if ui
-                .color_edit_button_rgba_premultiplied(&mut stroke_color)
-                .changed()
-            {
+            let stroke_resp = ui.color_edit_button_rgba_premultiplied(&mut stroke_color);
+            if stroke_resp.changed() {
                 state.stroke_color = stroke_color;
-                for (_, obj) in state.document.all_objects_mut() {
-                    if obj.id == id {
-                        if let Some(ref mut s) = obj.stroke {
-                            s.color = stroke_color;
-                        } else {
-                            obj.stroke = Some(StrokeStyle {
-                                color: stroke_color,
-                                ..StrokeStyle::default()
-                            });
-                        }
+                state.object_edit(&id, &stroke_resp, |o| {
+                    if let Some(ref mut s) = o.stroke {
+                        s.color = stroke_color;
+                    } else {
+                        o.stroke = Some(StrokeStyle {
+                            color: stroke_color,
+                            ..StrokeStyle::default()
+                        });
                     }
-                }
+                });
+            }
+            if stroke_resp.drag_stopped() {
+                state.commit_object_edits("Edit Object");
             }
             if ui.button("No Stroke").clicked() {
-                for (_, obj) in state.document.all_objects_mut() {
-                    if obj.id == id {
-                        obj.stroke = None;
-                    }
+                state.ensure_object_snapshot(&id);
+                if let Some(o) = state.document.find_object_mut(&id) {
+                    o.stroke = None;
                 }
+                state.commit_object_edits("Edit Object");
             }
         });
 
@@ -426,17 +423,17 @@ impl AppearancePanel {
                     }
                 }
             }
-            if ui
-                .add(egui::DragValue::new(&mut sw).speed(0.5).range(0.0..=200.0))
-                .changed()
-            {
-                for (_, obj) in state.document.all_objects_mut() {
-                    if obj.id == id {
-                        if let Some(ref mut s) = obj.stroke {
-                            s.width = sw;
-                        }
+            let sw_resp =
+                ui.add(egui::DragValue::new(&mut sw).speed(0.5).range(0.0..=200.0));
+            if sw_resp.changed() {
+                state.object_edit(&id, &sw_resp, |o| {
+                    if let Some(ref mut s) = o.stroke {
+                        s.width = sw;
                     }
-                }
+                });
+            }
+            if sw_resp.drag_stopped() {
+                state.commit_object_edits("Edit Object");
             }
         });
 

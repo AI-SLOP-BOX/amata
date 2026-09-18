@@ -147,51 +147,50 @@ impl TextPanel {
 
         ui.add_space(4.0);
 
-        // 3. Font Size & Quick Sizes
+        // 3. Font Size & Quick Sizes (drag coalesced to one undo step;
+        // previously every drag frame pushed its own ModifyTextCommand).
         ui.horizontal(|ui| {
             ui.label("サイズ:");
             let mut fs = current_style.font_size;
-            if ui
-                .add(
-                    egui::DragValue::new(&mut fs)
-                        .speed(1.0)
-                        .range(4.0..=500.0)
-                        .suffix("pt"),
-                )
-                .changed()
-            {
-                let mut new_style = current_style.clone();
-                new_style.font_size = fs;
-                let cmd = Box::new(ModifyTextCommand::new(
-                    id.clone(),
-                    current_text.clone(),
-                    current_style.clone(),
-                    current_text.clone(),
-                    new_style.clone(),
-                ));
-                state.undo_manager.execute(cmd, &mut state.document);
-                current_style = new_style;
+            let fs_resp = ui.add(
+                egui::DragValue::new(&mut fs)
+                    .speed(1.0)
+                    .range(4.0..=500.0)
+                    .suffix("pt"),
+            );
+            if fs_resp.changed() {
+                state.object_edit(&id, &fs_resp, |o| {
+                    if let ObjectType::Text {
+                        style, font_size, ..
+                    } = &mut o.object_type
+                    {
+                        style.font_size = fs;
+                        *font_size = fs;
+                    }
+                });
+                current_style.font_size = fs;
+            }
+            if fs_resp.drag_stopped() {
+                state.commit_object_edits("Edit Object");
             }
         });
 
         // Quick sizes
         ui.horizontal_wrapped(|ui| {
             for size in [9.0, 11.0, 14.0, 18.0, 24.0, 36.0, 48.0, 72.0, 96.0] {
-                if ui
-                    .selectable_label(current_style.font_size == size, format!("{size}"))
-                    .clicked()
-                {
-                    let mut new_style = current_style.clone();
-                    new_style.font_size = size;
-                    let cmd = Box::new(ModifyTextCommand::new(
-                        id.clone(),
-                        current_text.clone(),
-                        current_style.clone(),
-                        current_text.clone(),
-                        new_style.clone(),
-                    ));
-                    state.undo_manager.execute(cmd, &mut state.document);
-                    current_style = new_style;
+                let size_resp =
+                    ui.selectable_label(current_style.font_size == size, format!("{size}"));
+                if size_resp.clicked() {
+                    state.object_edit(&id, &size_resp, |o| {
+                        if let ObjectType::Text {
+                            style, font_size, ..
+                        } = &mut o.object_type
+                        {
+                            style.font_size = size;
+                            *font_size = size;
+                        }
+                    });
+                    current_style.font_size = size;
                 }
             }
         });
@@ -298,26 +297,22 @@ impl TextPanel {
         ui.horizontal(|ui| {
             ui.label("字間 (Letter Spacing):");
             let mut ls = current_style.letter_spacing;
-            if ui
-                .add(
-                    egui::DragValue::new(&mut ls)
-                        .speed(0.2)
-                        .range(-10.0..=100.0)
-                        .suffix("px"),
-                )
-                .changed()
-            {
-                let mut new_style = current_style.clone();
-                new_style.letter_spacing = ls;
-                let cmd = Box::new(ModifyTextCommand::new(
-                    id.clone(),
-                    current_text.clone(),
-                    current_style.clone(),
-                    current_text.clone(),
-                    new_style.clone(),
-                ));
-                state.undo_manager.execute(cmd, &mut state.document);
-                current_style = new_style;
+            let ls_resp = ui.add(
+                egui::DragValue::new(&mut ls)
+                    .speed(0.2)
+                    .range(-10.0..=100.0)
+                    .suffix("px"),
+            );
+            if ls_resp.changed() {
+                state.object_edit(&id, &ls_resp, |o| {
+                    if let ObjectType::Text { style, .. } = &mut o.object_type {
+                        style.letter_spacing = ls;
+                    }
+                });
+                current_style.letter_spacing = ls;
+            }
+            if ls_resp.drag_stopped() {
+                state.commit_object_edits("Edit Object");
             }
         });
     }

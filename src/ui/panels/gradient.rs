@@ -122,27 +122,26 @@ impl GradientPanel {
                 let mut angle = dy.atan2(dx).to_degrees();
                 ui.horizontal(|ui| {
                     ui.label("Angle:");
-                    if ui
-                        .add(
-                            egui::DragValue::new(&mut angle)
-                                .speed(1.0)
-                                .range(-360.0..=360.0)
-                                .suffix("°"),
-                        )
-                        .changed()
-                    {
+                    let angle_resp = ui.add(
+                        egui::DragValue::new(&mut angle)
+                            .speed(1.0)
+                            .range(-360.0..=360.0)
+                            .suffix("°"),
+                    );
+                    if angle_resp.changed() {
                         let rad = angle.to_radians();
                         let new_end = [linear_start[0] + rad.cos(), linear_start[1] + rad.sin()];
-                        for (_, obj) in state.document.all_objects_mut() {
-                            if obj.id == id {
-                                if let Some(ref mut f) = obj.fill {
-                                    if let FillType::Linear(ref mut g) = f.fill_type {
-                                        g.end_x = new_end[0];
-                                        g.end_y = new_end[1];
-                                    }
+                        state.object_edit(&id, &angle_resp, |o| {
+                            if let Some(ref mut f) = o.fill {
+                                if let FillType::Linear(ref mut g) = f.fill_type {
+                                    g.end_x = new_end[0];
+                                    g.end_y = new_end[1];
                                 }
                             }
-                        }
+                        });
+                    }
+                    if angle_resp.drag_stopped() {
+                        state.commit_object_edits("Edit Object");
                     }
                 });
 
@@ -155,19 +154,19 @@ impl GradientPanel {
                 ui.horizontal(|ui| {
                     ui.label("Radius:");
                     let mut r = radial_radius;
-                    if ui
-                        .add(egui::Slider::new(&mut r, 0.01..=2.0).show_value(true))
-                        .changed()
-                    {
-                        for (_, obj) in state.document.all_objects_mut() {
-                            if obj.id == id {
-                                if let Some(ref mut f) = obj.fill {
-                                    if let FillType::Radial(ref mut g) = f.fill_type {
-                                        g.radius = r;
-                                    }
+                    let r_resp =
+                        ui.add(egui::Slider::new(&mut r, 0.01..=2.0).show_value(true));
+                    if r_resp.changed() {
+                        state.object_edit(&id, &r_resp, |o| {
+                            if let Some(ref mut f) = o.fill {
+                                if let FillType::Radial(ref mut g) = f.fill_type {
+                                    g.radius = r;
                                 }
                             }
-                        }
+                        });
+                    }
+                    if r_resp.drag_stopped() {
+                        state.commit_object_edits("Edit Object");
                     }
                 });
 
@@ -246,6 +245,8 @@ impl GradientPanel {
         let stop_count = stops.len();
         let mut color_updates: Vec<(usize, [f32; 4])> = Vec::new();
         let mut offset_updates: Vec<(usize, f32)> = Vec::new();
+        let mut dragging_slider = false;
+        let mut stopped_slider = false;
 
         for i in 0..stop_count {
             let stop = &stops[i];
@@ -256,15 +257,19 @@ impl GradientPanel {
                 }
 
                 let mut offset = stop.offset;
-                if ui
-                    .add(
-                        egui::Slider::new(&mut offset, 0.0..=1.0)
-                            .show_value(true)
-                            .step_by(0.01),
-                    )
-                    .changed()
-                {
+                let off_resp = ui.add(
+                    egui::Slider::new(&mut offset, 0.0..=1.0)
+                        .show_value(true)
+                        .step_by(0.01),
+                );
+                if off_resp.changed() {
                     offset_updates.push((i, offset));
+                }
+                if off_resp.dragged() {
+                    dragging_slider = true;
+                }
+                if off_resp.drag_stopped() {
+                    stopped_slider = true;
                 }
 
                 if stops.len() > 2 && ui.small_button("✕").clicked() {
@@ -287,7 +292,10 @@ impl GradientPanel {
             changed = true;
         }
         if changed {
-            Self::apply_stops(state, obj_id, stops, grad_type);
+            Self::apply_stops(state, obj_id, stops, grad_type, dragging_slider);
+        }
+        if stopped_slider {
+            state.commit_object_edits("Edit Object");
         }
 
         // Add stop button
@@ -304,11 +312,18 @@ impl GradientPanel {
             // total_cmp: imported files can carry NaN offsets
             // ("NaN".parse::<f32>() succeeds), which would panic unwrap().
             stops.sort_by(|a, b| a.offset.total_cmp(&b.offset));
-            Self::apply_stops(state, obj_id, stops, grad_type);
+            Self::apply_stops(state, obj_id, stops, grad_type, false);
         }
     }
 
-    fn apply_stops(state: &mut AppState, obj_id: &str, stops: &[GradientStop], grad_type: &str) {
+    fn apply_stops(
+        state: &mut AppState,
+        obj_id: &str,
+        stops: &[GradientStop],
+        grad_type: &str,
+        defer_commit: bool,
+    ) {
+        state.ensure_object_snapshot(obj_id);
         for (_, obj) in state.document.all_objects_mut() {
             if obj.id == obj_id {
                 if let Some(ref mut f) = obj.fill {
@@ -327,6 +342,11 @@ impl GradientPanel {
                     }
                 }
             }
+        }
+        // Slider drags commit on drag-stop (tracked by the caller); discrete
+        // edits (add/remove/color) commit immediately.
+        if !defer_commit {
+            state.commit_object_edits("Edit Object");
         }
     }
 }
