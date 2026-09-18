@@ -1,4 +1,4 @@
-use super::path::{AnchorPoint, PathData};
+use super::path::{AnchorPoint, PathData, PathElement};
 
 /// Visvalingam-Whyatt line simplification based on minimum effective triangle area
 pub fn simplify_polygon_visvalingam(pts: &[AnchorPoint], tolerance_area: f64) -> Vec<AnchorPoint> {
@@ -45,11 +45,72 @@ pub fn simplify_polygon_visvalingam(pts: &[AnchorPoint], tolerance_area: f64) ->
     current
 }
 
-/// Simplify a PathData using Visvalingam-Whyatt effective area reduction
+/// Simplify a PathData using Visvalingam-Whyatt effective area reduction.
+///
+/// Only runs of straight LineTo segments are reduced; bezier CurveTo spans
+/// are passed through untouched. (The previous implementation flattened the
+/// whole path with `to_polygon` and rebuilt it as polylines, silently turning
+/// every curve into straight segments.)
 pub fn simplify_path_visvalingam(path: &PathData, tolerance_area: f64) -> PathData {
-    let poly = path.to_polygon(1);
-    let simplified_pts = simplify_polygon_visvalingam(&poly, tolerance_area);
-    let mut new_path = PathData::from_polygon_points(&simplified_pts, path.closed);
+    let mut new_path = PathData::new();
+    // Current LineTo run, including its start anchor.
+    let mut run: Vec<AnchorPoint> = Vec::new();
+
+    let mut flush_run = |run: &mut Vec<AnchorPoint>, out: &mut PathData| {
+        if run.is_empty() {
+            return;
+        }
+        if run.len() <= 2 {
+            for p in run.iter().skip(1) {
+                out.push_line_to(p.x, p.y);
+            }
+        } else {
+            let simplified = simplify_polygon_visvalingam(run, tolerance_area);
+            // The run start anchor is already the cursor; emit the rest.
+            for p in simplified.iter().skip(1) {
+                out.push_line_to(p.x, p.y);
+            }
+        }
+        run.clear();
+    };
+
+    for elem in &path.elements {
+        match elem {
+            PathElement::MoveTo(p) => {
+                flush_run(&mut run, &mut new_path);
+                new_path.push_move_to(p.x, p.y);
+                run.push(*p);
+            }
+            PathElement::LineTo(p) => {
+                if run.is_empty() {
+                    // No preceding MoveTo in this subpath; treat as implicit start.
+                    run.push(*p);
+                } else {
+                    run.push(*p);
+                }
+            }
+            PathElement::CurveTo(seg) => {
+                flush_run(&mut run, &mut new_path);
+                new_path.push_cubic_curve_to(
+                    seg.control1.x,
+                    seg.control1.y,
+                    seg.control2.x,
+                    seg.control2.y,
+                    seg.end.x,
+                    seg.end.y,
+                );
+                run.push(seg.end);
+            }
+            PathElement::ClosePath => {
+                flush_run(&mut run, &mut new_path);
+                new_path.close();
+                run.clear();
+            }
+        }
+    }
+    flush_run(&mut run, &mut new_path);
+
+    new_path.closed = path.closed;
     new_path.fill = path.fill.clone();
     new_path.stroke = path.stroke.clone();
     new_path

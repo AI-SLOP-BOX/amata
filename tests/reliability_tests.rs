@@ -112,6 +112,80 @@ fn test_generative_inputs_are_bounded() {
 }
 
 #[test]
+fn test_knife_slice_uses_world_space() {
+    // Translated rect: the cut line comes from the world-space bounding box,
+    // so slicing must respect the object transform (previously the local
+    // polygon was cut with world coordinates, producing garbage).
+    let doc_rect = Object::new_rect("R", 100.0, 100.0, 100.0, 100.0, 0.0);
+    let (min, max) = doc_rect.bounding_box().unwrap();
+    let mid_y = (min.y + max.y) * 0.5;
+    let p1 = AnchorPoint::new(min.x - 10.0, mid_y);
+    let p2 = AnchorPoint::new(max.x + 10.0, mid_y);
+    let (a, b) =
+        irasu_illustrator::core::knife::slice_object_with_line(&doc_rect, p1, p2).unwrap();
+    for part in [&a, &b] {
+        let (pmin, pmax) = part.bounding_box().unwrap();
+        // Each half must lie inside the original world rect.
+        assert!(pmin.x >= 99.0 && pmax.x <= 201.0);
+        assert!((pmax.y - pmin.y - 50.0).abs() < 1.0, "half height ~50");
+    }
+}
+
+#[test]
+fn test_simplify_preserves_bezier_curves() {
+    use irasu_illustrator::core::path::{PathData, PathElement};
+    let mut path = PathData::new();
+    path.push_move_to(0.0, 0.0);
+    path.push_line_to(10.0, 0.0);
+    path.push_line_to(20.0, 0.0);
+    path.push_line_to(30.0, 0.0);
+    path.push_cubic_curve_to(40.0, 0.0, 50.0, 10.0, 60.0, 10.0);
+    let simplified =
+        irasu_illustrator::core::simplify::simplify_path_visvalingam(&path, 5.0);
+    let curves = simplified
+        .elements
+        .iter()
+        .filter(|e| matches!(e, PathElement::CurveTo(_)))
+        .count();
+    assert_eq!(curves, 1, "bezier spans must survive simplification");
+    // Collinear line points collapse.
+    let lines = simplified
+        .elements
+        .iter()
+        .filter(|e| matches!(e, PathElement::LineTo(_)))
+        .count();
+    assert!(lines < 3, "collinear points should reduce, got {lines}");
+}
+
+#[test]
+fn test_nan_gradient_offset_sanitized() {
+    let svg = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+      <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="NaN" stop-color="#ff0000" />
+        <stop offset="100%" stop-color="#0000ff" />
+      </linearGradient></defs>
+      <rect x="0" y="0" width="100" height="100" fill="url(#g)" />
+    </svg>"##;
+    let doc = parse_svg_document(svg);
+    let rect = doc
+        .all_objects()
+        .map(|(_, o)| o)
+        .find(|o| {
+            matches!(
+                o.object_type,
+                irasu_illustrator::core::document::ObjectType::Rectangle { .. }
+            )
+        })
+        .expect("rect imports");
+    let fill = rect.fill.as_ref().expect("gradient fill");
+    if let irasu_illustrator::core::path::FillType::Linear(g) = &fill.fill_type {
+        assert!(g.stops.iter().all(|s| s.offset.is_finite()));
+    } else {
+        panic!("expected linear gradient");
+    }
+}
+
+#[test]
 fn test_undo_redo_return_owned_names() {
     let mut doc = Document::default();
     let mut mgr = irasu_illustrator::core::history::UndoManager::new();

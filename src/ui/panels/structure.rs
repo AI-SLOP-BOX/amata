@@ -599,21 +599,46 @@ impl KnifePanel {
                             if let Some((part_a, part_b)) =
                                 crate::core::knife::slice_object_with_line(obj, p1, p2)
                             {
-                                let cmd1 =
-                                    Box::new(crate::core::history::RemoveObjectCommand::new(
-                                        obj.clone(),
-                                        0,
-                                        0,
-                                    ));
-                                state.undo_manager.execute(cmd1, &mut state.document);
-
-                                let cmd2 =
-                                    Box::new(crate::core::history::AddObjectCommand::new(part_a));
-                                state.undo_manager.execute(cmd2, &mut state.document);
-
-                                let cmd3 =
-                                    Box::new(crate::core::history::AddObjectCommand::new(part_b));
-                                state.undo_manager.execute(cmd3, &mut state.document);
+                                // One atomic undo step with the true layer/position
+                                // so Undo restores the original z-order.
+                                let mut found = None;
+                                for (l_idx, layer) in
+                                    state.document.layers.iter().enumerate()
+                                {
+                                    if let Some(pos) = layer
+                                        .objects
+                                        .iter()
+                                        .position(|o| o.id == obj.id)
+                                    {
+                                        found = Some((l_idx, pos));
+                                        break;
+                                    }
+                                }
+                                if let Some((l_idx, pos)) = found {
+                                    let rm = Box::new(
+                                        crate::core::history::RemoveObjectCommand::new(
+                                            obj.clone(),
+                                            l_idx,
+                                            pos,
+                                        ),
+                                    )
+                                        as Box<dyn crate::core::history::Command>;
+                                    let add_a = Box::new(
+                                        crate::core::history::AddObjectCommand::new(part_a),
+                                    )
+                                        as Box<dyn crate::core::history::Command>;
+                                    let add_b = Box::new(
+                                        crate::core::history::AddObjectCommand::new(part_b),
+                                    )
+                                        as Box<dyn crate::core::history::Command>;
+                                    let batch = Box::new(
+                                        crate::core::history::BatchCommand::new(
+                                            "Slice Object",
+                                            vec![rm, add_a, add_b],
+                                        ),
+                                    );
+                                    state.undo_manager.execute(batch, &mut state.document);
+                                }
                             }
                         }
                     }
@@ -632,21 +657,44 @@ impl KnifePanel {
                             if let Some((part_a, part_b)) =
                                 crate::core::knife::slice_object_with_line(obj, p1, p2)
                             {
-                                let cmd1 =
-                                    Box::new(crate::core::history::RemoveObjectCommand::new(
-                                        obj.clone(),
-                                        0,
-                                        0,
-                                    ));
-                                state.undo_manager.execute(cmd1, &mut state.document);
-
-                                let cmd2 =
-                                    Box::new(crate::core::history::AddObjectCommand::new(part_a));
-                                state.undo_manager.execute(cmd2, &mut state.document);
-
-                                let cmd3 =
-                                    Box::new(crate::core::history::AddObjectCommand::new(part_b));
-                                state.undo_manager.execute(cmd3, &mut state.document);
+                                let mut found = None;
+                                for (l_idx, layer) in
+                                    state.document.layers.iter().enumerate()
+                                {
+                                    if let Some(pos) = layer
+                                        .objects
+                                        .iter()
+                                        .position(|o| o.id == obj.id)
+                                    {
+                                        found = Some((l_idx, pos));
+                                        break;
+                                    }
+                                }
+                                if let Some((l_idx, pos)) = found {
+                                    let rm = Box::new(
+                                        crate::core::history::RemoveObjectCommand::new(
+                                            obj.clone(),
+                                            l_idx,
+                                            pos,
+                                        ),
+                                    )
+                                        as Box<dyn crate::core::history::Command>;
+                                    let add_a = Box::new(
+                                        crate::core::history::AddObjectCommand::new(part_a),
+                                    )
+                                        as Box<dyn crate::core::history::Command>;
+                                    let add_b = Box::new(
+                                        crate::core::history::AddObjectCommand::new(part_b),
+                                    )
+                                        as Box<dyn crate::core::history::Command>;
+                                    let batch = Box::new(
+                                        crate::core::history::BatchCommand::new(
+                                            "Slice Object",
+                                            vec![rm, add_a, add_b],
+                                        ),
+                                    );
+                                    state.undo_manager.execute(batch, &mut state.document);
+                                }
                             }
                         }
                     }

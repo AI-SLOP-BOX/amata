@@ -9,7 +9,29 @@ pub fn apply_envelope_distort(art_obj: &Object, envelope_obj: &Object) -> Object
     let art_w = (max_pt.x - min_pt.x).max(1.0);
     let art_h = (max_pt.y - min_pt.y).max(1.0);
 
-    let env_poly = envelope_obj.to_path_data().to_polygon(24);
+    // bounding_box() is world-space, so both the artwork and the envelope
+    // must be lifted through their transforms first. (Previously local art
+    // coordinates were warped with world-space parameters and the result kept
+    // the original transform, applying it twice.)
+    let art_m = art_obj.transform.matrix();
+    let lift = |p: AnchorPoint| -> AnchorPoint {
+        AnchorPoint::new(
+            art_m[0] * p.x + art_m[2] * p.y + art_m[4],
+            art_m[1] * p.x + art_m[3] * p.y + art_m[5],
+        )
+    };
+    let env_m = envelope_obj.transform.matrix();
+    let env_poly: Vec<AnchorPoint> = envelope_obj
+        .to_path_data()
+        .to_polygon(24)
+        .iter()
+        .map(|p| {
+            AnchorPoint::new(
+                env_m[0] * p.x + env_m[2] * p.y + env_m[4],
+                env_m[1] * p.x + env_m[3] * p.y + env_m[5],
+            )
+        })
+        .collect();
     if env_poly.len() < 4 {
         return art_obj.clone();
     }
@@ -44,17 +66,20 @@ pub fn apply_envelope_distort(art_obj: &Object, envelope_obj: &Object) -> Object
     let mut path = clone.to_path_data();
     path.elements.iter_mut().for_each(|elem| match elem {
         PathElement::MoveTo(p) | PathElement::LineTo(p) => {
-            *p = warp_point(*p);
+            *p = warp_point(lift(*p));
         }
         PathElement::CurveTo(seg) => {
-            seg.start = warp_point(seg.start);
-            seg.control1 = warp_point(seg.control1);
-            seg.control2 = warp_point(seg.control2);
-            seg.end = warp_point(seg.end);
+            seg.start = warp_point(lift(seg.start));
+            seg.control1 = warp_point(lift(seg.control1));
+            seg.control2 = warp_point(lift(seg.control2));
+            seg.end = warp_point(lift(seg.end));
         }
         _ => {}
     });
 
+    // Warped points are world-space; reset to identity so the old transform
+    // is not applied a second time.
     clone.object_type = crate::core::document::ObjectType::Path(path);
+    clone.transform = crate::core::document::Transform::default();
     clone
 }

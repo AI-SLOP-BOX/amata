@@ -536,9 +536,10 @@ impl WidthToolPanel {
                     width: 1.0,
                     side: crate::core::document::WidthSide::Both,
                 });
-            width_profile
-                .points
-                .sort_by(|a, b| a.position.partial_cmp(&b.position).unwrap());
+            width_profile.points.sort_by(|a, b| {
+                // total_cmp never panics on NaN positions.
+                a.position.total_cmp(&b.position)
+            });
         }
 
         // Reset profile

@@ -849,8 +849,15 @@ fn parse_linear_gradient_tag(tag: &str, child_tags: &[String]) -> (String, FillS
     let mut stops = Vec::new();
     for stop_tag in child_tags {
         if stop_tag.trim().starts_with("<stop") {
-            let offset =
+            // "NaN".parse::<f32>() succeeds; sanitize so NaN never poisons
+            // gradient sampling/sorting downstream.
+            let raw =
                 parse_coord_or_percent(extract_attr_str(stop_tag, "offset").unwrap_or("0"));
+            let offset = if raw.is_finite() {
+                raw.clamp(0.0, 1.0)
+            } else {
+                0.0
+            };
             let color = extract_attr_str(stop_tag, "stop-color")
                 .and_then(parse_svg_color)
                 .unwrap_or([0.0, 0.0, 0.0, 1.0]);
@@ -902,8 +909,13 @@ fn parse_radial_gradient_tag(tag: &str, child_tags: &[String]) -> (String, FillS
     let mut stops = Vec::new();
     for stop_tag in child_tags {
         if stop_tag.trim().starts_with("<stop") {
-            let offset =
+            let raw =
                 parse_coord_or_percent(extract_attr_str(stop_tag, "offset").unwrap_or("0"));
+            let offset = if raw.is_finite() {
+                raw.clamp(0.0, 1.0)
+            } else {
+                0.0
+            };
             let color = extract_attr_str(stop_tag, "stop-color")
                 .and_then(parse_svg_color)
                 .unwrap_or([0.0, 0.0, 0.0, 1.0]);

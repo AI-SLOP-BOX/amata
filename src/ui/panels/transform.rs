@@ -1,5 +1,47 @@
+use crate::core::history::{BatchCommand, Command, MoveObjectCommand};
 use crate::core::state::AppState;
 use egui::{RichText, Ui};
+
+/// Execute collected absolute moves as one undoable step.
+/// (Align/distribute previously wrote transforms directly, leaving the
+/// operation un-undoable and invisible to dirty tracking.)
+fn execute_moves(state: &mut AppState, label: &str, moves: Vec<(String, f64, f64, f64, f64)>) {
+    if moves.is_empty() {
+        return;
+    }
+    if moves.len() == 1 {
+        let (id, old_x, old_y, new_x, new_y) = moves.into_iter().next().unwrap();
+        state.undo_manager.execute(
+            Box::new(MoveObjectCommand {
+                object_id: id,
+                old_x,
+                old_y,
+                new_x,
+                new_y,
+            }),
+            &mut state.document,
+        );
+    } else {
+        let cmds: Vec<Box<dyn Command>> = moves
+            .into_iter()
+            .map(
+                |(id, old_x, old_y, new_x, new_y)| {
+                    Box::new(MoveObjectCommand {
+                        object_id: id,
+                        old_x,
+                        old_y,
+                        new_x,
+                        new_y,
+                    }) as Box<dyn Command>
+                },
+            )
+            .collect();
+        state.undo_manager.execute(
+            Box::new(BatchCommand::new(label, cmds)),
+            &mut state.document,
+        );
+    }
+}
 
 pub struct AlignPanel;
 
@@ -192,16 +234,16 @@ fn align_left(state: &mut AppState, sel: &[String]) {
             }
         }
     }
+    let mut moves = Vec::new();
     for id in sel {
-        for (_, obj) in state.document.all_objects_mut() {
-            if &obj.id == id {
-                if let Some((bb_min, _)) = obj.bounding_box() {
-                    obj.transform.x += min_x - bb_min.x;
-                }
-                break;
+        if let Some((_, obj)) = state.document.all_objects().find(|(_, o)| &o.id == id) {
+            if let Some((bb_min, _)) = obj.bounding_box() {
+                let (ox, oy) = (obj.transform.x, obj.transform.y);
+                moves.push((id.clone(), ox, oy, ox + (min_x - bb_min.x), oy));
             }
         }
     }
+    execute_moves(state, "Align Left", moves);
 }
 
 fn align_center_h(state: &mut AppState, sel: &[String]) {
@@ -216,17 +258,17 @@ fn align_center_h(state: &mut AppState, sel: &[String]) {
         }
     }
     let center = (min_x + max_x) / 2.0;
+    let mut moves = Vec::new();
     for id in sel {
-        for (_, obj) in state.document.all_objects_mut() {
-            if &obj.id == id {
-                if let Some((bb_min, bb_max)) = obj.bounding_box() {
-                    let obj_center = (bb_min.x + bb_max.x) / 2.0;
-                    obj.transform.x += center - obj_center;
-                }
-                break;
+        if let Some((_, obj)) = state.document.all_objects().find(|(_, o)| &o.id == id) {
+            if let Some((bb_min, bb_max)) = obj.bounding_box() {
+                let obj_center = (bb_min.x + bb_max.x) / 2.0;
+                let (ox, oy) = (obj.transform.x, obj.transform.y);
+                moves.push((id.clone(), ox, oy, ox + (center - obj_center), oy));
             }
         }
     }
+    execute_moves(state, "Align Center H", moves);
 }
 
 fn align_right(state: &mut AppState, sel: &[String]) {
@@ -238,16 +280,16 @@ fn align_right(state: &mut AppState, sel: &[String]) {
             }
         }
     }
+    let mut moves = Vec::new();
     for id in sel {
-        for (_, obj) in state.document.all_objects_mut() {
-            if &obj.id == id {
-                if let Some((_, bb_max)) = obj.bounding_box() {
-                    obj.transform.x += max_x - bb_max.x;
-                }
-                break;
+        if let Some((_, obj)) = state.document.all_objects().find(|(_, o)| &o.id == id) {
+            if let Some((_, bb_max)) = obj.bounding_box() {
+                let (ox, oy) = (obj.transform.x, obj.transform.y);
+                moves.push((id.clone(), ox, oy, ox + (max_x - bb_max.x), oy));
             }
         }
     }
+    execute_moves(state, "Align Right", moves);
 }
 
 fn align_top(state: &mut AppState, sel: &[String]) {
@@ -259,16 +301,16 @@ fn align_top(state: &mut AppState, sel: &[String]) {
             }
         }
     }
+    let mut moves = Vec::new();
     for id in sel {
-        for (_, obj) in state.document.all_objects_mut() {
-            if &obj.id == id {
-                if let Some((bb_min, _)) = obj.bounding_box() {
-                    obj.transform.y += min_y - bb_min.y;
-                }
-                break;
+        if let Some((_, obj)) = state.document.all_objects().find(|(_, o)| &o.id == id) {
+            if let Some((bb_min, _)) = obj.bounding_box() {
+                let (ox, oy) = (obj.transform.x, obj.transform.y);
+                moves.push((id.clone(), ox, oy, ox, oy + (min_y - bb_min.y)));
             }
         }
     }
+    execute_moves(state, "Align Top", moves);
 }
 
 fn align_center_v(state: &mut AppState, sel: &[String]) {
@@ -283,17 +325,17 @@ fn align_center_v(state: &mut AppState, sel: &[String]) {
         }
     }
     let center = (min_y + max_y) / 2.0;
+    let mut moves = Vec::new();
     for id in sel {
-        for (_, obj) in state.document.all_objects_mut() {
-            if &obj.id == id {
-                if let Some((bb_min, bb_max)) = obj.bounding_box() {
-                    let obj_center = (bb_min.y + bb_max.y) / 2.0;
-                    obj.transform.y += center - obj_center;
-                }
-                break;
+        if let Some((_, obj)) = state.document.all_objects().find(|(_, o)| &o.id == id) {
+            if let Some((bb_min, bb_max)) = obj.bounding_box() {
+                let obj_center = (bb_min.y + bb_max.y) / 2.0;
+                let (ox, oy) = (obj.transform.x, obj.transform.y);
+                moves.push((id.clone(), ox, oy, ox, oy + (center - obj_center)));
             }
         }
     }
+    execute_moves(state, "Align Center V", moves);
 }
 
 fn align_bottom(state: &mut AppState, sel: &[String]) {
@@ -305,16 +347,16 @@ fn align_bottom(state: &mut AppState, sel: &[String]) {
             }
         }
     }
+    let mut moves = Vec::new();
     for id in sel {
-        for (_, obj) in state.document.all_objects_mut() {
-            if &obj.id == id {
-                if let Some((_, bb_max)) = obj.bounding_box() {
-                    obj.transform.y += max_y - bb_max.y;
-                }
-                break;
+        if let Some((_, obj)) = state.document.all_objects().find(|(_, o)| &o.id == id) {
+            if let Some((_, bb_max)) = obj.bounding_box() {
+                let (ox, oy) = (obj.transform.x, obj.transform.y);
+                moves.push((id.clone(), ox, oy, ox, oy + (max_y - bb_max.y)));
             }
         }
     }
+    execute_moves(state, "Align Bottom", moves);
 }
 
 fn distribute_h(state: &mut AppState, sel: &[String]) {
@@ -338,16 +380,16 @@ fn distribute_h(state: &mut AppState, sel: &[String]) {
     let gap = total_gap / (items.len() - 1) as f64;
 
     let mut current_pos = first_min;
-    for (id, orig_min, w) in items {
+    let mut moves = Vec::new();
+    for (id, orig_min, w) in &items {
         let delta = current_pos - orig_min;
-        for (_, obj) in state.document.all_objects_mut() {
-            if obj.id == id {
-                obj.transform.x += delta;
-                break;
-            }
+        if let Some((_, obj)) = state.document.all_objects().find(|(_, o)| &o.id == id) {
+            let (ox, oy) = (obj.transform.x, obj.transform.y);
+            moves.push((id.clone(), ox, oy, ox + delta, oy));
         }
         current_pos += w + gap;
     }
+    execute_moves(state, "Distribute H", moves);
 }
 
 fn distribute_v(state: &mut AppState, sel: &[String]) {
@@ -371,16 +413,16 @@ fn distribute_v(state: &mut AppState, sel: &[String]) {
     let gap = total_gap / (items.len() - 1) as f64;
 
     let mut current_pos = first_min;
-    for (id, orig_min, h) in items {
+    let mut moves = Vec::new();
+    for (id, orig_min, h) in &items {
         let delta = current_pos - orig_min;
-        for (_, obj) in state.document.all_objects_mut() {
-            if obj.id == id {
-                obj.transform.y += delta;
-                break;
-            }
+        if let Some((_, obj)) = state.document.all_objects().find(|(_, o)| &o.id == id) {
+            let (ox, oy) = (obj.transform.x, obj.transform.y);
+            moves.push((id.clone(), ox, oy, ox, oy + delta));
         }
         current_pos += h + gap;
     }
+    execute_moves(state, "Distribute V", moves);
 }
 
 // ═══════════════════════════════════════════════════════════════════

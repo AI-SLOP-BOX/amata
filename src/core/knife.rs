@@ -1,13 +1,31 @@
 use super::document::Object;
 use super::path::{AnchorPoint, PathData};
 
-/// Slice an Object's polygon into two distinct vector parts using a straight cutting line
+fn apply_matrix_pt(p: AnchorPoint, m: &[f64; 6]) -> AnchorPoint {
+    AnchorPoint::new(
+        m[0] * p.x + m[2] * p.y + m[4],
+        m[1] * p.x + m[3] * p.y + m[5],
+    )
+}
+
+/// Slice an Object's polygon into two distinct vector parts using a straight cutting line.
+///
+/// Both the polygon and the cutting line live in world coordinates (callers
+/// derive the line from `bounding_box()`, which is world-space), so the local
+/// path is lifted through the object transform first. Results carry world
+/// coordinates with an identity transform.
 pub fn slice_object_with_line(
     obj: &Object,
     p1: AnchorPoint,
     p2: AnchorPoint,
 ) -> Option<(Object, Object)> {
-    let poly = obj.to_path_data().to_polygon(24);
+    let m = obj.transform.matrix();
+    let poly: Vec<AnchorPoint> = obj
+        .to_path_data()
+        .to_polygon(24)
+        .iter()
+        .map(|p| apply_matrix_pt(*p, &m))
+        .collect();
     if poly.len() < 3 {
         return None;
     }
@@ -67,8 +85,13 @@ pub fn slice_object_with_line(
     let mut obj_left = Object::new_path(&format!("{} (Slice A)", obj.name), path_left);
     let mut obj_right = Object::new_path(&format!("{} (Slice B)", obj.name), path_right);
 
-    obj_left.transform = obj.transform.clone();
-    obj_right.transform = obj.transform.clone();
+    // Paths above are world-space; keep identity transforms so no double
+    // transform applies. Preserve visual attributes of the source.
+    for part in [&mut obj_left, &mut obj_right] {
+        part.opacity = obj.opacity;
+        part.blend_mode = obj.blend_mode;
+        part.visible = obj.visible;
+    }
 
     Some((obj_left, obj_right))
 }

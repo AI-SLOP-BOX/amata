@@ -301,7 +301,9 @@ impl GradientPanel {
                 offset,
                 color: state.fill_color,
             });
-            stops.sort_by(|a, b| a.offset.partial_cmp(&b.offset).unwrap());
+            // total_cmp: imported files can carry NaN offsets
+            // ("NaN".parse::<f32>() succeeds), which would panic unwrap().
+            stops.sort_by(|a, b| a.offset.total_cmp(&b.offset));
             Self::apply_stops(state, obj_id, stops, grad_type);
         }
     }

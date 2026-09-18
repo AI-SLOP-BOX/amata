@@ -120,11 +120,16 @@ impl PropertyPanel {
                             .add(egui::DragValue::new(&mut x_val).speed(0.5).suffix(" mm"))
                             .changed()
                         {
+                            // Move every selected object by the same delta so
+                            // multi-selection keeps its relative layout.
+                            // (Previously all objects were stacked onto the
+                            // first object's absolute value.)
+                            let dx = x_val - tx;
                             let sel = state.selected_ids.clone();
                             for id in &sel {
                                 for (_, o) in state.document.all_objects_mut() {
                                     if &o.id == id {
-                                        o.transform.x = x_val;
+                                        o.transform.x += dx;
                                     }
                                 }
                             }
@@ -164,11 +169,12 @@ impl PropertyPanel {
                             .add(egui::DragValue::new(&mut y_val).speed(0.5).suffix(" mm"))
                             .changed()
                         {
+                            let dy = y_val - ty;
                             let sel = state.selected_ids.clone();
                             for id in &sel {
                                 for (_, o) in state.document.all_objects_mut() {
                                     if &o.id == id {
-                                        o.transform.y = y_val;
+                                        o.transform.y += dy;
                                     }
                                 }
                             }
