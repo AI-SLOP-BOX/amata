@@ -533,35 +533,41 @@ impl SwatchesPanel {
             let g = (state.fill_color[1] * 255.0) as u8;
             let b = (state.fill_color[2] * 255.0) as u8;
             let mut hex_buf = format!("#{:02X}{:02X}{:02X}", r, g, b);
-            if ui
-                .add(egui::TextEdit::singleline(&mut hex_buf).desired_width(70.0))
-                .changed()
-            {
+            let hex_resp =
+                ui.add(egui::TextEdit::singleline(&mut hex_buf).desired_width(70.0));
+            if hex_resp.has_focus() {
+                let sel = state.selected_ids.clone();
+                for id in &sel {
+                    state.ensure_object_snapshot(id);
+                }
+            }
+            if hex_resp.changed() {
                 if let Some(c) = crate::io::svg::parse_svg_color(&hex_buf) {
                     state.fill_color = [c[0], c[1], c[2], state.fill_color[3]];
-                    for id in &state.selected_ids {
-                        for (_, obj) in state.document.all_objects_mut() {
-                            if &obj.id == id {
-                                obj.fill = Some(FillStyle::solid(state.fill_color));
-                            }
+                    let sel = state.selected_ids.clone();
+                    let fc = state.fill_color;
+                    for id in &sel {
+                        if let Some(o) = state.document.find_object_mut(id) {
+                            o.fill = Some(FillStyle::solid(fc));
                         }
                     }
                 }
             }
+            if hex_resp.lost_focus() {
+                state.commit_object_edits("Edit Object");
+            }
 
             let mut c_rgba = state.fill_color;
-            if ui
-                .color_edit_button_rgba_premultiplied(&mut c_rgba)
-                .changed()
-            {
+            let crgba_resp = ui.color_edit_button_rgba_premultiplied(&mut c_rgba);
+            if crgba_resp.changed() {
                 state.fill_color = c_rgba;
-                for id in &state.selected_ids {
-                    for (_, obj) in state.document.all_objects_mut() {
-                        if &obj.id == id {
-                            obj.fill = Some(FillStyle::solid(c_rgba));
-                        }
-                    }
-                }
+                let sel = state.selected_ids.clone();
+                state.objects_edit(&sel, &crgba_resp, |o| {
+                    o.fill = Some(FillStyle::solid(c_rgba));
+                });
+            }
+            if crgba_resp.drag_stopped() {
+                state.commit_object_edits("Edit Object");
             }
         });
 
@@ -722,13 +728,16 @@ impl SwatchesPanel {
                     Color32::WHITE,
                 );
                 if response.clicked() {
-                    for id in &state.selected_ids {
-                        for (_, obj) in state.document.all_objects_mut() {
-                            if &obj.id == id {
-                                obj.fill = Some(fill.clone());
-                            }
+                    let sel = state.selected_ids.clone();
+                    for id in &sel {
+                        state.ensure_object_snapshot(id);
+                    }
+                    for id in &sel {
+                        if let Some(o) = state.document.find_object_mut(id) {
+                            o.fill = Some(fill.clone());
                         }
                     }
+                    state.commit_object_edits("Edit Object");
                 }
             }
         });

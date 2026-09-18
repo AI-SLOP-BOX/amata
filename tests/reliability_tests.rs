@@ -259,6 +259,31 @@ fn test_object_gesture_coalesces_to_one_undo_step() {
 }
 
 #[test]
+fn test_bulk_generation_undoes_in_one_step() {
+    use irasu_illustrator::core::history::{AddObjectCommand, BatchCommand, Command};
+    let mut doc = Document::default();
+    let mut mgr = irasu_illustrator::core::history::UndoManager::new();
+    let before = doc.all_objects().count();
+    let cmds: Vec<Box<dyn Command>> = (0..7)
+        .map(|i| {
+            Box::new(AddObjectCommand::new(Object::new_rect(
+                &format!("N{i}"),
+                i as f64 * 10.0,
+                0.0,
+                5.0,
+                5.0,
+                0.0,
+            ))) as Box<dyn Command>
+        })
+        .collect();
+    mgr.execute(Box::new(BatchCommand::new("Neon Glow", cmds)), &mut doc);
+    assert_eq!(mgr.undo_depth(), 1);
+    assert_eq!(doc.all_objects().count(), before + 7);
+    mgr.undo(&mut doc);
+    assert_eq!(doc.all_objects().count(), before);
+}
+
+#[test]
 fn test_undo_redo_return_owned_names() {
     let mut doc = Document::default();
     let mut mgr = irasu_illustrator::core::history::UndoManager::new();

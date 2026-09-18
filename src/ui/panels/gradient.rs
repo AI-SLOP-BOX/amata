@@ -377,61 +377,98 @@ impl EffectsPanel {
             let mut has_shadow = shadow.is_some();
             let mut current_shadow = shadow.unwrap_or_default();
 
-            ui.checkbox(&mut has_shadow, "Drop Shadow");
+            // Any widget interaction marks the effect dirty; drags coalesce
+            // into one undo step committed on drag-stop.
+            let mut fx_changed = false;
+            let mut fx_dragging = false;
+            let mut fx_stopped = false;
+            let mut track = |resp: &egui::Response| {
+                if resp.changed() {
+                    fx_changed = true;
+                }
+                if resp.dragged() {
+                    fx_dragging = true;
+                }
+                if resp.drag_stopped() {
+                    fx_stopped = true;
+                }
+            };
+
+            track(&ui.checkbox(&mut has_shadow, "Drop Shadow"));
             if has_shadow {
                 ui.horizontal(|ui| {
                     ui.label("Offset X:");
-                    ui.add(egui::DragValue::new(&mut current_shadow.offset_x).speed(1.0));
+                    let r = ui.add(
+                        egui::DragValue::new(&mut current_shadow.offset_x).speed(1.0),
+                    );
+                    track(&r);
                     ui.label("Y:");
-                    ui.add(egui::DragValue::new(&mut current_shadow.offset_y).speed(1.0));
+                    let r = ui.add(
+                        egui::DragValue::new(&mut current_shadow.offset_y).speed(1.0),
+                    );
+                    track(&r);
                 });
                 ui.horizontal(|ui| {
                     ui.label("Blur:");
-                    ui.add(
+                    let r = ui.add(
                         egui::DragValue::new(&mut current_shadow.blur_radius)
                             .speed(0.5)
                             .range(0.0..=100.0),
                     );
+                    track(&r);
                     ui.label("Opacity:");
-                    ui.add(egui::Slider::new(&mut current_shadow.opacity, 0.0..=1.0));
+                    let r =
+                        ui.add(egui::Slider::new(&mut current_shadow.opacity, 0.0..=1.0));
+                    track(&r);
                 });
                 ui.horizontal(|ui| {
                     ui.label("Color:");
-                    ui.color_edit_button_rgba_premultiplied(&mut current_shadow.color);
+                    let r = ui.color_edit_button_rgba_premultiplied(&mut current_shadow.color);
+                    track(&r);
                 });
             }
 
             let mut has_glow = glow.is_some();
             let mut current_glow = glow.unwrap_or_default();
 
-            ui.checkbox(&mut has_glow, "Outer Glow");
+            track(&ui.checkbox(&mut has_glow, "Outer Glow"));
             if has_glow {
                 ui.horizontal(|ui| {
                     ui.label("Radius:");
-                    ui.add(
+                    let r = ui.add(
                         egui::DragValue::new(&mut current_glow.radius)
                             .speed(1.0)
                             .range(1.0..=100.0),
                     );
+                    track(&r);
                     ui.label("Intensity:");
-                    ui.add(egui::Slider::new(&mut current_glow.intensity, 0.0..=1.0));
+                    let r =
+                        ui.add(egui::Slider::new(&mut current_glow.intensity, 0.0..=1.0));
+                    track(&r);
                 });
                 ui.horizontal(|ui| {
                     ui.label("Glow Color:");
-                    ui.color_edit_button_rgba_premultiplied(&mut current_glow.color);
+                    let r = ui.color_edit_button_rgba_premultiplied(&mut current_glow.color);
+                    track(&r);
                 });
             }
 
-            for (_, obj) in state.document.all_objects_mut() {
-                if obj.id == id {
-                    obj.shadow = if has_shadow {
+            if fx_changed {
+                state.ensure_object_snapshot(&id);
+                if let Some(o) = state.document.find_object_mut(&id) {
+                    o.shadow = if has_shadow {
                         Some(current_shadow)
                     } else {
                         None
                     };
-                    obj.glow = if has_glow { Some(current_glow) } else { None };
-                    break;
+                    o.glow = if has_glow { Some(current_glow) } else { None };
                 }
+                if !fx_dragging {
+                    state.commit_object_edits("Edit Object");
+                }
+            }
+            if fx_stopped {
+                state.commit_object_edits("Edit Object");
             }
         } else {
             ui.label(RichText::new("Select an object to add effects").weak());
@@ -467,9 +504,21 @@ impl NeonGlowPanel {
                             18.0,
                             6,
                         );
-                        for layer in neon_layers {
-                            let cmd = Box::new(crate::core::history::AddObjectCommand::new(layer));
-                            state.undo_manager.execute(cmd, &mut state.document);
+                        // One click must undo in one step, not one per layer.
+                        let cmds: Vec<Box<dyn crate::core::history::Command>> =
+                            neon_layers
+                                .into_iter()
+                                .map(|layer| {
+                                    Box::new(crate::core::history::AddObjectCommand::new(layer))
+                                        as Box<dyn crate::core::history::Command>
+                                })
+                                .collect();
+                        if !cmds.is_empty() {
+                            let batch = Box::new(crate::core::history::BatchCommand::new(
+                                "Neon Glow",
+                                cmds,
+                            ));
+                            state.undo_manager.execute(batch, &mut state.document);
                         }
                     }
                 }
@@ -486,9 +535,20 @@ impl NeonGlowPanel {
                             18.0,
                             6,
                         );
-                        for layer in neon_layers {
-                            let cmd = Box::new(crate::core::history::AddObjectCommand::new(layer));
-                            state.undo_manager.execute(cmd, &mut state.document);
+                        let cmds: Vec<Box<dyn crate::core::history::Command>> =
+                            neon_layers
+                                .into_iter()
+                                .map(|layer| {
+                                    Box::new(crate::core::history::AddObjectCommand::new(layer))
+                                        as Box<dyn crate::core::history::Command>
+                                })
+                                .collect();
+                        if !cmds.is_empty() {
+                            let batch = Box::new(crate::core::history::BatchCommand::new(
+                                "Neon Glow",
+                                cmds,
+                            ));
+                            state.undo_manager.execute(batch, &mut state.document);
                         }
                     }
                 }
@@ -505,9 +565,20 @@ impl NeonGlowPanel {
                             18.0,
                             6,
                         );
-                        for layer in neon_layers {
-                            let cmd = Box::new(crate::core::history::AddObjectCommand::new(layer));
-                            state.undo_manager.execute(cmd, &mut state.document);
+                        let cmds: Vec<Box<dyn crate::core::history::Command>> =
+                            neon_layers
+                                .into_iter()
+                                .map(|layer| {
+                                    Box::new(crate::core::history::AddObjectCommand::new(layer))
+                                        as Box<dyn crate::core::history::Command>
+                                })
+                                .collect();
+                        if !cmds.is_empty() {
+                            let batch = Box::new(crate::core::history::BatchCommand::new(
+                                "Neon Glow",
+                                cmds,
+                            ));
+                            state.undo_manager.execute(batch, &mut state.document);
                         }
                     }
                 }

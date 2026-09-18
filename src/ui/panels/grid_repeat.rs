@@ -57,6 +57,7 @@ impl GridRepeatPanel {
                     .find(|(_, o)| &o.id == id)
                     .map(|(_, o)| o.clone());
                 if let Some(obj) = obj {
+                    let mut cmds: Vec<Box<dyn crate::core::history::Command>> = Vec::new();
                     for row in 0..state.repeat_rows {
                         for col in 0..state.repeat_cols {
                             if row == 0 && col == 0 {
@@ -67,10 +68,18 @@ impl GridRepeatPanel {
                             new_obj.name = format!("{} ({},{})", obj.name, col, row);
                             new_obj.transform.x += col as f64 * state.repeat_h_gap;
                             new_obj.transform.y += row as f64 * state.repeat_v_gap;
-                            let cmd =
-                                Box::new(crate::core::history::AddObjectCommand::new(new_obj));
-                            state.undo_manager.execute(cmd, &mut state.document);
+                            cmds.push(Box::new(
+                                crate::core::history::AddObjectCommand::new(new_obj),
+                            )
+                                as Box<dyn crate::core::history::Command>);
                         }
+                    }
+                    if !cmds.is_empty() {
+                        let batch = Box::new(crate::core::history::BatchCommand::new(
+                            "Grid Repeat",
+                            cmds,
+                        ));
+                        state.undo_manager.execute(batch, &mut state.document);
                     }
                 }
             }
@@ -84,8 +93,9 @@ impl GridRepeatPanel {
                     .find(|(_, o)| &o.id == id)
                     .map(|(_, o)| o.clone());
                 if let Some(obj) = obj {
-                    let angle_step = 360.0 / state.repeat_radial_count as f64;
+                    let angle_step = 360.0 / state.repeat_radial_count.max(1) as f64;
                     let start_rad = state.repeat_start_angle.to_radians();
+                    let mut cmds: Vec<Box<dyn crate::core::history::Command>> = Vec::new();
                     for i in 1..state.repeat_radial_count {
                         let angle = start_rad + (i as f64) * angle_step.to_radians();
                         let mut new_obj = obj.clone();
@@ -96,8 +106,17 @@ impl GridRepeatPanel {
                         new_obj.transform.y =
                             obj.transform.y + angle.sin() * state.repeat_radial_radius;
                         new_obj.transform.rotation = angle;
-                        let cmd = Box::new(crate::core::history::AddObjectCommand::new(new_obj));
-                        state.undo_manager.execute(cmd, &mut state.document);
+                        cmds.push(Box::new(
+                            crate::core::history::AddObjectCommand::new(new_obj),
+                        )
+                            as Box<dyn crate::core::history::Command>);
+                    }
+                    if !cmds.is_empty() {
+                        let batch = Box::new(crate::core::history::BatchCommand::new(
+                            "Radial Repeat",
+                            cmds,
+                        ));
+                        state.undo_manager.execute(batch, &mut state.document);
                     }
                 }
             }

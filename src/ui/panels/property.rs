@@ -55,20 +55,23 @@ impl PropertyPanel {
                     "オブジェクト"
                 };
                 let mut edit_name = obj_name.clone();
-                if ui
-                    .add(
-                        egui::TextEdit::singleline(&mut edit_name)
-                            .hint_text(default_hint)
-                            .desired_width(180.0),
-                    )
-                    .changed()
-                {
-                    for (_, o) in state.document.all_objects_mut() {
-                        if o.id == id {
-                            o.name = edit_name.clone();
-                            break;
-                        }
+                let name_resp = ui.add(
+                    egui::TextEdit::singleline(&mut edit_name)
+                        .hint_text(default_hint)
+                        .desired_width(180.0),
+                );
+                // Coalesce the whole rename (one keystroke per frame) into a
+                // single undo step committed on focus loss.
+                if name_resp.has_focus() {
+                    state.ensure_object_snapshot(&id);
+                }
+                if name_resp.changed() {
+                    if let Some(o) = state.document.find_object_mut(&id) {
+                        o.name = edit_name.clone();
                     }
+                }
+                if name_resp.lost_focus() {
+                    state.commit_object_edits("Rename Object");
                 }
             });
             ui.add_space(4.0);
