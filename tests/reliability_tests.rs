@@ -361,6 +361,122 @@ fn test_layer_add_delete_reorder_undo() {
     assert_eq!(back, oo);
 }
 
+fn ring_area(poly: &[irasu_illustrator::core::path::AnchorPoint]) -> f64 {
+    if poly.len() < 3 {
+        return 0.0;
+    }
+    let mut a = 0.0;
+    for i in 0..poly.len() {
+        let p = poly[i];
+        let q = poly[(i + 1) % poly.len()];
+        a += p.x * q.y - q.x * p.y;
+    }
+    (a * 0.5).abs()
+}
+
+fn sq(x: f64, y: f64, s: f64) -> Vec<irasu_illustrator::core::path::AnchorPoint> {
+    use irasu_illustrator::core::path::AnchorPoint;
+    vec![
+        AnchorPoint::new(x, y),
+        AnchorPoint::new(x + s, y),
+        AnchorPoint::new(x + s, y + s),
+        AnchorPoint::new(x, y + s),
+    ]
+}
+
+#[test]
+fn test_boolean_overlap_squares() {
+    use irasu_illustrator::core::boolean::{apply_polygon_boolean, BooleanOp};
+    let a = sq(0.0, 0.0, 100.0);
+    let b = sq(50.0, 50.0, 100.0);
+    let area = |r: Vec<Vec<irasu_illustrator::core::path::AnchorPoint>>| {
+        r.iter().map(|p| ring_area(p)).sum::<f64>()
+    };
+    let u = area(apply_polygon_boolean(&a, &b, BooleanOp::Union));
+    assert!((u - 17500.0).abs() < 50.0, "union {u}");
+    let i = area(apply_polygon_boolean(&a, &b, BooleanOp::Intersect));
+    assert!((i - 2500.0).abs() < 50.0, "intersect {i}");
+    let s = area(apply_polygon_boolean(&a, &b, BooleanOp::Subtract));
+    assert!((s - 7500.0).abs() < 50.0, "subtract {s}");
+    let e = area(apply_polygon_boolean(&a, &b, BooleanOp::Exclude));
+    assert!((e - 15000.0).abs() < 100.0, "exclude {e}");
+}
+
+#[test]
+fn test_boolean_shared_edge_and_touch() {
+    use irasu_illustrator::core::boolean::{apply_polygon_boolean, BooleanOp};
+    // Edge-adjacent squares sharing the x=100 boundary segment.
+    let a = sq(0.0, 0.0, 100.0);
+    let b = sq(100.0, 0.0, 100.0);
+    let i = apply_polygon_boolean(&a, &b, BooleanOp::Intersect);
+    let ia: f64 = i.iter().map(|p| ring_area(p)).sum();
+    assert!(ia < 1.0, "shared-edge intersect is degenerate, got {ia}");
+    let u = apply_polygon_boolean(&a, &b, BooleanOp::Union);
+    let ua: f64 = u.iter().map(|p| ring_area(p)).sum();
+    assert!((ua - 20000.0).abs() < 100.0, "touching union {ua}");
+    let s = apply_polygon_boolean(&a, &b, BooleanOp::Subtract);
+    let sa: f64 = s.iter().map(|p| ring_area(p)).sum();
+    assert!((sa - 10000.0).abs() < 100.0, "touching subtract {sa}");
+    // Corner touch.
+    let c = sq(100.0, 100.0, 50.0);
+    assert!(apply_polygon_boolean(&a, &c, BooleanOp::Intersect).is_empty());
+    let uc = apply_polygon_boolean(&a, &c, BooleanOp::Union);
+    let uca: f64 = uc.iter().map(|p| ring_area(p)).sum();
+    assert!((uca - 12500.0).abs() < 100.0, "corner-touch union {uca}");
+}
+
+#[test]
+fn test_boolean_concave_union() {
+    use irasu_illustrator::core::boolean::{apply_polygon_boolean, BooleanOp};
+    use irasu_illustrator::core::path::AnchorPoint;
+    // L-shape (concave): angular-sort unions produce garbage here.
+    let l = vec![
+        AnchorPoint::new(0.0, 0.0),
+        AnchorPoint::new(100.0, 0.0),
+        AnchorPoint::new(100.0, 40.0),
+        AnchorPoint::new(40.0, 40.0),
+        AnchorPoint::new(40.0, 100.0),
+        AnchorPoint::new(0.0, 100.0),
+    ];
+    let b = sq(20.0, 20.0, 100.0);
+    let u = apply_polygon_boolean(&l, &b, BooleanOp::Union);
+    let total: f64 = u.iter().map(|p| ring_area(p)).sum();
+    // L area = 100*40 + 40*60 = 6400; B area = 10000; overlap = 20*40+...osed
+    // to exact: just assert sane bounds and no garbage explosion.
+    assert!(total > 6400.0 && total < 16400.0, "concave union {total}");
+    let i = apply_polygon_boolean(&l, &b, BooleanOp::Intersect);
+    let ia: f64 = i.iter().map(|p| ring_area(p)).sum();
+    assert!(ia > 0.0 && ia <= 6400.0, "concave intersect {ia}");
+}
+
+#[test]
+fn test_boolean_degenerate_and_contained() {
+    use irasu_illustrator::core::boolean::{apply_polygon_boolean, BooleanOp};
+    use irasu_illustrator::core::path::AnchorPoint;
+    let big = sq(0.0, 0.0, 200.0);
+    let small = sq(50.0, 50.0, 50.0);
+    // Contained.
+    let i = apply_polygon_boolean(&big, &small, BooleanOp::Intersect);
+    assert_eq!(i.len(), 1);
+    assert!((ring_area(&i[0]) - 2500.0).abs() < 10.0);
+    let u = apply_polygon_boolean(&big, &small, BooleanOp::Union);
+    assert!((ring_area(&u[0]) - 40000.0).abs() < 10.0);
+    // Disjoint.
+    let far = sq(500.0, 500.0, 50.0);
+    let u2 = apply_polygon_boolean(&big, &far, BooleanOp::Union);
+    assert_eq!(u2.len(), 2);
+    assert!(apply_polygon_boolean(&big, &far, BooleanOp::Intersect).is_empty());
+    // Degenerate inputs never panic and yield nothing meaningful.
+    let empty: Vec<AnchorPoint> = vec![];
+    assert!(apply_polygon_boolean(&empty, &big, BooleanOp::Intersect).is_empty());
+    let dup = vec![
+        AnchorPoint::new(1.0, 1.0),
+        AnchorPoint::new(1.0, 1.0),
+        AnchorPoint::new(1.0, 1.0),
+    ];
+    assert!(apply_polygon_boolean(&dup, &big, BooleanOp::Union).len() <= 1);
+}
+
 #[test]
 fn test_undo_redo_return_owned_names() {
     let mut doc = Document::default();
