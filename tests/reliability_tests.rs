@@ -649,6 +649,71 @@ fn test_shape_to_path_conversion_undoable() {
 }
 
 #[test]
+fn test_arrange_reorder_single_undo_step() {
+    use irasu_illustrator::core::state::AppState;
+    let mut state = AppState::default();
+    for name in ["A", "B", "C"] {
+        state.document.add_object(Object::new_rect(name, 0.0, 0.0, 10.0, 10.0, 0.0));
+    }
+    let order_before: Vec<String> = state
+        .document
+        .all_objects()
+        .map(|(_, o)| o.id.clone())
+        .collect();
+    // Bring the back object to front, like the arrange buttons.
+    let first = order_before[0].clone();
+    state.reorder_objects_undoable("Bring to Front", |doc| {
+        for layer in doc.layers.iter_mut() {
+            if let Some(pos) = layer.objects.iter().position(|o| o.id == first) {
+                let obj = layer.objects.remove(pos);
+                layer.objects.push(obj);
+            }
+        }
+    });
+    assert_eq!(state.undo_manager.undo_depth(), 1);
+    let order_after: Vec<String> = state
+        .document
+        .all_objects()
+        .map(|(_, o)| o.id.clone())
+        .collect();
+    assert_ne!(order_before, order_after);
+    state.undo_manager.undo(&mut state.document);
+    let order_back: Vec<String> = state
+        .document
+        .all_objects()
+        .map(|(_, o)| o.id.clone())
+        .collect();
+    assert_eq!(order_before, order_back);
+}
+
+#[test]
+fn test_stored_checkpoint_parses_by_format() {
+    use std::path::Path;
+    let mut doc = Document::default();
+    doc.name = "Proj".to_string();
+    doc.add_object(Object::new_rect("R", 1.0, 2.0, 3.0, 4.0, 0.0));
+    let json = serde_json::to_string_pretty(&doc).unwrap();
+    let parsed =
+        irasu_illustrator::ui::panels::history_diff::parse_stored_doc(Path::new("w.amata"), &json)
+            .expect("project checkpoint parses as project");
+    assert_eq!(parsed.layers[0].objects.len(), 1);
+    // SVG content under an .amata extension must NOT parse as a project.
+    assert!(
+        irasu_illustrator::ui::panels::history_diff::parse_stored_doc(
+            Path::new("w.amata"),
+            "<svg></svg>"
+        )
+        .is_none()
+    );
+    let svg_doc = irasu_illustrator::ui::panels::history_diff::parse_stored_doc(
+        Path::new("w.svg"),
+        "<svg></svg>",
+    )
+    .expect("svg checkpoint parses as svg");
+    assert_eq!(svg_doc.layers[0].objects.len(), 0);
+}
+
+#[test]
 fn test_undo_redo_return_owned_names() {
     let mut doc = Document::default();
     let mut mgr = irasu_illustrator::core::history::UndoManager::new();

@@ -500,6 +500,54 @@ impl AppState {
         }
     }
 
+    /// Reorder objects (z-order ops) as one undo step. The mutation runs
+    /// inside `f`; orders are snapshotted per layer before/after and only
+    /// changed layers produce commands.
+    pub fn reorder_objects_undoable(
+        &mut self,
+        label: &str,
+        f: impl FnOnce(&mut crate::core::document::Document),
+    ) {
+        let before: Vec<(String, Vec<String>)> = self
+            .document
+            .layers
+            .iter()
+            .map(|l| {
+                (
+                    l.id.clone(),
+                    l.objects.iter().map(|o| o.id.clone()).collect(),
+                )
+            })
+            .collect();
+        f(&mut self.document);
+        let mut cmds: Vec<Box<dyn Command>> = Vec::new();
+        for (lid, old_order) in before {
+            if let Some(layer) = self.document.layers.iter().find(|l| l.id == lid) {
+                let new_order: Vec<String> =
+                    layer.objects.iter().map(|o| o.id.clone()).collect();
+                if old_order != new_order {
+                    cmds.push(Box::new(
+                        crate::core::history::ReorderObjectsCommand {
+                            layer_id: lid,
+                            old_order,
+                            new_order,
+                        },
+                    )
+                        as Box<dyn Command>);
+                }
+            }
+        }
+        if cmds.len() == 1 {
+            let cmd = cmds.pop().unwrap();
+            self.undo_manager.execute(cmd, &mut self.document);
+        } else if !cmds.is_empty() {
+            self.undo_manager.execute(
+                Box::new(BatchCommand::new(label, cmds)),
+                &mut self.document,
+            );
+        }
+    }
+
     pub fn notify_info(&mut self, message: impl Into<String>) {
         self.toast = Some(ToastNotification {
             message: message.into(),

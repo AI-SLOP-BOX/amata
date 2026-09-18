@@ -120,56 +120,72 @@ impl CanvasWidget {
                 ui.menu_button("重ね順 (Arrange)", |ui| {
                     if ui.button("最前面へ   Cmd+Shift+]").clicked() {
                         let sel = state.selected_ids.clone();
-                        for id in &sel {
-                            for layer in state.document.layers.iter_mut() {
-                                if let Some(pos) = layer.objects.iter().position(|o| &o.id == id) {
-                                    let obj = layer.objects.remove(pos);
-                                    layer.objects.push(obj);
-                                    break;
+                        state.reorder_objects_undoable("Bring to Front", |doc| {
+                            for id in &sel {
+                                for layer in doc.layers.iter_mut() {
+                                    if let Some(pos) =
+                                        layer.objects.iter().position(|o| &o.id == id)
+                                    {
+                                        let obj = layer.objects.remove(pos);
+                                        layer.objects.push(obj);
+                                        break;
+                                    }
                                 }
                             }
-                        }
+                        });
                         ui.close_menu();
                     }
                     if ui.button("前面へ   Cmd+]").clicked() {
                         let sel = state.selected_ids.clone();
-                        for id in &sel {
-                            for layer in state.document.layers.iter_mut() {
-                                if let Some(pos) = layer.objects.iter().position(|o| &o.id == id) {
-                                    if pos + 1 < layer.objects.len() {
-                                        layer.objects.swap(pos, pos + 1);
+                        state.reorder_objects_undoable("Bring Forward", |doc| {
+                            for id in &sel {
+                                for layer in doc.layers.iter_mut() {
+                                    if let Some(pos) =
+                                        layer.objects.iter().position(|o| &o.id == id)
+                                    {
+                                        if pos + 1 < layer.objects.len() {
+                                            layer.objects.swap(pos, pos + 1);
+                                        }
+                                        break;
                                     }
-                                    break;
                                 }
                             }
-                        }
+                        });
                         ui.close_menu();
                     }
                     if ui.button("背面へ   Cmd+[").clicked() {
                         let sel = state.selected_ids.clone();
-                        for id in &sel {
-                            for layer in state.document.layers.iter_mut() {
-                                if let Some(pos) = layer.objects.iter().position(|o| &o.id == id) {
-                                    if pos > 0 {
-                                        layer.objects.swap(pos, pos - 1);
+                        state.reorder_objects_undoable("Send Backward", |doc| {
+                            for id in &sel {
+                                for layer in doc.layers.iter_mut() {
+                                    if let Some(pos) =
+                                        layer.objects.iter().position(|o| &o.id == id)
+                                    {
+                                        if pos > 0 {
+                                            layer.objects.swap(pos, pos - 1);
+                                        }
+                                        break;
                                     }
-                                    break;
                                 }
                             }
-                        }
+                        });
                         ui.close_menu();
                     }
                     if ui.button("最背面へ   Cmd+Shift+[").clicked() {
                         let sel = state.selected_ids.clone();
-                        for id in &sel {
-                            for layer in state.document.layers.iter_mut() {
-                                if let Some(pos) = layer.objects.iter().position(|o| &o.id == id) {
-                                    let obj = layer.objects.remove(pos);
-                                    layer.objects.insert(0, obj);
-                                    break;
+                        state.reorder_objects_undoable("Send to Back", |doc| {
+                            for id in &sel {
+                                for layer in doc.layers.iter_mut() {
+                                    if let Some(pos) =
+                                        layer.objects.iter().position(|o| &o.id == id)
+                                    {
+                                        let obj = layer.objects.remove(pos);
+                                        layer.objects.insert(0, obj);
+                                        break;
+                                    }
                                 }
                             }
-                        }
+                        });
                         ui.close_menu();
                     }
                 });

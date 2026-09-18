@@ -145,62 +145,74 @@ impl AlignPanel {
                 .on_hover_text("Ctrl+Shift+]")
                 .clicked()
             {
-                for id in &sel {
-                    for layer in state.document.layers.iter_mut() {
-                        if let Some(pos) = layer.objects.iter().position(|o| &o.id == id) {
-                            let obj = layer.objects.remove(pos);
-                            layer.objects.push(obj);
-                            break;
+                state.reorder_objects_undoable("Bring to Front", |doc| {
+                    for id in &sel {
+                        for layer in doc.layers.iter_mut() {
+                            if let Some(pos) = layer.objects.iter().position(|o| &o.id == id)
+                            {
+                                let obj = layer.objects.remove(pos);
+                                layer.objects.push(obj);
+                                break;
+                            }
                         }
                     }
-                }
+                });
             }
             if ui
                 .add_enabled(has_sel, egui::Button::new("↑ Forward"))
                 .on_hover_text("Ctrl+]")
                 .clicked()
             {
-                for id in &sel {
-                    for layer in state.document.layers.iter_mut() {
-                        if let Some(pos) = layer.objects.iter().position(|o| &o.id == id) {
-                            if pos + 1 < layer.objects.len() {
-                                layer.objects.swap(pos, pos + 1);
+                state.reorder_objects_undoable("Bring Forward", |doc| {
+                    for id in &sel {
+                        for layer in doc.layers.iter_mut() {
+                            if let Some(pos) = layer.objects.iter().position(|o| &o.id == id)
+                            {
+                                if pos + 1 < layer.objects.len() {
+                                    layer.objects.swap(pos, pos + 1);
+                                }
+                                break;
                             }
-                            break;
                         }
                     }
-                }
+                });
             }
             if ui
                 .add_enabled(has_sel, egui::Button::new("↓ Backward"))
                 .on_hover_text("Ctrl+[")
                 .clicked()
             {
-                for id in &sel {
-                    for layer in state.document.layers.iter_mut() {
-                        if let Some(pos) = layer.objects.iter().position(|o| &o.id == id) {
-                            if pos > 0 {
-                                layer.objects.swap(pos, pos - 1);
+                state.reorder_objects_undoable("Send Backward", |doc| {
+                    for id in &sel {
+                        for layer in doc.layers.iter_mut() {
+                            if let Some(pos) = layer.objects.iter().position(|o| &o.id == id)
+                            {
+                                if pos > 0 {
+                                    layer.objects.swap(pos, pos - 1);
+                                }
+                                break;
                             }
-                            break;
                         }
                     }
-                }
+                });
             }
             if ui
                 .add_enabled(has_sel, egui::Button::new("⬌ To Back"))
                 .on_hover_text("Ctrl+Shift+[")
                 .clicked()
             {
-                for id in &sel {
-                    for layer in state.document.layers.iter_mut() {
-                        if let Some(pos) = layer.objects.iter().position(|o| &o.id == id) {
-                            let obj = layer.objects.remove(pos);
-                            layer.objects.insert(0, obj);
-                            break;
+                state.reorder_objects_undoable("Send to Back", |doc| {
+                    for id in &sel {
+                        for layer in doc.layers.iter_mut() {
+                            if let Some(pos) = layer.objects.iter().position(|o| &o.id == id)
+                            {
+                                let obj = layer.objects.remove(pos);
+                                layer.objects.insert(0, obj);
+                                break;
+                            }
                         }
                     }
-                }
+                });
             }
         });
     }

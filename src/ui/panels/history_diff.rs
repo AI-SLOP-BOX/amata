@@ -1,9 +1,29 @@
 use crate::core::diff::{compute_semantic_diff, ObjectDiffStatus, SemanticDiff};
+use crate::core::document::Document;
 use crate::core::state::AppState;
 use crate::io::git::{self, GitCommitEntry};
 use crate::io::svg::parse_svg_document;
 use egui::{self, Color32, RichText, Ui, Vec2};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+
+/// Parse stored file content according to the watched file's format.
+/// Checkpoints of `.amata`/`.json` projects hold JSON, not SVG — parsing
+/// them as SVG used to yield an empty document and destroy the canvas.
+pub fn parse_stored_doc(file_path: &Path, content: &str) -> Option<Document> {
+    let ext = file_path
+        .extension()
+        .and_then(|s| s.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+    if ext == "amata" || ext == "json" {
+        serde_json::from_str(content).ok().map(|mut doc: Document| {
+            doc.normalize();
+            doc
+        })
+    } else {
+        Some(parse_svg_document(content))
+    }
+}
 
 pub struct VersionHistoryPanel {
     pub current_file: Option<PathBuf>,
@@ -13,6 +33,9 @@ pub struct VersionHistoryPanel {
     pub is_comparing: bool,
     pub checkpoint_input: String,
     pub is_advanced_mode: bool,
+    /// Document stashed while previewing an old revision; restored on close
+    /// so previewing never discards unsaved work.
+    preview_backup: Option<Document>,
 }
 
 impl Default for VersionHistoryPanel {
@@ -25,6 +48,7 @@ impl Default for VersionHistoryPanel {
             is_comparing: false,
             checkpoint_input: String::new(),
             is_advanced_mode: false,
+            preview_backup: None,
         }
     }
 }
@@ -69,23 +93,32 @@ impl VersionHistoryPanel {
                         .current_file
                         .clone()
                         .unwrap_or_else(|| PathBuf::from("poster.svg"));
-                    // Auto-save current document to file
-                    let svg_content = crate::io::svg::export_svg(&state.document);
-                    if let Ok(_) = std::fs::write(&file_path, svg_content) {
-                        if !git::is_git_repository(&file_path) {
-                            let parent = file_path.parent().unwrap_or(std::path::Path::new("."));
-                            let _ = git::init_git_repository(parent);
+                    // Auto-save current document to file in its own format
+                    // (project files must stay JSON, never SVG bytes).
+                    match crate::cli::handlers::common::save_any_document(
+                        &state.document,
+                        &file_path,
+                    ) {
+                        Err(e) => {
+                            state.notify_error(format!("保存失敗: {e}"));
                         }
-                        match git::create_checkpoint(&file_path, &msg) {
-                            Ok(_) => {
-                                state.notify_info(format!(
-                                    "チェックポイント「{}」を保存しました",
-                                    msg
-                                ));
-                                self.checkpoint_input.clear();
-                                self.refresh_history(&file_path);
+                        Ok(_) => {
+                            if !git::is_git_repository(&file_path) {
+                                let parent =
+                                    file_path.parent().unwrap_or(std::path::Path::new("."));
+                                let _ = git::init_git_repository(parent);
                             }
-                            Err(e) => state.notify_error(format!("保存失敗: {e}")),
+                            match git::create_checkpoint(&file_path, &msg) {
+                                Ok(_) => {
+                                    state.notify_info(format!(
+                                        "チェックポイント「{}」を保存しました",
+                                        msg
+                                    ));
+                                    self.checkpoint_input.clear();
+                                    self.refresh_history(&file_path);
+                                }
+                                Err(e) => state.notify_error(format!("保存失敗: {e}")),
+                            }
                         }
                     }
                 }
@@ -106,19 +139,29 @@ impl VersionHistoryPanel {
                     .current_file
                     .clone()
                     .unwrap_or_else(|| PathBuf::from("poster.svg"));
-                let svg_content = crate::io::svg::export_svg(&state.document);
-                if let Ok(_) = std::fs::write(&file_path, svg_content) {
-                    if !git::is_git_repository(&file_path) {
-                        let parent = file_path.parent().unwrap_or(std::path::Path::new("."));
-                        let _ = git::init_git_repository(parent);
+                match crate::cli::handlers::common::save_any_document(
+                    &state.document,
+                    &file_path,
+                ) {
+                    Err(e) => {
+                        state.notify_error(format!("チェックポイント失敗: {e}"));
                     }
-                    let msg = "AI編集前 (Before AI edit)";
-                    match git::create_checkpoint(&file_path, msg) {
-                        Ok(_) => {
-                            state.notify_info("🛡️ AI編集前のチェックポイントを記録しました");
-                            self.refresh_history(&file_path);
+                    Ok(_) => {
+                        if !git::is_git_repository(&file_path) {
+                            let parent =
+                                file_path.parent().unwrap_or(std::path::Path::new("."));
+                            let _ = git::init_git_repository(parent);
                         }
-                        Err(e) => state.notify_error(format!("チェックポイント失敗: {e}")),
+                        let msg = "AI編集前 (Before AI edit)";
+                        match git::create_checkpoint(&file_path, msg) {
+                            Ok(_) => {
+                                state.notify_info("🛡️ AI編集前のチェックポイントを記録しました");
+                                self.refresh_history(&file_path);
+                            }
+                            Err(e) => {
+                                state.notify_error(format!("チェックポイント失敗: {e}"))
+                            }
+                        }
                     }
                 }
             }
@@ -145,12 +188,25 @@ impl VersionHistoryPanel {
                         .clicked()
                     {
                         let parent = p.parent().unwrap_or(std::path::Path::new("."));
-                        if let Ok(_) = git::init_git_repository(parent) {
-                            let svg_content = crate::io::svg::export_svg(&state.document);
-                            let _ = std::fs::write(&p, svg_content);
-                            let _ = git::create_checkpoint(&p, "初稿 (Initial layout)");
-                            state.notify_info("バージョン管理を開始しました");
-                            self.refresh_history(&p);
+                        if git::init_git_repository(parent).is_ok() {
+                            match crate::cli::handlers::common::save_any_document(
+                                &state.document,
+                                &p,
+                            ) {
+                                Err(e) => {
+                                    state.notify_error(format!("初期保存に失敗しました: {e}"));
+                                }
+                                Ok(_) => match git::create_checkpoint(&p, "初稿 (Initial layout)")
+                                {
+                                    Err(e) => state.notify_error(format!(
+                                        "チェックポイント失敗: {e}"
+                                    )),
+                                    Ok(_) => {
+                                        state.notify_info("バージョン管理を開始しました");
+                                        self.refresh_history(&p);
+                                    }
+                                },
+                            }
                         }
                     }
                 }
@@ -228,49 +284,70 @@ impl VersionHistoryPanel {
 
         // Perform actions
         if let Some(rev) = action_restore {
-            if let Some(ref file_path) = self.current_file {
-                match git::get_file_content_at_rev(file_path, &rev) {
-                    Ok(svg) => {
-                        let doc = parse_svg_document(&svg);
-                        state.document = doc;
-                        state.undo_manager.clear();
-                        state.selected_ids.clear();
-                        state.notify_info(format!(
-                            "バージョン {} に復元しました",
-                            &rev[..7.min(rev.len())]
-                        ));
+            if let Some(ref file_path) = self.current_file.clone() {
+                if state.is_dirty() {
+                    state.notify_error(
+                        "未保存の変更があります。先にチェックポイントを作成してください",
+                    );
+                } else {
+                    match git::get_file_content_at_rev(file_path, &rev) {
+                        Ok(content) => match parse_stored_doc(file_path, &content) {
+                            Some(doc) => {
+                                state.document = doc;
+                                state.undo_manager.clear();
+                                state.selected_ids.clear();
+                                state.notify_info(format!(
+                                    "バージョン {} に復元しました",
+                                    &rev[..7.min(rev.len())]
+                                ));
+                            }
+                            None => state.notify_error(
+                                "復元データの解析に失敗しました".to_string(),
+                            ),
+                        },
+                        Err(e) => state.notify_error(format!("復元失敗: {e}")),
                     }
-                    Err(e) => state.notify_error(format!("復元失敗: {e}")),
                 }
             }
         }
 
         if let Some(rev) = action_view {
-            if let Some(ref file_path) = self.current_file {
+            if let Some(ref file_path) = self.current_file.clone() {
                 match git::get_file_content_at_rev(file_path, &rev) {
-                    Ok(svg) => {
-                        let doc = parse_svg_document(&svg);
-                        state.document = doc;
-                        state.notify_info(format!(
-                            "バージョン {} をプレビュー中",
-                            &rev[..7.min(rev.len())]
-                        ));
-                    }
+                    Ok(content) => match parse_stored_doc(file_path, &content) {
+                        Some(doc) => {
+                            if self.preview_backup.is_none() {
+                                self.preview_backup = Some(state.document.clone());
+                            }
+                            state.document = doc;
+                            state.notify_info(format!(
+                                "バージョン {} をプレビュー中",
+                                &rev[..7.min(rev.len())]
+                            ));
+                        }
+                        None => {
+                            state.notify_error("プレビューデータの解析に失敗しました".to_string())
+                        }
+                    },
                     Err(e) => state.notify_error(format!("読み込み失敗: {e}")),
                 }
             }
         }
 
         if let Some(rev) = action_compare {
-            if let Some(ref file_path) = self.current_file {
+            if let Some(ref file_path) = self.current_file.clone() {
                 match git::get_file_content_at_rev(file_path, &rev) {
-                    Ok(svg_old) => {
-                        let doc_old = parse_svg_document(&svg_old);
-                        let diff = compute_semantic_diff(&doc_old, &state.document);
-                        self.active_diff = Some(diff);
-                        self.is_comparing = true;
-                        state.notify_info("差分比較を生成しました");
-                    }
+                    Ok(content) => match parse_stored_doc(file_path, &content) {
+                        Some(doc_old) => {
+                            let diff = compute_semantic_diff(&doc_old, &state.document);
+                            self.active_diff = Some(diff);
+                            self.is_comparing = true;
+                            state.notify_info("差分比較を生成しました");
+                        }
+                        None => state.notify_error(
+                            "比較対象の解析に失敗しました".to_string(),
+                        ),
+                    },
                     Err(e) => state.notify_error(format!("比較対象の取得失敗: {e}")),
                 }
             }
@@ -285,6 +362,10 @@ impl VersionHistoryPanel {
                 if ui.button("閉じる").clicked() {
                     self.is_comparing = false;
                     self.active_diff = None;
+                    if let Some(backup) = self.preview_backup.take() {
+                        state.document = backup;
+                        state.notify_info("プレビューを終了し、作業内容に戻しました");
+                    }
                 }
             });
 

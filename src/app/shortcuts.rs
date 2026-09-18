@@ -1,7 +1,32 @@
 use super::{zoom_to_fit, IrasuApp};
-use crate::core::document::{Object, ObjectType};
+use crate::core::document::{Document, Object, ObjectType};
 use crate::core::state::Tool;
 use egui::{self};
+
+/// Shared z-order mutation used by the arrange keyboard shortcuts.
+fn arrange_move(sel: &[String], doc: &mut Document, forward: bool, jump: bool) {
+    for id in sel {
+        for layer in doc.layers.iter_mut() {
+            if let Some(pos) = layer.objects.iter().position(|o| &o.id == id) {
+                if jump {
+                    let obj = layer.objects.remove(pos);
+                    if forward {
+                        layer.objects.push(obj);
+                    } else {
+                        layer.objects.insert(0, obj);
+                    }
+                } else if forward {
+                    if pos + 1 < layer.objects.len() {
+                        layer.objects.swap(pos, pos + 1);
+                    }
+                } else if pos > 0 {
+                    layer.objects.swap(pos, pos - 1);
+                }
+                break;
+            }
+        }
+    }
+}
 impl IrasuApp {
     pub(super) fn handle_shortcuts(&mut self, ctx: &egui::Context) {
         // Keyboard shortcuts
@@ -252,6 +277,34 @@ impl IrasuApp {
                         .filter(|(_, o)| o.visible && !o.locked)
                         .map(|(_, o)| o.id.clone())
                         .collect();
+                }
+            }
+
+            // Arrange z-order (Cmd/Ctrl+] [ +Shift for front/back).
+            // These were advertised on the arrange buttons but never bound.
+            if (i.modifiers.ctrl || i.modifiers.mac_cmd)
+                && (i.key_pressed(egui::Key::CloseBracket)
+                    || i.key_pressed(egui::Key::OpenBracket))
+            {
+                let forward = i.key_pressed(egui::Key::CloseBracket);
+                let jump = i.modifiers.shift;
+                let sel = self.state.selected_ids.clone();
+                if forward && jump {
+                    self.state.reorder_objects_undoable("Bring to Front", |doc| {
+                        arrange_move(&sel, doc, true, true);
+                    });
+                } else if forward {
+                    self.state.reorder_objects_undoable("Bring Forward", |doc| {
+                        arrange_move(&sel, doc, true, false);
+                    });
+                } else if jump {
+                    self.state.reorder_objects_undoable("Send to Back", |doc| {
+                        arrange_move(&sel, doc, false, true);
+                    });
+                } else {
+                    self.state.reorder_objects_undoable("Send Backward", |doc| {
+                        arrange_move(&sel, doc, false, false);
+                    });
                 }
             }
 
