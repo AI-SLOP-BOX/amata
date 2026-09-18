@@ -197,7 +197,26 @@ impl CanvasWidget {
             if !obj.visible {
                 continue;
             }
-            self.draw_object(&painter, obj, origin, state);
+            self.draw_object(
+                &painter,
+                obj,
+                origin,
+                state,
+                &crate::ui::canvas::rendering::IDENTITY_AFFINE,
+            );
+        }
+
+        // Isolation overlay: dim everything, then redraw the isolated
+        // group on top so its children stay fully editable.
+        if let Some(group) = state.isolated_group() {
+            painter.rect_filled(artboard, 0.0_f32, Color32::from_black_alpha(110));
+            self.draw_object(
+                &painter,
+                group,
+                origin,
+                state,
+                &crate::ui::canvas::rendering::IDENTITY_AFFINE,
+            );
         }
 
         // GPU-Accelerated Rendering Pass (effects: glow, blur, shadow)
@@ -580,6 +599,53 @@ impl CanvasWidget {
             if response.clicked() && !space_down {
                 let shift = painter.ctx().input(|i| i.modifiers.shift);
                 self.handle_click(state, wx, wy, screen_pos, origin, shift);
+            }
+            // Double-click a top-level group enters isolation editing
+            // (Illustrator-style); double-click empty space exits.
+            if response.double_clicked()
+                && !space_down
+                && state.current_tool == Tool::Select
+            {
+                if state.isolated_group_id.is_none() {
+                    if let Some(id) = self.select_state.hit_test(state, wx, wy) {
+                        let is_group = state
+                            .document
+                            .all_objects()
+                            .find(|(_, o)| o.id == id)
+                            .map(|(_, o)| {
+                                matches!(
+                                    o.object_type,
+                                    crate::core::document::ObjectType::Group(_)
+                                )
+                            })
+                            .unwrap_or(false);
+                        if is_group {
+                            state.isolated_group_id = Some(id);
+                            state.selected_ids.clear();
+                        }
+                    }
+                } else if self.select_state.hit_test(state, wx, wy).is_none() {
+                    state.exit_isolation();
+                }
+            }
+            // Isolation breadcrumb + exit affordance.
+            if let Some(group) = state.isolated_group() {
+                let name = group.name.clone();
+                egui::Area::new(egui::Id::new("isolation_breadcrumb"))
+                    .anchor(egui::Align2::LEFT_TOP, egui::vec2(10.0, 30.0))
+                    .order(egui::Order::Foreground)
+                    .show(ui.ctx(), |ui| {
+                        ui.horizontal(|ui| {
+                            ui.label(
+                                egui::RichText::new(format!("⧉ {name}"))
+                                    .strong()
+                                    .color(egui::Color32::from_rgb(100, 190, 255)),
+                            );
+                            if ui.small_button("‹ Exit (Esc)").clicked() {
+                                state.exit_isolation();
+                            }
+                        });
+                    });
             }
         }
 

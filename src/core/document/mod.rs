@@ -125,6 +125,20 @@ impl Document {
         None
     }
 
+    /// Locate an object: (parent object id or None for top-level,
+    /// layer index, index within the parent or layer).
+    pub fn parent_of(&self, id: &str) -> Option<(Option<String>, usize, usize)> {
+        for (li, layer) in self.layers.iter().enumerate() {
+            if let Some(pos) = layer.objects.iter().position(|o| o.id == id) {
+                return Some((None, li, pos));
+            }
+            if let Some((pid, pos)) = parent_in_objects(&layer.objects, id) {
+                return Some((Some(pid), li, pos));
+            }
+        }
+        None
+    }
+
     pub fn remove_object(&mut self, id: &str) -> Option<Object> {
         for layer in &mut self.layers {
             if let Some(pos) = layer.objects.iter().position(|o| o.id == id) {
@@ -260,6 +274,23 @@ fn find_in_objects<'a>(objs: &'a [Object], id: &str) -> Option<&'a Object> {
         match &o.object_type {
             ObjectType::Group(children) | ObjectType::ClippingMask { children } => {
                 if let Some(found) = find_in_objects(children, id) {
+                    return Some(found);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+fn parent_in_objects(objs: &[Object], id: &str) -> Option<(String, usize)> {
+    for o in objs {
+        match &o.object_type {
+            ObjectType::Group(children) | ObjectType::ClippingMask { children } => {
+                if let Some(pos) = children.iter().position(|c| c.id == id) {
+                    return Some((o.id.clone(), pos));
+                }
+                if let Some(found) = parent_in_objects(children, id) {
                     return Some(found);
                 }
             }

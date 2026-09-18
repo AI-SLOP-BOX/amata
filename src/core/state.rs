@@ -176,6 +176,9 @@ pub struct AppState {
     // Active visual diff overlay on canvas
     pub active_diff: Option<crate::core::diff::SemanticDiff>,
     pub is_comparing_diff: bool,
+    // Group isolation editing (Illustrator-style double-click into group):
+    // id of the top-level group whose children are directly editable.
+    pub isolated_group_id: Option<String>,
     // In-progress panel transform gesture: (object id, transform at gesture
     // start). Committed as one undo step when the gesture ends.
     pub pending_transforms: Vec<(String, Transform)>,
@@ -325,6 +328,7 @@ impl Default for AppState {
             toast: None,
             active_diff: None,
             is_comparing_diff: false,
+            isolated_group_id: None,
             pending_transforms: Vec::new(),
             pending_objects: Vec::new(),
         }
@@ -380,6 +384,26 @@ impl AppState {
                 &mut self.document,
             );
         }
+    }
+
+    /// The isolated group object, if isolation is active and the group
+    /// still exists as a top-level group (auto-invalidated otherwise).
+    pub fn isolated_group(&self) -> Option<&crate::core::document::Object> {
+        let gid = self.isolated_group_id.as_ref()?;
+        let (_, obj) = self.document.all_objects().find(|(_, o)| &o.id == gid)?;
+        if matches!(
+            obj.object_type,
+            crate::core::document::ObjectType::Group(_)
+        ) {
+            Some(obj)
+        } else {
+            None
+        }
+    }
+
+    pub fn exit_isolation(&mut self) {
+        self.isolated_group_id = None;
+        self.selected_ids.clear();
     }
 
     /// Snapshot a whole object before a non-transform panel edit.

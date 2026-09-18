@@ -92,17 +92,13 @@ impl CanvasWidget {
                     let ids: Vec<String> = state.selected_ids.clone();
                     let mut cmds: Vec<Box<dyn crate::core::history::Command>> = Vec::new();
                     for id in &ids {
-                        let mut found = None;
-                        for (l_idx, layer) in state.document.layers.iter().enumerate() {
-                            if let Some(pos) = layer.objects.iter().position(|o| &o.id == id) {
-                                found = Some((layer.objects[pos].clone(), l_idx, pos));
-                                break;
-                            }
-                        }
-                        if let Some((obj, layer_idx, pos)) = found {
-                            cmds.push(Box::new(crate::core::history::RemoveObjectCommand::new(
-                                obj, layer_idx, pos,
-                            )));
+                        if let Some(obj) = state.document.find_object(id).cloned() {
+                            cmds.push(Box::new(
+                                crate::core::history::RemoveObjectCommand::located(
+                                    obj,
+                                    &state.document,
+                                ),
+                            ));
                         }
                     }
                     if cmds.len() == 1 {

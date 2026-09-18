@@ -500,6 +500,45 @@ fn test_multiline_text_round_trip() {
 }
 
 #[test]
+fn test_nested_delete_undo_restores_parent() {
+    use irasu_illustrator::core::history::RemoveObjectCommand;
+    let mut doc = Document::default();
+    let inner_a = Object::new_rect("A", 0.0, 0.0, 10.0, 10.0, 0.0);
+    let inner_b = Object::new_rect("B", 20.0, 0.0, 10.0, 10.0, 0.0);
+    let aid = inner_a.id.clone();
+    doc.add_object(Object::new_group("G", vec![inner_a, inner_b]));
+    let mut mgr = irasu_illustrator::core::history::UndoManager::new();
+
+    let obj = doc.find_object(&aid).cloned().unwrap();
+    let cmd = RemoveObjectCommand::located(obj, &doc);
+    mgr.execute(Box::new(cmd), &mut doc);
+    assert!(doc.find_object(&aid).is_none());
+    mgr.undo(&mut doc);
+    let back = doc.find_object(&aid).expect("nested child restored");
+    assert_eq!(back.name, "A");
+    // Restored inside the group, not at top level.
+    assert!(doc.all_objects().all(|(_, o)| o.id != aid));
+}
+
+#[test]
+fn test_isolated_drag_delta_conversion() {
+    use irasu_illustrator::core::state::AppState;
+    use irasu_illustrator::tools::select::SelectState;
+    let mut state = AppState::default();
+    assert_eq!(SelectState::parent_delta(&state, 10.0, 5.0), (10.0, 5.0));
+
+    // 90-degree rotated group: world +x maps to local -y... verify mapping.
+    let mut g = Object::new_group("G", vec![Object::new_rect("R", 0.0, 0.0, 10.0, 10.0, 0.0)]);
+    g.transform.rotation = std::f64::consts::FRAC_PI_2;
+    let gid = g.id.clone();
+    state.document.add_object(g);
+    state.isolated_group_id = Some(gid);
+    let (lx, ly) = SelectState::parent_delta(&state, 10.0, 0.0);
+    // R(90°): world (10,0) -> local (0,-10).
+    assert!((lx - 0.0).abs() < 1e-6 && (ly + 10.0).abs() < 1e-6, "got ({lx},{ly})");
+}
+
+#[test]
 fn test_undo_redo_return_owned_names() {
     let mut doc = Document::default();
     let mut mgr = irasu_illustrator::core::history::UndoManager::new();

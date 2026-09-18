@@ -120,10 +120,14 @@ impl IrasuApp {
                 }
             }
 
-            // Escape to cancel pen
+            // Escape: exit group isolation first, else cancel pen/deselect
             if i.key_pressed(egui::Key::Escape) {
-                self.canvas.pen_state.cancel();
-                self.state.selected_ids.clear();
+                if self.state.isolated_group_id.is_some() {
+                    self.state.exit_isolation();
+                } else {
+                    self.canvas.pen_state.cancel();
+                    self.state.selected_ids.clear();
+                }
             }
 
             // Enter to finish pen path
@@ -149,17 +153,20 @@ impl IrasuApp {
                 let ids: Vec<String> = self.state.selected_ids.clone();
                 let mut cmds: Vec<Box<dyn crate::core::history::Command>> = Vec::new();
                 for id in &ids {
-                    let mut found = None;
-                    for (l_idx, layer) in self.state.document.layers.iter().enumerate() {
-                        if let Some(pos) = layer.objects.iter().position(|o| &o.id == id) {
-                            found = Some((layer.objects[pos].clone(), l_idx, pos));
-                            break;
-                        }
-                    }
-                    if let Some((obj, layer_idx, pos)) = found {
-                        cmds.push(Box::new(crate::core::history::RemoveObjectCommand::new(
-                            obj, layer_idx, pos,
-                        )));
+                    // Clone first (nested children included), then locate for
+                    // an undo that restores the true parent/position.
+                    if let Some(obj) = self
+                        .state
+                        .document
+                        .find_object(id)
+                        .cloned()
+                    {
+                        let cmd =
+                            crate::core::history::RemoveObjectCommand::located(
+                                obj,
+                                &self.state.document,
+                            );
+                        cmds.push(Box::new(cmd));
                     }
                 }
                 if cmds.len() == 1 {

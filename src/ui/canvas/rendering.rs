@@ -6,6 +6,23 @@ use crate::core::path::{
 use crate::core::state::AppState;
 use egui::{Color32, FontId, Pos2, Rect, Stroke, Vec2};
 
+fn affine_mul(m1: &[f64; 6], m2: &[f64; 6]) -> [f64; 6] {
+    [
+        m1[0] * m2[0] + m1[2] * m2[1],
+        m1[1] * m2[0] + m1[3] * m2[1],
+        m1[0] * m2[2] + m1[2] * m2[3],
+        m1[1] * m2[2] + m1[3] * m2[3],
+        m1[0] * m2[4] + m1[2] * m2[5] + m1[4],
+        m1[1] * m2[4] + m1[3] * m2[5] + m1[5],
+    ]
+}
+
+fn affine_apply(m: &[f64; 6], x: f64, y: f64) -> (f64, f64) {
+    (m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5])
+}
+
+pub const IDENTITY_AFFINE: [f64; 6] = [1.0, 0.0, 0.0, 1.0, 0.0, 0.0];
+
 impl CanvasWidget {
     pub(super) fn draw_object(
         &self,
@@ -13,10 +30,15 @@ impl CanvasWidget {
         obj: &Object,
         origin: Pos2,
         state: &AppState,
+        parent: &[f64; 6],
     ) {
         let opacity = obj.opacity.clamp(0.0_f32, 1.0_f32);
+        // Compose ancestor (group) transforms: previously group transforms
+        // were silently ignored, so moved/rotated groups rendered stale
+        // while hit-testing and export used the new positions.
+        let composed = affine_mul(parent, &obj.transform.matrix());
         let to_screen = |wx: f64, wy: f64| -> Pos2 {
-            let (sx, sy) = obj.transform.transform_point(wx, wy);
+            let (sx, sy) = affine_apply(&composed, wx, wy);
             Pos2::new(
                 origin.x + sx as f32 * state.zoom,
                 origin.y + sy as f32 * state.zoom,
@@ -44,9 +66,11 @@ impl CanvasWidget {
                 ((sh.color[3] * sh.opacity * opacity) * 255.0_f32) as u8,
             );
             let sh_to_screen = |lx: f64, ly: f64| -> Pos2 {
-                let (wx, wy) = obj
-                    .transform
-                    .transform_point(lx + sh.offset_x, ly + sh.offset_y);
+                let (wx, wy) = affine_apply(
+                    &composed,
+                    lx + sh.offset_x,
+                    ly + sh.offset_y,
+                );
                 Pos2::new(
                     origin.x + (wx as f32 * state.zoom),
                     origin.y + (wy as f32 * state.zoom),
@@ -318,12 +342,12 @@ impl CanvasWidget {
             }
             ObjectType::Group(children) => {
                 for child in children {
-                    self.draw_object(painter, child, origin, state);
+                    self.draw_object(painter, child, origin, state, &composed);
                 }
             }
             ObjectType::ClippingMask { children } => {
                 for child in children {
-                    self.draw_object(painter, child, origin, state);
+                    self.draw_object(painter, child, origin, state, &composed);
                 }
             }
             ObjectType::Use { href, .. } => {
@@ -332,7 +356,7 @@ impl CanvasWidget {
                     let mut instance_obj = sym.object.clone();
                     instance_obj.transform.x += obj.transform.x;
                     instance_obj.transform.y += obj.transform.y;
-                    self.draw_object(painter, &instance_obj, origin, state);
+                    self.draw_object(painter, &instance_obj, origin, state, parent);
                 }
             }
         }
@@ -340,13 +364,13 @@ impl CanvasWidget {
         if let Some(ref fill) = obj.fill {
             match &fill.fill_type {
                 FillType::Linear(grad) => {
-                    self.draw_linear_gradient(painter, obj, grad, opacity, origin, state);
+                    self.draw_linear_gradient(painter, obj, grad, opacity, origin, state, parent);
                 }
                 FillType::Radial(grad) => {
-                    self.draw_radial_gradient(painter, obj, grad, opacity, origin, state);
+                    self.draw_radial_gradient(painter, obj, grad, opacity, origin, state, parent);
                 }
                 FillType::Pattern(pat) => {
-                    self.draw_pattern_fill(painter, obj, pat, opacity, origin, state);
+                    self.draw_pattern_fill(painter, obj, pat, opacity, origin, state, parent);
                 }
                 FillType::Solid(_) => {}
             }
@@ -361,9 +385,11 @@ impl CanvasWidget {
         opacity: f32,
         origin: Pos2,
         state: &AppState,
+        parent: &[f64; 6],
     ) {
+        let composed = affine_mul(parent, &obj.transform.matrix());
         let to_screen = |wx: f64, wy: f64| -> Pos2 {
-            let (sx, sy) = obj.transform.transform_point(wx, wy);
+            let (sx, sy) = affine_apply(&composed, wx, wy);
             Pos2::new(
                 origin.x + sx as f32 * state.zoom,
                 origin.y + sy as f32 * state.zoom,
@@ -491,9 +517,11 @@ impl CanvasWidget {
         opacity: f32,
         origin: Pos2,
         state: &AppState,
+        parent: &[f64; 6],
     ) {
+        let composed = affine_mul(parent, &obj.transform.matrix());
         let to_screen = |wx: f64, wy: f64| -> Pos2 {
-            let (sx, sy) = obj.transform.transform_point(wx, wy);
+            let (sx, sy) = affine_apply(&composed, wx, wy);
             Pos2::new(
                 origin.x + sx as f32 * state.zoom,
                 origin.y + sy as f32 * state.zoom,
@@ -606,8 +634,35 @@ impl CanvasWidget {
         opacity: f32,
         origin: Pos2,
         state: &AppState,
+        parent: &[f64; 6],
     ) {
-        if let Some((bb_min, bb_max)) = obj.bounding_box() {
+        // World-space bbox through the composed (ancestor-aware) transform.
+        let composed = affine_mul(parent, &obj.transform.matrix());
+        let wpoly: Vec<(f64, f64)> = obj
+            .to_path_data()
+            .to_polygon(16)
+            .iter()
+            .map(|p| affine_apply(&composed, p.x, p.y))
+            .collect();
+        let bb = if wpoly.is_empty() {
+            None
+        } else {
+            let mut min_x = f64::MAX;
+            let mut min_y = f64::MAX;
+            let mut max_x = f64::MIN;
+            let mut max_y = f64::MIN;
+            for (x, y) in &wpoly {
+                min_x = min_x.min(*x);
+                min_y = min_y.min(*y);
+                max_x = max_x.max(*x);
+                max_y = max_y.max(*y);
+            }
+            Some((
+                crate::core::path::AnchorPoint::new(min_x, min_y),
+                crate::core::path::AnchorPoint::new(max_x, max_y),
+            ))
+        };
+        if let Some((bb_min, bb_max)) = bb {
             let tile_w = (pat.tile_width * pat.scale) as f32 * state.zoom;
             let tile_h = (pat.tile_height * pat.scale) as f32 * state.zoom;
             if tile_w < 2.0 || tile_h < 2.0 {

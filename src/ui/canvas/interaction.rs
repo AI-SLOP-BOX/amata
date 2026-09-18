@@ -175,18 +175,20 @@ impl CanvasWidget {
     }
 
     pub(super) fn update_rotate(&self, state: &mut AppState, wx: f64, wy: f64, snap_15_deg: bool) {
-        for id in &state.selected_ids {
-            for (_, obj) in state.document.all_objects_mut() {
-                if &obj.id == id {
-                    let cx = obj.transform.x;
-                    let cy = obj.transform.y;
-                    let mut angle = (wy - cy).atan2(wx - cx);
-                    if snap_15_deg {
-                        let snap_step = std::f64::consts::PI / 12.0; // 15 degrees
-                        angle = (angle / snap_step).round() * snap_step;
-                    }
-                    obj.transform.rotation = angle;
+        // Snapshot once per gesture so rotation is a single undo step.
+        for id in &state.selected_ids.clone() {
+            state.ensure_transform_snapshot(id);
+        }
+        for id in &state.selected_ids.clone() {
+            if let Some(obj) = state.document.find_object_mut(id) {
+                let cx = obj.transform.x;
+                let cy = obj.transform.y;
+                let mut angle = (wy - cy).atan2(wx - cx);
+                if snap_15_deg {
+                    let snap_step = std::f64::consts::PI / 12.0; // 15 degrees
+                    angle = (angle / snap_step).round() * snap_step;
                 }
+                obj.transform.rotation = angle;
             }
         }
     }
@@ -198,6 +200,10 @@ impl CanvasWidget {
         wx: f64,
         wy: f64,
     ) {
+        // Snapshot once per gesture; the stop arm commits one undo step.
+        if let Some(id) = state.selected_ids.first().cloned() {
+            state.ensure_transform_snapshot(&id);
+        }
         if let Some(ref drag) = self.drag {
             let (start_wx, start_wy) = drag.start_world;
             let id = match state.selected_ids.first() {
@@ -226,8 +232,7 @@ impl CanvasWidget {
             let dx = wx - start_wx;
             let dy = wy - start_wy;
 
-            for (_, obj) in state.document.all_objects_mut() {
-                if obj.id == id {
+            if let Some(obj) = state.document.find_object_mut(&id) {
                     match corner {
                         HandleCorner::BottomRight => {
                             let new_w = (bb_w + dx).max(5.0);
@@ -277,7 +282,6 @@ impl CanvasWidget {
                         }
                         _ => {}
                     }
-                }
             }
         }
     }
@@ -294,7 +298,7 @@ impl CanvasWidget {
 
         // 1. Check handles of currently selected active anchor first
         if let (Some(obj_id), Some(idx)) = (active_obj_id, active_node_idx) {
-            if let Some((_, obj)) = state.document.all_objects().find(|(_, o)| o.id == obj_id) {
+            if let Some(obj) = state.document.find_object(obj_id) {
                 let path_data = obj.to_path_data();
                 let elements = &path_data.elements;
                 if let Some(elem) = elements.get(idx) {
@@ -328,7 +332,7 @@ impl CanvasWidget {
 
         // 2. Check all anchors of selected objects
         for id in &state.selected_ids {
-            if let Some((_, obj)) = state.document.all_objects().find(|(_, o)| &o.id == id) {
+            if let Some(obj) = state.document.find_object(id) {
                 let path_data = obj.to_path_data();
                 for (idx, elem) in path_data.elements.iter().enumerate() {
                     let anchor_local = match elem {
@@ -359,9 +363,8 @@ impl CanvasWidget {
         wx: f64,
         wy: f64,
     ) {
-        if let Some(ref obj_id) = self.node_edit_state.selected_object_id {
-            for (_, obj) in state.document.all_objects_mut() {
-                if &obj.id == obj_id {
+        if let Some(ref obj_id) = self.node_edit_state.selected_object_id.clone() {
+            if let Some(obj) = state.document.find_object_mut(&obj_id) {
                     if !matches!(obj.object_type, ObjectType::Path(_)) {
                         let p = obj.to_path_data();
                         obj.object_type = ObjectType::Path(p);
@@ -419,8 +422,6 @@ impl CanvasWidget {
                             }
                         }
                     }
-                    break;
-                }
             }
         }
     }

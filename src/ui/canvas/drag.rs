@@ -329,24 +329,13 @@ impl CanvasWidget {
                             }
                         }
                         for id in &ids_to_remove {
-                            // Record the true layer/position so Undo restores
-                            // the original z-order instead of position 0.
-                            let mut found = None;
-                            for (l_idx, layer) in
-                                state.document.layers.iter().enumerate()
-                            {
-                                if let Some(pos) =
-                                    layer.objects.iter().position(|o| &o.id == id)
-                                {
-                                    found = Some((layer.objects[pos].clone(), l_idx, pos));
-                                    break;
-                                }
-                            }
-                            if let Some((obj, layer_idx, pos)) = found {
-                                state.document.remove_object(id);
-                                let cmd = Box::new(
-                                    crate::core::history::RemoveObjectCommand::new(
-                                        obj, layer_idx, pos,
+                            // Record the true parent/position so Undo restores
+                            // the original place instead of position 0.
+                            if let Some(obj) = state.document.find_object(id).cloned() {
+                                let cmd: Box<dyn crate::core::history::Command> = Box::new(
+                                    crate::core::history::RemoveObjectCommand::located(
+                                        obj,
+                                        &state.document,
                                     ),
                                 );
                                 state.undo_manager.execute(cmd, &mut state.document);
@@ -388,14 +377,21 @@ impl CanvasWidget {
                         position: drag.current_world.0,
                     });
                 }
+                DragMode::Rotate => {
+                    // Commits the snapshots taken per-frame by update_rotate.
+                    state.commit_transform_edits("Rotate");
+                }
+                DragMode::Resize(_) => {
+                    // Commits the snapshot taken by update_resize.
+                    state.commit_transform_edits("Resize");
+                }
                 DragMode::MoveNode(_) => {
                     if let Some(initial) = drag.initial_elements {
                         if let Some(ref obj_id) = self.node_edit_state.selected_object_id {
                             let current_elements = state
                                 .document
-                                .all_objects()
-                                .find(|(_, o)| &o.id == obj_id)
-                                .and_then(|(_, o)| match &o.object_type {
+                                .find_object(obj_id)
+                                .and_then(|o| match &o.object_type {
                                     crate::core::document::ObjectType::Path(p) => {
                                         Some(p.elements.clone())
                                     }

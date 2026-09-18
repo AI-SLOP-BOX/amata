@@ -20,12 +20,55 @@ impl SelectState {
     }
 
     pub fn hit_test(&self, state: &AppState, wx: f64, wy: f64) -> Option<String> {
+        if state.isolated_group_id.is_some() {
+            return self.hit_test_isolated(state, wx, wy);
+        }
         for (_, obj) in state.document.all_objects().rev() {
             if obj.visible && !obj.locked && obj.hit_test(wx, wy) {
                 return Some(obj.id.clone());
             }
         }
         None
+    }
+
+    /// Hit-test direct children of the isolated group. The click arrives in
+    /// world space; children test in group-local space.
+    pub fn hit_test_isolated(
+        &self,
+        state: &AppState,
+        wx: f64,
+        wy: f64,
+    ) -> Option<String> {
+        let group = state.isolated_group()?;
+        let (gx, gy) = group.transform.inverse_transform_point(wx, wy);
+        let children = match &group.object_type {
+            crate::core::document::ObjectType::Group(children) => children,
+            _ => return None,
+        };
+        for obj in children.iter().rev() {
+            if obj.visible && !obj.locked && obj.hit_test(gx, gy) {
+                return Some(obj.id.clone());
+            }
+        }
+        None
+    }
+
+    /// Convert a world-space drag delta into the isolated group's local
+    /// space (inverse of the group's linear part) so children of rotated
+    /// or scaled groups track the cursor.
+    pub fn parent_delta(state: &AppState, dx: f64, dy: f64) -> (f64, f64) {
+        let Some(group) = state.isolated_group() else {
+            return (dx, dy);
+        };
+        let m = group.transform.matrix();
+        let det = m[0] * m[3] - m[1] * m[2];
+        if det.abs() < 1e-9 {
+            return (dx, dy);
+        }
+        (
+            (m[3] * dx - m[2] * dy) / det,
+            (-m[1] * dx + m[0] * dy) / det,
+        )
     }
 
     pub fn start_drag(&mut self, state: &mut AppState, wx: f64, wy: f64) {
@@ -59,6 +102,8 @@ impl SelectState {
         if let Some(start) = self.drag_start {
             let dx = wx - start.0;
             let dy = wy - start.1;
+            // Isolated children live in group-local space.
+            let (dx, dy) = Self::parent_delta(state, dx, dy);
 
             // Move all selected objects by the delta relative to their recorded start
             for (id, start_x, start_y) in &self.drag_starts {

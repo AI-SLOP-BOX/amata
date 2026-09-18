@@ -177,6 +177,7 @@ impl Command for AddObjectCommand {
 
 pub struct RemoveObjectCommand {
     pub object: Option<super::document::Object>,
+    pub parent: Option<String>,
     pub layer_idx: usize,
     pub position: usize,
 }
@@ -185,8 +186,34 @@ impl RemoveObjectCommand {
     pub fn new(obj: super::document::Object, layer_idx: usize, position: usize) -> Self {
         Self {
             object: Some(obj),
+            parent: None,
             layer_idx,
             position,
+        }
+    }
+
+    pub fn new_nested(
+        obj: super::document::Object,
+        parent: String,
+        layer_idx: usize,
+        position: usize,
+    ) -> Self {
+        Self {
+            object: Some(obj),
+            parent: Some(parent),
+            layer_idx,
+            position,
+        }
+    }
+
+    /// Capture location via [`Document::parent_of`]; nested children
+    /// restore into their parent group instead of the layer top level.
+    pub fn located(obj: super::document::Object, doc: &Document) -> Self {
+        let id = obj.id.clone();
+        match doc.parent_of(&id) {
+            Some((Some(pid), li, pos)) => Self::new_nested(obj, pid, li, pos),
+            Some((None, li, pos)) => Self::new(obj, li, pos),
+            None => Self::new(obj, 0, 0),
         }
     }
 }
@@ -200,6 +227,19 @@ impl Command for RemoveObjectCommand {
 
     fn undo(&self, doc: &mut Document) {
         if let Some(obj) = &self.object {
+            if let Some(ref pid) = self.parent {
+                if let Some(parent) = doc.find_object_mut(pid) {
+                    match &mut parent.object_type {
+                        super::document::ObjectType::Group(children)
+                        | super::document::ObjectType::ClippingMask { children } => {
+                            let pos = self.position.min(children.len());
+                            children.insert(pos, obj.clone());
+                            return;
+                        }
+                        _ => {}
+                    }
+                }
+            }
             if let Some(layer) = doc.layers.get_mut(self.layer_idx) {
                 let pos = self.position.min(layer.objects.len());
                 layer.objects.insert(pos, obj.clone());
