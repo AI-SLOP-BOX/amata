@@ -125,11 +125,32 @@ impl eframe::App for IrasuApp {
 
         // Timeline animation playback tick
         if self.state.timeline.is_playing {
+            if !self.state.timeline_was_playing {
+                // Snapshot animated objects once so the whole playback
+                // becomes a single undo step on stop.
+                self.state.timeline_was_playing = true;
+                let ids: Vec<String> = self
+                    .state
+                    .timeline
+                    .tracks
+                    .iter()
+                    .map(|t| t.object_id.clone())
+                    .collect();
+                let mut seen = std::collections::HashSet::new();
+                for id in ids {
+                    if seen.insert(id.clone()) {
+                        self.state.ensure_object_snapshot(&id);
+                    }
+                }
+            }
             self.state.timeline.advance_frame();
             self.state
                 .timeline
                 .apply_to_document(&mut self.state.document);
             ctx.request_repaint();
+        } else if self.state.timeline_was_playing {
+            self.state.timeline_was_playing = false;
+            self.state.commit_object_edits("Timeline Playback");
         }
 
         // Check for external file modifications (AI / CLI / external editor)

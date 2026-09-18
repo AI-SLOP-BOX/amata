@@ -495,7 +495,8 @@ fn test_multiline_text_round_trip() {
         assert_eq!(text, "hello\nworld", "got: {text:?}");
     }
     // Metrics cover both lines.
-    let (w, h) = irasu_illustrator::core::document::text_block_size("hello\nworld", 16.0);
+    let (w, h) =
+        irasu_illustrator::core::document::object::text_block_size("hello\nworld", 16.0);
     assert!(w > 0.0 && h > 16.0);
 }
 
@@ -536,6 +537,56 @@ fn test_isolated_drag_delta_conversion() {
     let (lx, ly) = SelectState::parent_delta(&state, 10.0, 0.0);
     // R(90°): world (10,0) -> local (0,-10).
     assert!((lx - 0.0).abs() < 1e-6 && (ly + 10.0).abs() < 1e-6, "got ({lx},{ly})");
+}
+
+#[test]
+fn test_bold_italic_markup_import() {
+    use irasu_illustrator::core::document::{FontStyle, ObjectType};
+    let svg = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 100">
+      <text x="10" y="20" font-size="16"><b>bold</b> and <i>italic</i></text>
+    </svg>"##;
+    let doc = parse_svg_document(svg);
+    let text = doc
+        .all_objects()
+        .map(|(_, o)| o)
+        .find(|o| matches!(o.object_type, ObjectType::Text { .. }))
+        .expect("text imports");
+    if let ObjectType::Text { text, style, .. } = &text.object_type {
+        assert!(text.contains("bold") && text.contains("italic"));
+        assert_eq!(style.font_weight, 700);
+        assert_eq!(style.font_style, FontStyle::Italic);
+    } else {
+        panic!("expected text");
+    }
+}
+
+#[test]
+fn test_timeline_playback_commits_one_undo_step() {
+    use irasu_illustrator::core::state::AppState;
+    use irasu_illustrator::core::timeline::{AnimProperty, Timeline};
+    let mut state = AppState::default();
+    state.document.add_object(Object::new_rect("R", 0.0, 0.0, 10.0, 10.0, 0.0));
+    let id = state.document.all_objects().next().unwrap().1.id.clone();
+
+    // Simulate app/mod.rs playback start: snapshot once.
+    state.ensure_object_snapshot(&id);
+    // Simulate several applied frames.
+    let mut tl = Timeline::default();
+    let track = tl.add_or_get_track_mut(&id, AnimProperty::PositionX);
+    use irasu_illustrator::core::timeline::EaseType;
+    track.add_keyframe(0, 0.0, EaseType::Linear);
+    track.add_keyframe(10, 100.0, EaseType::Linear);
+    for frame in [1, 5, 10] {
+        tl.current_frame = frame;
+        tl.apply_to_document(&mut state.document);
+    }
+    // Simulate playback stop.
+    state.commit_object_edits("Timeline Playback");
+    assert_eq!(state.undo_manager.undo_depth(), 1);
+    assert!(state.undo_manager.is_dirty());
+    state.undo_manager.undo(&mut state.document);
+    let obj = state.document.find_object(&id).unwrap();
+    assert!((obj.transform.x - 0.0).abs() < 1e-9);
 }
 
 #[test]

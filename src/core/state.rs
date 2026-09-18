@@ -179,6 +179,11 @@ pub struct AppState {
     // Group isolation editing (Illustrator-style double-click into group):
     // id of the top-level group whose children are directly editable.
     pub isolated_group_id: Option<String>,
+    // Timeline playback bookkeeping: previous frame's playing flag plus
+    // object snapshots taken when playback started, committed as one undo
+    // step when playback stops (otherwise played values stick forever
+    // with no undo and no dirty flag).
+    pub timeline_was_playing: bool,
     // In-progress panel transform gesture: (object id, transform at gesture
     // start). Committed as one undo step when the gesture ends.
     pub pending_transforms: Vec<(String, Transform)>,
@@ -329,6 +334,7 @@ impl Default for AppState {
             active_diff: None,
             is_comparing_diff: false,
             isolated_group_id: None,
+            timeline_was_playing: false,
             pending_transforms: Vec::new(),
             pending_objects: Vec::new(),
         }

@@ -748,10 +748,22 @@ pub fn parse_svg_document(svg_text: &str) -> Document {
                 .unwrap_or_else(|| "Inter, sans-serif".to_string());
             let font_weight = extract_prop_str(trimmed, "font-weight")
                 .map(|w| parse_font_weight(&w))
-                .unwrap_or(400);
+                .unwrap_or_else(|| {
+                    if trimmed.contains("data-tbold=\"1\"") {
+                        700
+                    } else {
+                        400
+                    }
+                });
             let font_style = extract_prop_str(trimmed, "font-style")
                 .map(|s| parse_font_style(&s))
-                .unwrap_or(FontStyle::Normal);
+                .unwrap_or_else(|| {
+                    if trimmed.contains("data-titalic=\"1\"") {
+                        FontStyle::Italic
+                    } else {
+                        FontStyle::Normal
+                    }
+                });
             let letter_spacing = extract_prop_str(trimmed, "letter-spacing")
                 .map(|ls| parse_letter_spacing(&ls))
                 .unwrap_or(0.0);
@@ -978,6 +990,11 @@ fn tokenize_svg_tags(svg_text: &str) -> Vec<String> {
     // <tspan>/<br> boundaries can inject explicit line breaks.
     let mut open_text_idx: Option<usize> = None;
     let mut open_text_buf = String::new();
+    // Presentational hints inside the open <text>: <b>/<strong> and
+    // <i>/<em> upgrade the text style when no explicit font-weight /
+    // font-style attribute is present.
+    let mut text_had_bold = false;
+    let mut text_had_italic = false;
     // Whether the innermost open <tspan> carries positioning (x/y/dx/dy):
     // only those (and <br>) start a new line. Plain adjacent tspans are
     // same-line continuations and must not inject breaks.
@@ -1040,17 +1057,31 @@ fn tokenize_svg_tags(svg_text: &str) -> Vec<String> {
             if tag_head == "<text" {
                 open_text_idx = Some(pushed);
                 open_text_buf.clear();
+                text_had_bold = false;
+                text_had_italic = false;
             } else if tag_head == "</text" {
                 // Flush accumulated text (with tspan/br line breaks) into
                 // the <text> tag so content extraction below just works.
+                // Presentational hints ride along as marker attributes.
                 if let (Some(idx), buf) = (open_text_idx, std::mem::take(&mut open_text_buf))
                 {
                     if let Some(tag) = tags.get_mut(idx) {
                         tag.push_str(&buf);
+                        if text_had_bold {
+                            tag.push_str(" data-tbold=\"1\"");
+                        }
+                        if text_had_italic {
+                            tag.push_str(" data-titalic=\"1\"");
+                        }
                     }
                 }
                 open_text_idx = None;
             } else if open_text_idx.is_some() {
+                if tag_head == "<b" || tag_head == "<strong" {
+                    text_had_bold = true;
+                } else if tag_head == "<i" || tag_head == "<em" {
+                    text_had_italic = true;
+                }
                 if tag_head == "<tspan" {
                     let tag = &tags[pushed];
                     tspan_break_pending = tag.contains("x=")

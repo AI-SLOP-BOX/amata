@@ -56,7 +56,7 @@ pub fn simplify_path_visvalingam(path: &PathData, tolerance_area: f64) -> PathDa
     // Current LineTo run, including its start anchor.
     let mut run: Vec<AnchorPoint> = Vec::new();
 
-    let mut flush_run = |run: &mut Vec<AnchorPoint>, out: &mut PathData| {
+    let flush_run = |run: &mut Vec<AnchorPoint>, out: &mut PathData| {
         if run.is_empty() {
             return;
         }

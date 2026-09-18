@@ -192,10 +192,28 @@ impl CanvasWidget {
             Color32::from_rgb(170, 170, 170),
         );
 
-        // Render Objects (CPU fallback via egui painter)
+        // Render Objects (CPU fallback via egui painter).
+        // Viewport culling above a size threshold: egui already clips
+        // rasterization, but shape construction/tessellation dominates, so
+        // fully offscreen objects are skipped via their world bbox.
+        let total_objs = state.document.all_objects().count();
+        let cull_enabled = total_objs > 200;
+        let (vw0, vh0, vw1, vh1) = (
+            ((rect.min.x - origin.x) / state.zoom) as f64 - 50.0,
+            ((rect.min.y - origin.y) / state.zoom) as f64 - 50.0,
+            ((rect.max.x - origin.x) / state.zoom) as f64 + 50.0,
+            ((rect.max.y - origin.y) / state.zoom) as f64 + 50.0,
+        );
         for (_, obj) in state.document.all_objects() {
             if !obj.visible {
                 continue;
+            }
+            if cull_enabled {
+                if let Some((bb_min, bb_max)) = obj.bounding_box() {
+                    if bb_max.x < vw0 || bb_min.x > vw1 || bb_max.y < vh0 || bb_min.y > vh1 {
+                        continue;
+                    }
+                }
             }
             self.draw_object(
                 &painter,

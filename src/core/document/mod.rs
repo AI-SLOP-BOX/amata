@@ -1,6 +1,6 @@
 pub mod object;
 pub use object::{
-    BlendMode, FontStyle, Object, ObjectType, TextAnchor, TextStyle, Transform, text_block_size,
+    BlendMode, FontStyle, Object, ObjectType, TextAnchor, TextStyle, Transform,
 };
 
 use serde::{Deserialize, Serialize};

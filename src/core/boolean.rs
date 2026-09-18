@@ -165,17 +165,6 @@ struct GhNode {
     visited: bool,
 }
 
-fn gh_nodes(poly: &[AnchorPoint]) -> Vec<GhNode> {
-    poly.iter()
-        .map(|&p| GhNode {
-            p,
-            is_x: false,
-            other: usize::MAX,
-            visited: false,
-        })
-        .collect()
-}
-
 /// Strict-interior edge crossing parameter, or None for parallel,
 /// collinear-overlapping and endpoint touches (handled as non-crossing).
 fn gh_cross_param(a1: AnchorPoint, a2: AnchorPoint, pt: AnchorPoint) -> f64 {
