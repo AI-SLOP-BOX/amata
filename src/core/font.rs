@@ -123,15 +123,37 @@ impl FontRegistry {
             FontStyle::Oblique => fontdb::Style::Oblique,
         };
 
-        // Try direct family query first
-        let query = Query {
-            families: &[Family::Name(family), Family::SansSerif],
-            weight: weight_val,
-            style: style_val,
-            stretch: fontdb::Stretch::Normal,
-        };
+        // The caller may pass a CSS-like spec ("Inter, sans-serif").
+        // fontdb matches Family::Name exactly, so resolve candidates first,
+        // then invoke the FnOnce callback exactly once.
+        let mut matched_id = None;
+        for candidate in family.split(',') {
+            let name = candidate.trim().trim_matches('\'').trim_matches('"');
+            if name.is_empty() {
+                continue;
+            }
+            if name.eq_ignore_ascii_case("sans-serif")
+                || name.eq_ignore_ascii_case("serif")
+                || name.eq_ignore_ascii_case("monospace")
+                || name.eq_ignore_ascii_case("cursive")
+                || name.eq_ignore_ascii_case("fantasy")
+                || name.eq_ignore_ascii_case("system-ui")
+            {
+                continue;
+            }
+            let query = Query {
+                families: &[Family::Name(name), Family::SansSerif],
+                weight: weight_val,
+                style: style_val,
+                stretch: fontdb::Stretch::Normal,
+            };
+            if let Some(id) = self.db.query(&query) {
+                matched_id = Some(id);
+                break;
+            }
+        }
 
-        if let Some(id) = self.db.query(&query) {
+        if let Some(id) = matched_id {
             return self.db.with_face_data(id, f);
         }
 

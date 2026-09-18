@@ -186,19 +186,32 @@ impl IrasuApp {
                 self.new_doc_modal.is_open = true;
             }
 
-            // Save (Cmd+S / Ctrl+S)
+            // Save (Cmd+S / Ctrl+S) — format-aware: never overwrite .amata/.json with SVG
             if (i.modifiers.ctrl || i.modifiers.mac_cmd)
                 && !i.modifiers.shift
                 && i.key_pressed(egui::Key::S)
             {
                 if let Some(ref mut watcher) = self.file_watcher {
-                    let svg = crate::io::svg::export_svg(&self.state.document);
-                    if let Ok(_) = std::fs::write(&watcher.file_path, &svg) {
-                        watcher.mark_saved(&svg);
-                        self.state.undo_manager.mark_saved();
-                        self.version_history_panel
-                            .refresh_history(&watcher.file_path);
-                        self.state.notify_success("SVGファイルを保存しました");
+                    match crate::cli::handlers::common::save_any_document(
+                        &self.state.document,
+                        &watcher.file_path,
+                    ) {
+                        Ok(_) => {
+                            if let Ok(content) =
+                                std::fs::read_to_string(&watcher.file_path)
+                            {
+                                watcher.mark_saved(&content);
+                            } else {
+                                watcher.update_timestamp();
+                            }
+                            self.state.undo_manager.mark_saved();
+                            self.version_history_panel
+                                .refresh_history(&watcher.file_path);
+                            self.state.notify_success("ファイルを保存しました");
+                        }
+                        Err(e) => {
+                            self.state.notify_error(format!("保存に失敗しました: {e}"));
+                        }
                     }
                 }
             }

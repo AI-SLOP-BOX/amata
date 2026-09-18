@@ -225,20 +225,66 @@ impl CanvasWidget {
 
                 let font_id = FontId::new(scaled_size, font_family);
                 let color = fill_color.unwrap_or(Color32::BLACK);
+                // Faux-bold approximation so canvas reflects font-weight instead of
+                // silently rendering everything as regular.
+                let bold = style.font_weight >= 650;
+                let bold_dx = (scaled_size * 0.035).clamp(0.5, 1.5);
 
                 if style.letter_spacing != 0.0 {
                     let letter_space_screen = (style.letter_spacing * state.zoom as f64) as f32;
-                    let mut curr_x = pos.x;
+                    // Pre-measure so text-anchor (middle/end) applies to the whole run,
+                    // matching exported SVG behavior.
+                    let mut widths: Vec<(String, f32, f32)> = Vec::new();
+                    let mut total_w = 0.0;
                     for ch in text.chars() {
                         let ch_str = ch.to_string();
-                        let char_pos = egui::pos2(curr_x, pos.y);
-                        let galley = painter.layout_no_wrap(ch_str, font_id.clone(), color);
+                        let galley =
+                            painter.layout_no_wrap(ch_str.clone(), font_id.clone(), color);
                         let w = galley.size().x;
+                        let h = galley.size().y;
+                        widths.push((ch_str, w, h));
+                        total_w += w;
+                    }
+                    if !widths.is_empty() {
+                        total_w += letter_space_screen * (widths.len() as f32 - 1.0);
+                    }
+                    let mut curr_x = match style.text_anchor {
+                        crate::core::document::TextAnchor::Start => pos.x,
+                        crate::core::document::TextAnchor::Middle => pos.x - total_w / 2.0,
+                        crate::core::document::TextAnchor::End => pos.x - total_w,
+                    };
+                    for (ch_str, w, h) in &widths {
+                        // painter::galley positions from the top-left while `pos`
+                        // is the text baseline; align bottoms explicitly.
+                        let char_pos = egui::pos2(curr_x, pos.y - *h);
+                        let galley =
+                            painter.layout_no_wrap(ch_str.clone(), font_id.clone(), color);
                         painter.galley(char_pos, galley, color);
-                        curr_x += w + letter_space_screen;
+                        if bold {
+                            let g2 = painter.layout_no_wrap(
+                                ch_str.clone(),
+                                font_id.clone(),
+                                color,
+                            );
+                            painter.galley(
+                                egui::pos2(curr_x + bold_dx, pos.y - *h),
+                                g2,
+                                color,
+                            );
+                        }
+                        curr_x += *w + letter_space_screen;
                     }
                 } else {
-                    painter.text(pos, align, text, font_id, color);
+                    painter.text(pos, align, text, font_id.clone(), color);
+                    if bold {
+                        painter.text(
+                            egui::pos2(pos.x + bold_dx, pos.y),
+                            align,
+                            text,
+                            font_id,
+                            color,
+                        );
+                    }
                 }
 
                 if !is_avail && state.selected_ids.contains(&obj.id) {

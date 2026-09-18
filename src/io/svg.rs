@@ -472,7 +472,7 @@ pub fn parse_svg_document(svg_text: &str) -> Document {
     }
 
     // 2. Parse Elements & Nested Groups
-    let mut group_stack: Vec<(f64, f64)> = vec![(0.0, 0.0)];
+    let mut group_stack: Vec<[f64; 6]> = vec![affine_identity()];
     let mut in_defs = false;
 
     for tag in &tags {
@@ -520,9 +520,9 @@ pub fn parse_svg_document(svg_text: &str) -> Document {
 
         // Group opening
         if trimmed.starts_with("<g") {
-            let (gtx, gty) = extract_translate(trimmed);
-            let current = group_stack.last().copied().unwrap_or((0.0, 0.0));
-            group_stack.push((current.0 + gtx, current.1 + gty));
+            let local = parse_svg_transform(trimmed);
+            let current = group_stack.last().copied().unwrap_or(affine_identity());
+            group_stack.push(affine_multiply(&current, &local));
             continue;
         }
 
@@ -534,31 +534,44 @@ pub fn parse_svg_document(svg_text: &str) -> Document {
             continue;
         }
 
-        let (gtx, gty) = group_stack.last().copied().unwrap_or((0.0, 0.0));
-        let (elem_tx, elem_ty) = extract_translate(trimmed);
-        let total_tx = gtx + elem_tx;
-        let total_ty = gty + elem_ty;
+        let group_m = group_stack.last().copied().unwrap_or(affine_identity());
+        let elem_m = parse_svg_transform(trimmed);
+        let total_m = affine_multiply(&group_m, &elem_m);
+        let (total_tx, total_ty) = (total_m[4], total_m[5]);
+        let has_linear = (total_m[0] - 1.0).abs() > 1e-9
+            || total_m[1].abs() > 1e-9
+            || total_m[2].abs() > 1e-9
+            || (total_m[3] - 1.0).abs() > 1e-9;
 
         if trimmed.starts_with("<path") {
             if let Some(d) = extract_attr_str(trimmed, "d") {
                 if let Ok(mut elements) = parse_svg_path_data(d) {
                     if !elements.is_empty() {
-                        if total_tx != 0.0 || total_ty != 0.0 {
+                        if has_linear || total_tx != 0.0 || total_ty != 0.0 {
                             for elem in &mut elements {
                                 match elem {
                                     PathElement::MoveTo(p) | PathElement::LineTo(p) => {
-                                        p.x += total_tx;
-                                        p.y += total_ty;
+                                        let (nx, ny) = affine_apply(&total_m, p.x, p.y);
+                                        p.x = nx;
+                                        p.y = ny;
                                     }
                                     PathElement::CurveTo(seg) => {
-                                        seg.start.x += total_tx;
-                                        seg.start.y += total_ty;
-                                        seg.control1.x += total_tx;
-                                        seg.control1.y += total_ty;
-                                        seg.control2.x += total_tx;
-                                        seg.control2.y += total_ty;
-                                        seg.end.x += total_tx;
-                                        seg.end.y += total_ty;
+                                        let (sx, sy) =
+                                            affine_apply(&total_m, seg.start.x, seg.start.y);
+                                        let (c1x, c1y) =
+                                            affine_apply(&total_m, seg.control1.x, seg.control1.y);
+                                        let (c2x, c2y) =
+                                            affine_apply(&total_m, seg.control2.x, seg.control2.y);
+                                        let (ex, ey) =
+                                            affine_apply(&total_m, seg.end.x, seg.end.y);
+                                        seg.start.x = sx;
+                                        seg.start.y = sy;
+                                        seg.control1.x = c1x;
+                                        seg.control1.y = c1y;
+                                        seg.control2.x = c2x;
+                                        seg.control2.y = c2y;
+                                        seg.end.x = ex;
+                                        seg.end.y = ey;
                                     }
                                     PathElement::ClosePath => {}
                                 }
@@ -592,15 +605,11 @@ pub fn parse_svg_document(svg_text: &str) -> Document {
                 let pts = parse_svg_points(points_str);
                 if !pts.is_empty() {
                     let mut elements = Vec::new();
-                    elements.push(PathElement::MoveTo(AnchorPoint::new(
-                        pts[0].x + total_tx,
-                        pts[0].y + total_ty,
-                    )));
+                    let (sx0, sy0) = affine_apply(&total_m, pts[0].x, pts[0].y);
+                    elements.push(PathElement::MoveTo(AnchorPoint::new(sx0, sy0)));
                     for pt in &pts[1..] {
-                        elements.push(PathElement::LineTo(AnchorPoint::new(
-                            pt.x + total_tx,
-                            pt.y + total_ty,
-                        )));
+                        let (sx, sy) = affine_apply(&total_m, pt.x, pt.y);
+                        elements.push(PathElement::LineTo(AnchorPoint::new(sx, sy)));
                     }
                     if is_polygon {
                         elements.push(PathElement::ClosePath);
@@ -638,14 +647,13 @@ pub fn parse_svg_document(svg_text: &str) -> Document {
             ) {
                 let rx = extract_attr_f64(trimmed, "rx").unwrap_or(0.0);
                 obj_count += 1;
-                let mut obj = Object::new_rect(
-                    &format!("Rect {obj_count}"),
-                    x + total_tx,
-                    y + total_ty,
-                    w,
-                    h,
-                    rx,
-                );
+                let mut obj = Object::new_rect(&format!("Rect {obj_count}"), x, y, w, h, rx);
+                if has_linear {
+                    obj.transform = affine_to_transform(&total_m, x, y);
+                } else {
+                    obj.transform.x = x + total_tx;
+                    obj.transform.y = y + total_ty;
+                }
                 obj.id = extract_attr_str(trimmed, "id")
                     .map(|s| s.to_string())
                     .unwrap_or_else(|| format!("auto_rect_{obj_count}"));
@@ -669,13 +677,14 @@ pub fn parse_svg_document(svg_text: &str) -> Document {
             ) {
                 let ry = r2.unwrap_or(r1);
                 obj_count += 1;
-                let mut obj = Object::new_ellipse(
-                    &format!("Ellipse {obj_count}"),
-                    cx + total_tx,
-                    cy + total_ty,
-                    r1,
-                    ry,
-                );
+                let mut obj =
+                    Object::new_ellipse(&format!("Ellipse {obj_count}"), cx, cy, r1, ry);
+                if has_linear {
+                    obj.transform = affine_to_transform(&total_m, cx, cy);
+                } else {
+                    obj.transform.x = cx + total_tx;
+                    obj.transform.y = cy + total_ty;
+                }
                 obj.id = extract_attr_str(trimmed, "id")
                     .map(|s| s.to_string())
                     .unwrap_or_else(|| format!("auto_ellipse_{obj_count}"));
@@ -698,13 +707,20 @@ pub fn parse_svg_document(svg_text: &str) -> Document {
                 extract_attr_f64(trimmed, "y2"),
             ) {
                 obj_count += 1;
-                let mut obj = Object::new_line(
-                    &format!("Line {obj_count}"),
-                    x1 + total_tx,
-                    y1 + total_ty,
-                    x2 + total_tx,
-                    y2 + total_ty,
-                );
+                let mut obj = if has_linear {
+                    let mut o =
+                        Object::new_line(&format!("Line {obj_count}"), 0.0, 0.0, x2 - x1, y2 - y1);
+                    o.transform = affine_to_transform(&total_m, x1, y1);
+                    o
+                } else {
+                    Object::new_line(
+                        &format!("Line {obj_count}"),
+                        x1 + total_tx,
+                        y1 + total_ty,
+                        x2 + total_tx,
+                        y2 + total_ty,
+                    )
+                };
                 obj.id = extract_attr_str(trimmed, "id")
                     .map(|s| s.to_string())
                     .unwrap_or_else(|| format!("auto_line_{obj_count}"));
@@ -768,10 +784,16 @@ pub fn parse_svg_document(svg_text: &str) -> Document {
                 let mut obj = Object::new_text_with_style(
                     &format!("Text {obj_count}"),
                     &text_content,
-                    x + total_tx,
-                    y + total_ty,
+                    x,
+                    y,
                     style,
                 );
+                if has_linear {
+                    obj.transform = affine_to_transform(&total_m, x, y);
+                } else {
+                    obj.transform.x = x + total_tx;
+                    obj.transform.y = y + total_ty;
+                }
                 obj.id = extract_attr_str(trimmed, "id")
                     .map(|s| s.to_string())
                     .unwrap_or_else(|| format!("auto_text_{obj_count}"));
@@ -795,14 +817,14 @@ pub fn parse_svg_document(svg_text: &str) -> Document {
                 let w = extract_attr_f64(trimmed, "width");
                 let h = extract_attr_f64(trimmed, "height");
                 obj_count += 1;
-                let mut obj = Object::new_use(
-                    &format!("Use {obj_count}"),
-                    clean_href,
-                    x + total_tx,
-                    y + total_ty,
-                    w,
-                    h,
-                );
+                let mut obj =
+                    Object::new_use(&format!("Use {obj_count}"), clean_href, x, y, w, h);
+                if has_linear {
+                    obj.transform = affine_to_transform(&total_m, x, y);
+                } else {
+                    obj.transform.x = x + total_tx;
+                    obj.transform.y = y + total_ty;
+                }
                 obj.id = extract_attr_str(trimmed, "id")
                     .map(|s| s.to_string())
                     .unwrap_or_else(|| format!("auto_use_{obj_count}"));
@@ -1178,26 +1200,125 @@ fn extract_attr_f64(tag: &str, attr: &str) -> Option<f64> {
     extract_attr_str(tag, attr).and_then(|s| s.trim_end_matches("px").parse().ok())
 }
 
-fn extract_translate(tag: &str) -> (f64, f64) {
-    if let Some(t) = extract_attr_str(tag, "transform") {
-        if let Some(start) = t.find("translate(") {
-            let rest = &t[start + 10..];
-            if let Some(end) = rest.find(')') {
-                let inner = &rest[..end];
-                let parts: Vec<f64> = inner
-                    .split(|c: char| c.is_whitespace() || c == ',')
-                    .filter(|s| !s.is_empty())
-                    .filter_map(|s| s.parse().ok())
-                    .collect();
-                if parts.len() >= 2 {
-                    return (parts[0], parts[1]);
-                } else if parts.len() == 1 {
-                    return (parts[0], 0.0);
+fn parse_numbers(s: &str) -> Vec<f64> {
+    s.split(|c: char| c.is_whitespace() || c == ',')
+        .filter(|p| !p.is_empty())
+        .filter_map(|p| p.parse().ok())
+        .collect()
+}
+
+fn affine_identity() -> [f64; 6] {
+    [1.0, 0.0, 0.0, 1.0, 0.0, 0.0]
+}
+
+fn affine_multiply(m1: &[f64; 6], m2: &[f64; 6]) -> [f64; 6] {
+    [
+        m1[0] * m2[0] + m1[2] * m2[1],
+        m1[1] * m2[0] + m1[3] * m2[1],
+        m1[0] * m2[2] + m1[2] * m2[3],
+        m1[1] * m2[2] + m1[3] * m2[3],
+        m1[0] * m2[4] + m1[2] * m2[5] + m1[4],
+        m1[1] * m2[4] + m1[3] * m2[5] + m1[5],
+    ]
+}
+
+fn affine_apply(m: &[f64; 6], x: f64, y: f64) -> (f64, f64) {
+    (m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5])
+}
+
+fn affine_to_transform(m: &[f64; 6], origin_x: f64, origin_y: f64) -> Transform {
+    let (wx, wy) = affine_apply(m, origin_x, origin_y);
+    let scale_x = (m[0] * m[0] + m[1] * m[1]).sqrt();
+    let scale_y = (m[2] * m[2] + m[3] * m[3]).sqrt();
+    let rotation = m[1].atan2(m[0]);
+    Transform {
+        x: wx,
+        y: wy,
+        rotation,
+        scale_x: if scale_x > 1e-9 { scale_x } else { 1.0 },
+        scale_y: if scale_y > 1e-9 { scale_y } else { 1.0 },
+        skew_x: 0.0,
+        skew_y: 0.0,
+    }
+}
+
+fn parse_svg_transform(tag: &str) -> [f64; 6] {
+    let Some(t) = extract_attr_str(tag, "transform") else {
+        return affine_identity();
+    };
+    let mut acc = affine_identity();
+    let bytes = t.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        let rest = &t[i..];
+        if let Some(j) = rest.find("matrix(") {
+            let s = j + i + 7;
+            if let Some(e) = t[s..].find(')') {
+                let nums = parse_numbers(&t[s..s + e]);
+                if nums.len() >= 6 {
+                    let m = [nums[0], nums[1], nums[2], nums[3], nums[4], nums[5]];
+                    acc = affine_multiply(&acc, &m);
                 }
+                i = s + e + 1;
+                continue;
             }
+            break;
+        } else if let Some(j) = rest.find("translate(") {
+            let s = j + i + 10;
+            if let Some(e) = t[s..].find(')') {
+                let nums = parse_numbers(&t[s..s + e]);
+                let (tx, ty) = match nums.as_slice() {
+                    [x, y, ..] => (*x, *y),
+                    [x] => (*x, 0.0),
+                    _ => (0.0, 0.0),
+                };
+                acc = affine_multiply(&acc, &[1.0, 0.0, 0.0, 1.0, tx, ty]);
+                i = s + e + 1;
+                continue;
+            }
+            break;
+        } else if let Some(j) = rest.find("scale(") {
+            let s = j + i + 6;
+            if let Some(e) = t[s..].find(')') {
+                let nums = parse_numbers(&t[s..s + e]);
+                let (sx, sy) = match nums.as_slice() {
+                    [x, y, ..] => (*x, *y),
+                    [x] => (*x, *x),
+                    _ => (1.0, 1.0),
+                };
+                acc = affine_multiply(&acc, &[sx, 0.0, 0.0, sy, 0.0, 0.0]);
+                i = s + e + 1;
+                continue;
+            }
+            break;
+        } else if let Some(j) = rest.find("rotate(") {
+            let s = j + i + 7;
+            if let Some(e) = t[s..].find(')') {
+                let nums = parse_numbers(&t[s..s + e]);
+                if let Some(angle_deg) = nums.first() {
+                    let a = angle_deg.to_radians();
+                    let (c, s_) = (a.cos(), a.sin());
+                    let rot = [c, s_, -s_, c, 0.0, 0.0];
+                    if nums.len() >= 3 {
+                        let (cx, cy) = (nums[1], nums[2]);
+                        let to_o = [1.0, 0.0, 0.0, 1.0, cx, cy];
+                        let back = [1.0, 0.0, 0.0, 1.0, -cx, -cy];
+                        let tmp = affine_multiply(&rot, &back);
+                        let full = affine_multiply(&to_o, &tmp);
+                        acc = affine_multiply(&acc, &full);
+                    } else {
+                        acc = affine_multiply(&acc, &rot);
+                    }
+                }
+                i = s + e + 1;
+                continue;
+            }
+            break;
+        } else {
+            break;
         }
     }
-    (0.0, 0.0)
+    acc
 }
 
 pub fn export_svg(doc: &Document) -> String {
@@ -1308,6 +1429,25 @@ fn path_to_svg_with_fill(
         .unwrap_or_default();
 
     format!("  <path d=\"{d}\"{fill}{stroke}{effect_attr} />\n")
+}
+
+fn transform_has_linear_part(t: &Transform) -> bool {
+    t.rotation.abs() > 1e-9
+        || (t.scale_x - 1.0).abs() > 1e-9
+        || (t.scale_y - 1.0).abs() > 1e-9
+        || t.skew_x.abs() > 1e-9
+        || t.skew_y.abs() > 1e-9
+}
+
+fn svg_transform_attr(t: &Transform) -> String {
+    if !transform_has_linear_part(t) {
+        return String::new();
+    }
+    let m = t.matrix();
+    format!(
+        " transform=\"matrix({} {} {} {} {} {})\"",
+        m[0], m[1], m[2], m[3], m[4], m[5]
+    )
 }
 
 fn render_object_to_svg(obj: &Object, svg: &mut String, defs: &mut String, counter: &mut usize) {
@@ -1439,10 +1579,17 @@ fn render_object_to_svg(obj: &Object, svg: &mut String, defs: &mut String, count
                 (None, Some(h)) => format!(" height=\"{h}\""),
                 (None, None) => String::new(),
             };
-            svg.push_str(&format!(
-                "  <use{id_attr} href=\"{href_attr}\" x=\"{}\" y=\"{}\"{dim_str}{effect_attr} />\n",
-                obj.transform.x, obj.transform.y
-            ));
+            let transform_attr = svg_transform_attr(&obj.transform);
+            if transform_has_linear_part(&obj.transform) {
+                svg.push_str(&format!(
+                    "  <use{id_attr} href=\"{href_attr}\" x=\"0\" y=\"0\"{dim_str}{transform_attr}{effect_attr} />\n",
+                ));
+            } else {
+                svg.push_str(&format!(
+                    "  <use{id_attr} href=\"{href_attr}\" x=\"{}\" y=\"{}\"{dim_str}{effect_attr} />\n",
+                    obj.transform.x, obj.transform.y
+                ));
+            }
         }
         ObjectType::Path(path) => {
             let d = path_data_to_d(path, &obj.transform);
@@ -1511,10 +1658,18 @@ fn render_object_to_svg(obj: &Object, svg: &mut String, defs: &mut String, count
             } else {
                 String::new()
             };
-            svg.push_str(&format!(
-                "  <rect{id_attr} x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\"{rx_str}{fill_attr}{stroke}{effect_attr} />\n",
-                obj.transform.x, obj.transform.y, width, height,
-            ));
+            if transform_has_linear_part(&obj.transform) {
+                let transform_attr = svg_transform_attr(&obj.transform);
+                svg.push_str(&format!(
+                    "  <rect{id_attr} x=\"0\" y=\"0\" width=\"{}\" height=\"{}\"{rx_str}{fill_attr}{stroke}{transform_attr}{effect_attr} />\n",
+                    width, height,
+                ));
+            } else {
+                svg.push_str(&format!(
+                    "  <rect{id_attr} x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\"{rx_str}{fill_attr}{stroke}{effect_attr} />\n",
+                    obj.transform.x, obj.transform.y, width, height,
+                ));
+            }
         }
         ObjectType::Ellipse { rx, ry } => {
             let stroke = obj
@@ -1541,10 +1696,18 @@ fn render_object_to_svg(obj: &Object, svg: &mut String, defs: &mut String, count
                     )
                 })
                 .unwrap_or_default();
-            svg.push_str(&format!(
-                "  <ellipse{id_attr} cx=\"{}\" cy=\"{}\" rx=\"{}\" ry=\"{}\"{fill_attr}{stroke}{effect_attr} />\n",
-                obj.transform.x, obj.transform.y, rx, ry,
-            ));
+            if transform_has_linear_part(&obj.transform) {
+                let transform_attr = svg_transform_attr(&obj.transform);
+                svg.push_str(&format!(
+                    "  <ellipse{id_attr} cx=\"0\" cy=\"0\" rx=\"{}\" ry=\"{}\"{fill_attr}{stroke}{transform_attr}{effect_attr} />\n",
+                    rx, ry,
+                ));
+            } else {
+                svg.push_str(&format!(
+                    "  <ellipse{id_attr} cx=\"{}\" cy=\"{}\" rx=\"{}\" ry=\"{}\"{fill_attr}{stroke}{effect_attr} />\n",
+                    obj.transform.x, obj.transform.y, rx, ry,
+                ));
+            }
         }
         ObjectType::Line { x2, y2 } => {
             let stroke = obj
@@ -1571,10 +1734,18 @@ fn render_object_to_svg(obj: &Object, svg: &mut String, defs: &mut String, count
                     )
                 })
                 .unwrap_or_else(|| " stroke=\"#000000\" stroke-width=\"1\"".to_string());
-            svg.push_str(&format!(
-                "  <line{id_attr} x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\"{stroke}{effect_attr} />\n",
-                obj.transform.x, obj.transform.y, obj.transform.x + x2, obj.transform.y + y2,
-            ));
+            if transform_has_linear_part(&obj.transform) {
+                let transform_attr = svg_transform_attr(&obj.transform);
+                svg.push_str(&format!(
+                    "  <line{id_attr} x1=\"0\" y1=\"0\" x2=\"{}\" y2=\"{}\"{stroke}{transform_attr}{effect_attr} />\n",
+                    x2, y2,
+                ));
+            } else {
+                svg.push_str(&format!(
+                    "  <line{id_attr} x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\"{stroke}{effect_attr} />\n",
+                    obj.transform.x, obj.transform.y, obj.transform.x + x2, obj.transform.y + y2,
+                ));
+            }
         }
         ObjectType::Text {
             text,
@@ -1614,13 +1785,22 @@ fn render_object_to_svg(obj: &Object, svg: &mut String, defs: &mut String, count
                 ));
             }
 
-            svg.push_str(&format!(
-                "  <text{id_attr} x=\"{}\" y=\"{}\" font-size=\"{}\" font-family=\"{}\"{extra_attrs}{fill}{effect_attr}>{}</text>\n",
-                obj.transform.x, obj.transform.y, font_size, font_fam, escaped_text
-            ));
+            if transform_has_linear_part(&obj.transform) {
+                let transform_attr = svg_transform_attr(&obj.transform);
+                svg.push_str(&format!(
+                    "  <text{id_attr} x=\"0\" y=\"0\" font-size=\"{}\" font-family=\"{}\"{extra_attrs}{fill}{transform_attr}{effect_attr}>{}</text>\n",
+                    font_size, font_fam, escaped_text
+                ));
+            } else {
+                svg.push_str(&format!(
+                    "  <text{id_attr} x=\"{}\" y=\"{}\" font-size=\"{}\" font-family=\"{}\"{extra_attrs}{fill}{effect_attr}>{}</text>\n",
+                    obj.transform.x, obj.transform.y, font_size, font_fam, escaped_text
+                ));
+            }
         }
         ObjectType::Group(children) => {
-            svg.push_str(&format!("  <g{id_attr}{effect_attr}>\n"));
+            let transform_attr = svg_transform_attr(&obj.transform);
+            svg.push_str(&format!("  <g{id_attr}{transform_attr}{effect_attr}>\n"));
             for child in children {
                 render_object_to_svg(child, svg, defs, counter);
             }
@@ -1637,8 +1817,9 @@ fn render_object_to_svg(obj: &Object, svg: &mut String, defs: &mut String, count
                     clip_id,
                     path_data_to_d(&mask_path, &mask_obj.transform)
                 ));
+                let transform_attr = svg_transform_attr(&obj.transform);
                 svg.push_str(&format!(
-                    "  <g{id_attr} clip-path=\"url(#{clip_id})\"{effect_attr}>\n"
+                    "  <g{id_attr} clip-path=\"url(#{clip_id})\"{transform_attr}{effect_attr}>\n"
                 ));
                 for child in &children[1..] {
                     render_object_to_svg(child, svg, defs, counter);

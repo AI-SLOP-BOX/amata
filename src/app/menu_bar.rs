@@ -106,17 +106,28 @@ impl IrasuApp {
                         }
                         ui.close_menu();
                     }
-                    if ui.button("Save SVG (Cmd+S)").clicked() {
+                    if ui.button("Save (Cmd+S)").clicked() {
                         if let Some(ref mut watcher) = self.file_watcher {
-                            let svg = crate::io::svg::export_svg(&self.state.document);
-                            if let Err(e) = std::fs::write(&watcher.file_path, &svg) {
-                                self.state.notify_error(format!("保存に失敗しました: {e}"));
-                            } else {
-                                watcher.mark_saved(&svg);
-                                self.state.undo_manager.mark_saved();
-                                self.version_history_panel
-                                    .refresh_history(&watcher.file_path);
-                                self.state.notify_success("SVGを上書き保存しました");
+                            match crate::cli::handlers::common::save_any_document(
+                                &self.state.document,
+                                &watcher.file_path,
+                            ) {
+                                Err(e) => {
+                                    self.state.notify_error(format!("保存に失敗しました: {e}"));
+                                }
+                                Ok(_) => {
+                                    if let Ok(content) =
+                                        std::fs::read_to_string(&watcher.file_path)
+                                    {
+                                        watcher.mark_saved(&content);
+                                    } else {
+                                        watcher.update_timestamp();
+                                    }
+                                    self.state.undo_manager.mark_saved();
+                                    self.version_history_panel
+                                        .refresh_history(&watcher.file_path);
+                                    self.state.notify_success("ファイルを上書き保存しました");
+                                }
                             }
                         } else if let Some(path) = rfd::FileDialog::new()
                             .add_filter("SVG", &["svg"])
@@ -163,6 +174,16 @@ impl IrasuApp {
                                     self.state.document = doc;
                                     self.state.undo_manager.clear();
                                     self.state.selected_ids.clear();
+                                    // Rebind save destination + watcher to the loaded project.
+                                    // Otherwise Cmd+S would silently overwrite the previously
+                                    // opened SVG with this project's content.
+                                    let mut watcher =
+                                        crate::core::watcher::FileWatcher::new(path.clone());
+                                    if let Ok(content) = std::fs::read_to_string(&path) {
+                                        watcher.mark_saved(&content);
+                                    }
+                                    self.file_watcher = Some(watcher);
+                                    self.version_history_panel.refresh_history(&path);
                                     self.state.notify_info("プロジェクトを読み込みました");
                                 }
                                 Err(e) => {

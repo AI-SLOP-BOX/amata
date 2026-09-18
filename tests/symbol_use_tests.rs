@@ -71,13 +71,20 @@ fn test_one_symbol_many_use_and_transforms() {
 
     let svg = export_svg(&doc);
     assert!(svg.contains("<symbol id=\"star-sym\">"));
+    // Identity instance keeps plain x/y; transformed instances must carry a matrix
+    // so scale/rotation survive the round-trip (previously they were dropped).
     assert!(svg.contains("href=\"#star-sym\" x=\"100\" y=\"100\""));
-    assert!(svg.contains("href=\"#star-sym\" x=\"250\" y=\"100\""));
-    assert!(svg.contains("href=\"#star-sym\" x=\"400\" y=\"100\""));
+    assert!(svg.contains("transform=\"matrix("));
 
     let reimported = parse_svg_document(&svg);
     assert_eq!(reimported.symbols.len(), 1);
     assert_eq!(reimported.layers[0].objects.len(), 3);
+    let objs = &reimported.layers[0].objects;
+    assert!((objs[0].transform.x - 100.0).abs() < 1e-6);
+    assert!((objs[1].transform.scale_x - 1.5).abs() < 1e-6);
+    assert!((objs[1].transform.x - 250.0).abs() < 1e-6);
+    assert!((objs[2].transform.rotation - 45.0f64.to_radians()).abs() < 1e-6);
+    assert!((objs[2].transform.x - 400.0).abs() < 1e-6);
 }
 
 #[test]

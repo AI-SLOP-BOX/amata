@@ -44,6 +44,36 @@ pub struct IrasuApp {
 /// AmataApp is the primary application struct for the Amata vector editor.
 pub type AmataApp = IrasuApp;
 
+fn is_project_file(path: &std::path::Path) -> bool {
+    matches!(
+        path.extension()
+            .and_then(|s| s.to_str())
+            .unwrap_or("")
+            .to_lowercase()
+            .as_str(),
+        "amata" | "json"
+    )
+}
+
+fn parse_watched_doc(path: &std::path::Path, content: &str) -> Option<crate::core::document::Document> {
+    if is_project_file(path) {
+        serde_json::from_str(content).ok()
+    } else {
+        Some(crate::io::svg::parse_svg_document(content))
+    }
+}
+
+fn serialize_watched_doc(
+    doc: &crate::core::document::Document,
+    path: &std::path::Path,
+) -> Option<String> {
+    if is_project_file(path) {
+        serde_json::to_string_pretty(doc).ok()
+    } else {
+        Some(crate::io::svg::export_svg(doc))
+    }
+}
+
 impl IrasuApp {
     pub fn with_file(path: Option<std::path::PathBuf>) -> Self {
         let mut app = Self::default();
@@ -101,22 +131,31 @@ impl eframe::App for IrasuApp {
 
         // Check for external file modifications (AI / CLI / external editor)
         if let Some(ref mut watcher) = self.file_watcher {
-            if let Some(external_svg) = watcher.check_for_external_content() {
-                let external_doc = crate::io::svg::parse_svg_document(&external_svg);
-                let diff =
-                    crate::core::diff::compute_semantic_diff(&self.state.document, &external_doc);
-                let is_conflict = self.state.is_dirty();
-                let pre_edit_svg = crate::io::svg::export_svg(&self.state.document);
+            if let Some(external_content) = watcher.check_for_external_content() {
+                let file_path = watcher.file_path.clone();
+                if let Some(external_doc) = parse_watched_doc(&file_path, &external_content) {
+                    if let Some(pre_edit_svg) =
+                        serialize_watched_doc(&self.state.document, &file_path)
+                    {
+                        let external_svg = external_content;
+                        let diff = crate::core::diff::compute_semantic_diff(
+                            &self.state.document,
+                            &external_doc,
+                        );
+                        let is_conflict = self.state.is_dirty();
 
-                self.external_change_dialog
-                    .set_notice(crate::ui::ExternalChangeNotice {
-                        file_path: watcher.file_path.clone(),
-                        external_svg,
-                        external_doc,
-                        diff,
-                        is_conflict,
-                        pre_edit_svg,
-                    });
+                        self.external_change_dialog.set_notice(
+                            crate::ui::ExternalChangeNotice {
+                                file_path: watcher.file_path.clone(),
+                                external_svg,
+                                external_doc,
+                                diff,
+                                is_conflict,
+                                pre_edit_svg,
+                            },
+                        );
+                    }
+                }
             }
         }
 
@@ -151,9 +190,10 @@ impl eframe::App for IrasuApp {
                     if let Some(notice) = self.external_change_dialog.notice.take() {
                         if let Err(e) = std::fs::write(&notice.file_path, &notice.pre_edit_svg) {
                             self.state.notify_error(format!("復元に失敗しました: {e}"));
-                        } else {
-                            self.state.document =
-                                crate::io::svg::parse_svg_document(&notice.pre_edit_svg);
+                        } else if let Some(doc) =
+                            parse_watched_doc(&notice.file_path, &notice.pre_edit_svg)
+                        {
+                            self.state.document = doc;
                             self.state.undo_manager.mark_saved();
                             if let Some(ref mut w) = self.file_watcher {
                                 w.mark_saved(&notice.pre_edit_svg);
@@ -162,6 +202,9 @@ impl eframe::App for IrasuApp {
                             self.state.is_comparing_diff = false;
                             self.state
                                 .notify_info("外部変更を破棄し、編集前の状態に復元しました");
+                        } else {
+                            self.state
+                                .notify_error("復元データの解析に失敗しました".to_string());
                         }
                     }
                 }
@@ -179,13 +222,19 @@ impl eframe::App for IrasuApp {
                             return;
                         }
 
-                        let current_svg = crate::io::svg::export_svg(&self.state.document);
-                        if let Err(e) = std::fs::write(&notice.file_path, &current_svg) {
+                        let Some(current_content) =
+                            serialize_watched_doc(&self.state.document, &notice.file_path)
+                        else {
+                            self.state.notify_error("保存データの生成に失敗しました".to_string());
+                            self.external_change_dialog.set_notice(notice);
+                            return;
+                        };
+                        if let Err(e) = std::fs::write(&notice.file_path, &current_content) {
                             self.state.notify_error(format!("保存に失敗しました: {e}"));
                         } else {
                             self.state.undo_manager.mark_saved();
                             if let Some(ref mut w) = self.file_watcher {
-                                w.mark_saved(&current_svg);
+                                w.mark_saved(&current_content);
                             }
                             self.version_history_panel
                                 .refresh_history(&notice.file_path);
