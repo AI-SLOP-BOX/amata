@@ -362,46 +362,94 @@ impl CanvasWidget {
         }
         let screen_pts: Vec<Pos2> = poly.iter().map(|p| to_screen(p.x, p.y)).collect();
 
-        let dx = grad.end_x - grad.start_x;
-        let dy = grad.end_y - grad.start_y;
-        let len = (dx * dx + dy * dy).sqrt();
-        if len <= 0.0 {
-            return;
-        }
-
-        let num_bands = 32;
+        let min_x = screen_pts.iter().map(|p| p.x).fold(f32::INFINITY, f32::min);
+        let max_x = screen_pts
+            .iter()
+            .map(|p| p.x)
+            .fold(f32::NEG_INFINITY, f32::max);
         let min_y = screen_pts.iter().map(|p| p.y).fold(f32::INFINITY, f32::min);
         let max_y = screen_pts
             .iter()
             .map(|p| p.y)
             .fold(f32::NEG_INFINITY, f32::max);
-        let band_height = (max_y - min_y) / num_bands as f32;
+        let bw = max_x - min_x;
+        let bh = max_y - min_y;
+        if bw <= 0.0 || bh <= 0.0 {
+            return;
+        }
 
-        for i in 0..num_bands {
-            let y_top = min_y + i as f32 * band_height;
-            let y_bot = y_top + band_height;
-            let y_mid = (y_top + y_bot) / 2.0;
-
-            let t = ((y_mid - min_y) / (max_y - min_y)).clamp(0.0, 1.0);
-            let c = sample_gradient_stops(&grad.stops, t);
+        // Gradient endpoints live in normalized bbox space
+        // (SVG objectBoundingBox convention), so map them onto the
+        // on-screen bbox. The previous code sampled purely by vertical
+        // position, rendering every gradient (including the diagonal
+        // default) as vertical.
+        let sx0 = min_x + grad.start_x * bw;
+        let sy0 = min_y + grad.start_y * bh;
+        let ex = min_x + grad.end_x * bw;
+        let ey = min_y + grad.end_y * bh;
+        let dx = ex - sx0;
+        let dy = ey - sy0;
+        let len = (dx * dx + dy * dy).sqrt();
+        if len < 0.5 {
+            // Degenerate direction: flat fill with the first stop.
+            let c = sample_gradient_stops(&grad.stops, 0.0);
             let a = c[3] * opacity;
-            if a <= 0.0 {
-                continue;
-            }
-            let band_color = Color32::from_rgba_unmultiplied(
-                (c[0] * 255.0) as u8,
-                (c[1] * 255.0) as u8,
-                (c[2] * 255.0) as u8,
-                (a * 255.0) as u8,
-            );
-
-            let clipped = clip_polygon_to_y_band(&screen_pts, y_top, y_bot);
-            if clipped.len() >= 3 {
+            if a > 0.0 {
                 painter.add(egui::epaint::PathShape::convex_polygon(
-                    clipped,
-                    band_color,
+                    screen_pts.clone(),
+                    Color32::from_rgba_unmultiplied(
+                        (c[0] * 255.0) as u8,
+                        (c[1] * 255.0) as u8,
+                        (c[2] * 255.0) as u8,
+                        (a * 255.0) as u8,
+                    ),
                     Stroke::NONE,
                 ));
+            }
+        } else {
+            let ux = dx / len;
+            let uy = dy / len;
+            let proj = |p: Pos2| (p.x - sx0) * ux + (p.y - sy0) * uy;
+            let s_min = screen_pts.iter().map(|p| proj(*p)).fold(f32::INFINITY, f32::min);
+            let s_max = screen_pts
+                .iter()
+                .map(|p| proj(*p))
+                .fold(f32::NEG_INFINITY, f32::max);
+            let span = s_max - s_min;
+            if span > 0.0 {
+                // Adaptive band count (~3px per band) plus deterministic
+                // ±1 LSB dithering to break up visible banding steps.
+                let num_bands = ((span / 3.0).round() as usize).clamp(24, 96);
+                let band_w = span / num_bands as f32;
+                for i in 0..num_bands {
+                    let s_top = s_min + i as f32 * band_w;
+                    let s_bot = s_top + band_w;
+                    let s_mid = (s_top + s_bot) / 2.0;
+
+                    let t = (s_mid / len).clamp(0.0, 1.0);
+                    let c = sample_gradient_stops(&grad.stops, t);
+                    let a = c[3] * opacity;
+                    if a <= 0.0 {
+                        continue;
+                    }
+                    let dith = band_dither(i as u32);
+                    let band_color = Color32::from_rgba_unmultiplied(
+                        quantize_channel(c[0], dith),
+                        quantize_channel(c[1], dith),
+                        quantize_channel(c[2], dith),
+                        (a * 255.0).round().clamp(0.0, 255.0) as u8,
+                    );
+
+                    let clipped =
+                        clip_polygon_to_s_band(&screen_pts, sx0, sy0, ux, uy, s_top, s_bot);
+                    if clipped.len() >= 3 {
+                        painter.add(egui::epaint::PathShape::convex_polygon(
+                            clipped,
+                            band_color,
+                            Stroke::NONE,
+                        ));
+                    }
+                }
             }
         }
 
@@ -455,53 +503,69 @@ impl CanvasWidget {
             .map(|p| p.y)
             .fold(f32::NEG_INFINITY, f32::max);
 
-        let cx = (min_x + max_x) / 2.0;
-        let cy = (min_y + max_y) / 2.0;
-        let max_r = ((max_x - min_x).max(max_y - min_y)) / 2.0;
-        if max_r <= 0.0 {
+        // Gradient geometry in normalized bbox space (SVG
+        // objectBoundingBox convention): centre, elliptical radii and the
+        // focal point the rings are centred on. The previous code ignored
+        // all three — always drawing circles around the bbox middle.
+        let bw = max_x - min_x;
+        let bh = max_y - min_y;
+        if bw <= 0.0 || bh <= 0.0 {
+            return;
+        }
+        let fx = min_x + grad.focus_x * bw;
+        let fy = min_y + grad.focus_y * bh;
+        let rx = grad.radius * bw;
+        let ry = grad.radius * bh;
+        if rx <= 0.0 || ry <= 0.0 {
             return;
         }
 
-        let num_rings = 24;
+        // Normalized extent over the silhouette; corners beyond r=1 reuse
+        // the end stop (spreadMethod=pad, like export).
+        let extent = screen_pts
+            .iter()
+            .map(|p| ellipse_norm_dist(p.x, p.y, fx, fy, rx, ry))
+            .fold(0.0_f32, f32::max)
+            .max(1e-3);
+        let approx_px = extent * rx.max(ry);
+        let num_rings = ((approx_px / 3.0).round() as usize).clamp(16, 64);
         for i in (0..num_rings).rev() {
-            let t = (i as f32) / (num_rings as f32);
-            let inner_r = t * max_r;
-            let outer_r = ((i + 1) as f32) / (num_rings as f32) * max_r;
+            let t0 = (i as f32) / (num_rings as f32) * extent;
+            let t1 = ((i + 1) as f32) / (num_rings as f32) * extent;
+            let t_mid = (t0 + t1) / 2.0;
 
-            let c = sample_gradient_stops(&grad.stops, t);
+            let c = sample_gradient_stops(&grad.stops, (t_mid / extent).clamp(0.0, 1.0));
             let a = c[3] * opacity;
             if a <= 0.0 {
                 continue;
             }
+            let dith = band_dither(i as u32 * 2 + 1);
             let ring_color = Color32::from_rgba_unmultiplied(
-                (c[0] * 255.0) as u8,
-                (c[1] * 255.0) as u8,
-                (c[2] * 255.0) as u8,
-                (a * 255.0) as u8,
+                quantize_channel(c[0], dith),
+                quantize_channel(c[1], dith),
+                quantize_channel(c[2], dith),
+                (a * 255.0).round().clamp(0.0, 255.0) as u8,
             );
 
-            let segments = 32;
-            let mut ring_pts: Vec<Pos2> = Vec::new();
-            for j in 0..=segments {
-                let angle = (j as f32 / segments as f32) * std::f32::consts::TAU;
-                ring_pts.push(Pos2::new(
-                    cx + outer_r * angle.cos(),
-                    cy + outer_r * angle.sin(),
+            // Shape-clipped band: no disc overdraw outside the silhouette.
+            let mut piece = clip_poly_to_ellipse_band(&screen_pts, fx, fy, rx, ry, t0, t1);
+            if piece.len() < 3
+                && t0 == 0.0
+                && pos_in_polygon(fx, fy, &screen_pts)
+            {
+                // Innermost band around an interior focal point touches no
+                // edge; without this the centre would stay transparent.
+                // No band crossings were found, so the disc lies fully
+                // inside the (simply-connected) silhouette.
+                piece = ellipse_disc_poly(fx, fy, rx, ry, t1);
+            }
+            if piece.len() >= 3 {
+                painter.add(egui::epaint::PathShape::convex_polygon(
+                    piece,
+                    ring_color,
+                    Stroke::NONE,
                 ));
             }
-            for j in (0..=segments).rev() {
-                let angle = (j as f32 / segments as f32) * std::f32::consts::TAU;
-                ring_pts.push(Pos2::new(
-                    cx + inner_r * angle.cos(),
-                    cy + inner_r * angle.sin(),
-                ));
-            }
-
-            painter.add(egui::epaint::PathShape::convex_polygon(
-                ring_pts,
-                ring_color,
-                Stroke::NONE,
-            ));
         }
 
         let stroke_info = obj.stroke.as_ref().map(|s| {
@@ -597,6 +661,112 @@ pub fn sample_gradient_stops(stops: &[crate::core::path::GradientStop], t: f32) 
         .unwrap_or([0.0, 0.0, 0.0, 1.0])
 }
 
+#[cfg(test)]
+mod gradient_clip_tests {
+    use super::*;
+    use egui::Pos2;
+
+    fn poly_area(poly: &[Pos2]) -> f32 {
+        if poly.len() < 3 {
+            return 0.0;
+        }
+        let mut a = 0.0;
+        for i in 0..poly.len() {
+            let p = poly[i];
+            let q = poly[(i + 1) % poly.len()];
+            a += p.x * q.y - q.x * p.y;
+        }
+        (a * 0.5).abs()
+    }
+
+    fn square() -> Vec<Pos2> {
+        vec![
+            Pos2::new(0.0, 0.0),
+            Pos2::new(10.0, 0.0),
+            Pos2::new(10.0, 10.0),
+            Pos2::new(0.0, 10.0),
+        ]
+    }
+
+    #[test]
+    fn test_s_band_horizontal_split() {
+        let sq = square();
+        let left = clip_polygon_to_s_band(&sq, 0.0, 0.0, 1.0, 0.0, 0.0, 5.0);
+        let right = clip_polygon_to_s_band(&sq, 0.0, 0.0, 1.0, 0.0, 5.0, 10.0);
+        assert!((poly_area(&left) - 50.0).abs() < 1.0, "left half");
+        assert!((poly_area(&right) - 50.0).abs() < 1.0, "right half");
+    }
+
+    #[test]
+    fn test_s_band_diagonal_preserves_area() {
+        let sq = square();
+        let inv = std::f32::consts::FRAC_1_SQRT_2;
+        let mut total = 0.0;
+        let n = 8;
+        for i in 0..n {
+            let piece = clip_polygon_to_s_band(
+                &sq,
+                0.0,
+                0.0,
+                inv,
+                inv,
+                i as f32 * 20.0 / n as f32,
+                (i + 1) as f32 * 20.0 / n as f32,
+            );
+            total += poly_area(&piece);
+        }
+        // Diagonal span of a 10x10 square is ~14.14; bands cover it fully.
+        assert!((total - 100.0).abs() < 2.0, "total {total}");
+    }
+
+    #[test]
+    fn test_ellipse_band_full_range_keeps_shape() {
+        let sq = square();
+        let full = clip_poly_to_ellipse_band(&sq, 5.0, 5.0, 5.0, 5.0, 0.0, 10.0);
+        assert!(poly_area(&full) > 90.0, "full band keeps silhouette");
+        // A small central band touches no edge of the square: correctly
+        // empty from edge-walking, with the focal point inside the shape —
+        // exactly the condition that triggers the disc fallback.
+        let core = clip_poly_to_ellipse_band(&sq, 5.0, 5.0, 5.0, 5.0, 0.0, 0.5);
+        assert!(core.len() < 3, "interior band has no edge piece");
+        assert!(pos_in_polygon(5.0, 5.0, &sq));
+        // A mid band crossing edges yields a real piece inside the bbox.
+        let mid = clip_poly_to_ellipse_band(&sq, 5.0, 5.0, 5.0, 5.0, 0.9, 1.1);
+        assert!(poly_area(&mid) > 1.0, "edge band keeps a piece");
+    }
+
+    #[test]
+    fn test_ellipse_band_stays_inside_silhouette() {
+        // Star-ish concave polygon: clipped pieces must not leak outside.
+        let poly = vec![
+            Pos2::new(0.0, 0.0),
+            Pos2::new(10.0, 0.0),
+            Pos2::new(10.0, 10.0),
+            Pos2::new(5.0, 4.0),
+            Pos2::new(0.0, 10.0),
+        ];
+        for i in 0..8 {
+            let piece = clip_poly_to_ellipse_band(
+                &poly, 5.0, 5.0, 6.0, 6.0, i as f32 * 0.25, (i + 1) as f32 * 0.25,
+            );
+            for p in &piece {
+                // Inside bbox (silhouette test at vertex level).
+                assert!(p.x >= -0.01 && p.x <= 10.01 && p.y >= -0.01 && p.y <= 10.01);
+            }
+        }
+    }
+
+    #[test]
+    fn test_band_dither_bounded_and_stable() {
+        for k in [0, 1, 7, 96, 1000] {
+            let d = band_dither(k);
+            assert!(d >= -1.0 && d <= 1.0);
+            assert_eq!(d, band_dither(k));
+        }
+        assert_ne!(band_dither(3), band_dither(4));
+    }
+}
+
 fn fill_type_color(fill: &FillStyle, opacity: f32) -> Option<Color32> {
     let c = match &fill.fill_type {
         FillType::Solid(color) => *color,
@@ -614,46 +784,246 @@ fn fill_type_color(fill: &FillStyle, opacity: f32) -> Option<Color32> {
     ))
 }
 
-fn clip_polygon_to_y_band(poly: &[Pos2], y_top: f32, y_bot: f32) -> Vec<Pos2> {
+/// Deterministic ±1 LSB dither (in 0..255 units) keyed by band index.
+/// Breaks up Mach-band steps without per-frame shimmer from RNG state.
+fn band_dither(key: u32) -> f32 {
+    let h = key
+        .wrapping_mul(2654435761)
+        .wrapping_add(40503)
+        .wrapping_mul(2246822519);
+    ((h >> 9) & 255) as f32 / 255.0 * 2.0 - 1.0
+}
+
+fn quantize_channel(v: f32, dither: f32) -> u8 {
+    (v * 255.0 + dither).round().clamp(0.0, 255.0) as u8
+}
+
+/// Clip a polygon to the slab `s_top <= s(p) <= s_bot` where
+/// `s(p) = (p - S) . u`. Used for gradient bands along an arbitrary
+/// on-screen direction `(ux, uy)` through origin `(sx0, sy0)`.
+fn clip_polygon_to_s_band(
+    poly: &[Pos2],
+    sx0: f32,
+    sy0: f32,
+    ux: f32,
+    uy: f32,
+    s_top: f32,
+    s_bot: f32,
+) -> Vec<Pos2> {
     if poly.len() < 3 {
         return poly.to_vec();
     }
+    let s_of = |p: Pos2| (p.x - sx0) * ux + (p.y - sy0) * uy;
     let mut result = Vec::new();
     let n = poly.len();
     for i in 0..n {
         let curr = poly[i];
         let next = poly[(i + 1) % n];
-        let curr_in = curr.y >= y_top && curr.y <= y_bot;
-        let next_in = next.y >= y_top && next.y <= y_bot;
+        let sc = s_of(curr);
+        let sn = s_of(next);
+        let curr_in = sc >= s_top && sc <= s_bot;
+        let next_in = sn >= s_top && sn <= s_bot;
 
         if curr_in && next_in {
             result.push(curr);
         } else if curr_in && !next_in {
             result.push(curr);
-            if (next.y - curr.y).abs() > f32::EPSILON {
-                let t = if next.y > curr.y {
-                    (y_bot - curr.y) / (next.y - curr.y)
-                } else {
-                    (y_top - curr.y) / (next.y - curr.y)
-                };
-                let t = t.clamp(0.0, 1.0);
+            if (sn - sc).abs() > f32::EPSILON {
+                let bound = if sn > sc { s_bot } else { s_top };
+                let t = ((bound - sc) / (sn - sc)).clamp(0.0, 1.0);
                 result.push(Pos2::new(
                     curr.x + t * (next.x - curr.x),
                     curr.y + t * (next.y - curr.y),
                 ));
             }
-        } else if !curr_in && next_in && (next.y - curr.y).abs() > f32::EPSILON {
-            let t = if next.y > curr.y {
-                (y_top - curr.y) / (next.y - curr.y)
-            } else {
-                (y_bot - curr.y) / (next.y - curr.y)
-            };
-            let t = t.clamp(0.0, 1.0);
+        } else if !curr_in && next_in && (sn - sc).abs() > f32::EPSILON {
+            let bound = if sn > sc { s_top } else { s_bot };
+            let t = ((bound - sc) / (sn - sc)).clamp(0.0, 1.0);
             result.push(Pos2::new(
                 curr.x + t * (next.x - curr.x),
                 curr.y + t * (next.y - curr.y),
             ));
+        } else if (sn - sc).abs() > f32::EPSILON {
+            // Both outside: the edge may still cut straight through the
+            // slab (no vertex inside). Collect boundary crossings and keep
+            // consecutive pairs whose midpoint lies in the slab.
+            let mut xs: Vec<(f32, Pos2)> = Vec::new();
+            for bound in [s_top, s_bot] {
+                if (sc < bound && sn > bound) || (sc > bound && sn < bound) {
+                    let t = ((bound - sc) / (sn - sc)).clamp(0.0, 1.0);
+                    xs.push((
+                        t,
+                        Pos2::new(
+                            curr.x + t * (next.x - curr.x),
+                            curr.y + t * (next.y - curr.y),
+                        ),
+                    ));
+                }
+            }
+            xs.sort_by(|a, b| a.0.total_cmp(&b.0));
+            let mut k = 0;
+            while k + 1 < xs.len() {
+                let mid_t = (xs[k].0 + xs[k + 1].0) / 2.0;
+                let mid_p = Pos2::new(
+                    curr.x + mid_t * (next.x - curr.x),
+                    curr.y + mid_t * (next.y - curr.y),
+                );
+                let sm = s_of(mid_p);
+                if sm >= s_top && sm <= s_bot {
+                    result.push(xs[k].1);
+                    result.push(xs[k + 1].1);
+                }
+                k += 2;
+            }
         }
     }
     result
+}
+
+/// Ray-casting point-in-polygon for screen-space points.
+fn pos_in_polygon(x: f32, y: f32, poly: &[Pos2]) -> bool {
+    if poly.len() < 3 {
+        return false;
+    }
+    let mut inside = false;
+    let n = poly.len();
+    for i in 0..n {
+        let a = poly[i];
+        let b = poly[(i + 1) % n];
+        if (a.y > y) != (b.y > y) {
+            let xin = a.x + (y - a.y) * (b.x - a.x) / (b.y - a.y);
+            if x < xin {
+                inside = !inside;
+            }
+        }
+    }
+    inside
+}
+
+/// Ellipse disc polygon (convex) at normalized radius `t`.
+fn ellipse_disc_poly(cx: f32, cy: f32, rx: f32, ry: f32, t: f32) -> Vec<Pos2> {
+    let n = 48;
+    (0..n)
+        .map(|j| {
+            let a = (j as f32 / n as f32) * std::f32::consts::TAU;
+            Pos2::new(cx + t * rx * a.cos(), cy + t * ry * a.sin())
+        })
+        .collect()
+}
+
+/// Normalized elliptical distance of `p` from center, in units of the
+/// gradient radius (1.0 == on the gradient circle).
+fn ellipse_norm_dist(px: f32, py: f32, cx: f32, cy: f32, rx: f32, ry: f32) -> f32 {
+    (((px - cx) / rx).powi(2) + ((py - cy) / ry).powi(2)).sqrt()
+}
+
+/// Edge parameters `s in [0, 1]` where segment A->B crosses the ellipse of
+/// normalized radius `r` around center. Solves the quadratic in `s`.
+fn edge_ellipse_crossings(
+    ax: f32,
+    ay: f32,
+    bx: f32,
+    by: f32,
+    cx: f32,
+    cy: f32,
+    rx: f32,
+    ry: f32,
+    r: f32,
+) -> Vec<f32> {
+    let dx = (bx - ax) / rx;
+    let dy = (by - ay) / ry;
+    let ex = (ax - cx) / rx;
+    let ey = (ay - cy) / ry;
+    let a = dx * dx + dy * dy;
+    let b = 2.0 * (ex * dx + ey * dy);
+    let c = ex * ex + ey * ey - r * r;
+    if a.abs() < 1e-9 {
+        return Vec::new();
+    }
+    let disc = b * b - 4.0 * a * c;
+    if disc < 0.0 {
+        return Vec::new();
+    }
+    let sq = disc.sqrt();
+    [(-b - sq) / (2.0 * a), (-b + sq) / (2.0 * a)]
+        .into_iter()
+        .filter(|s| *s >= 0.0 && *s <= 1.0)
+        .collect()
+}
+
+/// Clip a polygon to the elliptical annulus `t0 <= t(p) <= t1`, where `t` is
+/// the normalized elliptical distance from center. The result stays inside
+/// the shape silhouette (unlike disc-overdraw), honouring center, radii and
+/// the focal point the rings are centred on.
+fn clip_poly_to_ellipse_band(
+    poly: &[Pos2],
+    cx: f32,
+    cy: f32,
+    rx: f32,
+    ry: f32,
+    t0: f32,
+    t1: f32,
+) -> Vec<Pos2> {
+    const EPS: f32 = 1e-4;
+    if poly.len() < 3 {
+        return Vec::new();
+    }
+    let t_of = |p: Pos2| ellipse_norm_dist(p.x, p.y, cx, cy, rx, ry);
+    let lerp = |a: Pos2, b: Pos2, s: f32| {
+        Pos2::new(a.x + s * (b.x - a.x), a.y + s * (b.y - a.y))
+    };
+    let mut out = Vec::new();
+    let n = poly.len();
+    for i in 0..n {
+        let curr = poly[i];
+        let next = poly[(i + 1) % n];
+        let tc = t_of(curr);
+        let tn = t_of(next);
+        let cin = tc >= t0 - EPS && tc <= t1 + EPS;
+        let nin = tn >= t0 - EPS && tn <= t1 + EPS;
+        if cin && nin {
+            out.push(curr);
+        } else if cin && !nin {
+            out.push(curr);
+            // Exiting: cross whichever bound lies ahead.
+            let target = if tn > tc { t1 } else { t0 };
+            let mut xs = edge_ellipse_crossings(
+                curr.x, curr.y, next.x, next.y, cx, cy, rx, ry, target,
+            );
+            xs.sort_by(|a, b| a.total_cmp(b));
+            if let Some(&s) = xs.first() {
+                out.push(lerp(curr, next, s));
+            }
+        } else if !cin && nin {
+            let target = if tn > tc { t0 } else { t1 };
+            let mut xs = edge_ellipse_crossings(
+                curr.x, curr.y, next.x, next.y, cx, cy, rx, ry, target,
+            );
+            xs.sort_by(|a, b| a.total_cmp(b));
+            if let Some(&s) = xs.last() {
+                out.push(lerp(curr, next, s));
+            }
+        } else {
+            // Both outside: the edge may still cut through the band.
+            let mut xs = edge_ellipse_crossings(
+                curr.x, curr.y, next.x, next.y, cx, cy, rx, ry, t0,
+            );
+            xs.extend(edge_ellipse_crossings(
+                curr.x, curr.y, next.x, next.y, cx, cy, rx, ry, t1,
+            ));
+            xs.sort_by(|a, b| a.total_cmp(b));
+            // Consecutive crossing pairs with an inside midpoint belong.
+            let mut k = 0;
+            while k + 1 < xs.len() {
+                let mid = (xs[k] + xs[k + 1]) / 2.0;
+                let tm = t_of(lerp(curr, next, mid));
+                if tm >= t0 - EPS && tm <= t1 + EPS {
+                    out.push(lerp(curr, next, xs[k]));
+                    out.push(lerp(curr, next, xs[k + 1]));
+                }
+                k += 2;
+            }
+        }
+    }
+    out
 }
