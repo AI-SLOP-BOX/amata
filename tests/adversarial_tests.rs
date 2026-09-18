@@ -639,7 +639,7 @@ fn test_adversarial_dirty_state_rigor() {
 
     // E. Undo back to saved state -> MUST BE CLEAN!
     let undid = undo_manager.undo(&mut doc);
-    assert_eq!(undid, Some("Edit 2"));
+    assert_eq!(undid.as_deref(), Some("Edit 2"));
     assert!(
         !undo_manager.is_dirty(),
         "Undoing back to the save-point must make the document clean!"
@@ -647,7 +647,7 @@ fn test_adversarial_dirty_state_rigor() {
 
     // F. Redo away from saved state -> MUST BE DIRTY AGAIN!
     let redid = undo_manager.redo(&mut doc);
-    assert_eq!(redid, Some("Edit 2"));
+    assert_eq!(redid.as_deref(), Some("Edit 2"));
     assert!(
         undo_manager.is_dirty(),
         "Redoing back away from saved point must make the document dirty!"
@@ -659,7 +659,7 @@ fn test_adversarial_dirty_state_rigor() {
 
     // H. Undo past saved state -> MUST BE DIRTY (document in memory now differs from saved disk state)!
     let undid_past = undo_manager.undo(&mut doc);
-    assert_eq!(undid_past, Some("Edit 1"));
+    assert_eq!(undid_past.as_deref(), Some("Edit 1"));
     assert!(
         undo_manager.is_dirty(),
         "Undoing prior to saved state makes document differ from disk, so must be dirty!"

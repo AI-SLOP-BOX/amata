@@ -13,7 +13,7 @@ pub fn generate_3d_revolve_obj(
     }
 
     let n_pts = poly.len();
-    let n_segs = segments.max(4);
+    let n_segs = segments.clamp(4, 4096);
     let total_angle = angle_deg.to_radians().clamp(0.1, std::f64::consts::TAU);
 
     let mut obj_str = String::new();

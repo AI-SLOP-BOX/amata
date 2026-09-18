@@ -35,7 +35,26 @@ pub fn save_any_document_scaled(
         .to_lowercase();
     match ext.as_str() {
         "svg" => {
-            let svg = crate::io::svg::export_svg(doc);
+            // Raster formats consume `scale` directly; for SVG the document
+            // itself must be scaled or the flag would be silently ignored.
+            let svg = if (scale - 1.0).abs() > f32::EPSILON
+                && scale.is_finite()
+                && scale > 0.0
+            {
+                let mut scaled = doc.clone();
+                let s = scale.clamp(0.1, 16.0) as f64;
+                scaled.width *= s;
+                scaled.height *= s;
+                for (_, obj) in scaled.all_objects_mut() {
+                    obj.transform.x *= s;
+                    obj.transform.y *= s;
+                    obj.transform.scale_x *= s;
+                    obj.transform.scale_y *= s;
+                }
+                crate::io::svg::export_svg(&scaled)
+            } else {
+                crate::io::svg::export_svg(doc)
+            };
             std::fs::write(path, svg)?;
             Ok(())
         }

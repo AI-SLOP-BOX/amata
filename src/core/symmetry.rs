@@ -9,7 +9,9 @@ pub fn create_radial_symmetry(
     folds: usize,
     mirror: bool,
 ) -> Vec<Object> {
-    let folds = folds.max(2);
+    // Upper bound: each fold clones + transforms the whole motif, and the
+    // capacity multiplication below would overflow for absurd inputs.
+    let folds = folds.clamp(2, 720);
     let angle_step = TAU / folds as f64;
     let mut clones = Vec::with_capacity(folds * if mirror { 2 } else { 1 });
 

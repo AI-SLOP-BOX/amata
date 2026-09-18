@@ -1,6 +1,134 @@
-use crate::core::document::Document;
-use crate::core::path::PathElement;
+use crate::core::document::{Document, Object, ObjectType};
+use crate::core::path::{FillStyle, PathData, PathElement};
 use std::fmt::Write;
+
+fn affine_mul(m1: &[f64; 6], m2: &[f64; 6]) -> [f64; 6] {
+    [
+        m1[0] * m2[0] + m1[2] * m2[1],
+        m1[1] * m2[0] + m1[3] * m2[1],
+        m1[0] * m2[2] + m1[2] * m2[3],
+        m1[1] * m2[2] + m1[3] * m2[3],
+        m1[0] * m2[4] + m1[2] * m2[5] + m1[4],
+        m1[1] * m2[4] + m1[3] * m2[5] + m1[5],
+    ]
+}
+
+fn emit_filled_path(stream_content: &mut String, path: &PathData) {
+    if path.elements.is_empty() {
+        return;
+    }
+
+    let _ = writeln!(stream_content, "q");
+
+    let has_fill = if let Some(fill) = &path.fill {
+        let [r, g, b, _] = fill.color;
+        let _ = writeln!(stream_content, "{:.3} {:.3} {:.3} rg", r, g, b);
+        true
+    } else {
+        false
+    };
+
+    let has_stroke = if let Some(stroke) = &path.stroke {
+        let [r, g, b, _] = stroke.color;
+        let _ = writeln!(stream_content, "{:.3} {:.3} {:.3} RG", r, g, b);
+        let _ = writeln!(stream_content, "{:.2} w", stroke.width);
+        true
+    } else {
+        false
+    };
+
+    for elem in &path.elements {
+        match elem {
+            PathElement::MoveTo(p) => {
+                let _ = writeln!(stream_content, "{:.2} {:.2} m", p.x, p.y);
+            }
+            PathElement::LineTo(p) => {
+                let _ = writeln!(stream_content, "{:.2} {:.2} l", p.x, p.y);
+            }
+            PathElement::CurveTo(seg) => {
+                let _ = writeln!(
+                    stream_content,
+                    "{:.2} {:.2} {:.2} {:.2} {:.2} {:.2} c",
+                    seg.control1.x,
+                    seg.control1.y,
+                    seg.control2.x,
+                    seg.control2.y,
+                    seg.end.x,
+                    seg.end.y
+                );
+            }
+            PathElement::ClosePath => {
+                let _ = writeln!(stream_content, "h");
+            }
+        }
+    }
+
+    if path.closed {
+        let _ = writeln!(stream_content, "h");
+    }
+
+    match (has_fill, has_stroke) {
+        (true, true) => {
+            let _ = writeln!(stream_content, "B");
+        }
+        (true, false) => {
+            let _ = writeln!(stream_content, "f");
+        }
+        (false, true) => {
+            let _ = writeln!(stream_content, "S");
+        }
+        (false, false) => {
+            let _ = writeln!(stream_content, "n");
+        }
+    }
+
+    let _ = writeln!(stream_content, "Q");
+}
+
+fn render_obj_pdf(obj: &Object, parent: &[f64; 6], stream_content: &mut String) {
+    if !obj.visible {
+        return;
+    }
+    let world = affine_mul(parent, &obj.transform.matrix());
+
+    match &obj.object_type {
+        // Recurse so nested children keep their own fills, strokes and text.
+        // (The previous flattening via to_path_data() painted whole groups
+        // with the default fill and reduced text to its bounding box.)
+        ObjectType::Group(children) | ObjectType::ClippingMask { children } => {
+            for child in children {
+                render_obj_pdf(child, &world, stream_content);
+            }
+        }
+        ObjectType::Text { text, style, .. } => {
+            let mut path =
+                crate::core::text_path::text_to_outline_path_with_style(text, style);
+            path.transform(&world);
+            if path.fill.is_none() {
+                path.fill = obj
+                    .fill
+                    .clone()
+                    .or_else(|| Some(FillStyle::solid([0.0, 0.0, 0.0, 1.0])));
+            }
+            // Outlines carry no stroke; keep an explicit text stroke if set.
+            if path.stroke.is_none() {
+                path.stroke = obj.stroke.clone();
+            }
+            emit_filled_path(stream_content, &path);
+        }
+        _ => {
+            let mut path = obj.to_path_data();
+            path.transform(&world);
+            if path.fill.is_none() {
+                path.fill = obj.fill.clone();
+            }
+            if path.stroke.is_none() {
+                path.stroke = obj.stroke.clone();
+            }
+            emit_filled_path(stream_content, &path);
+        }
+    }
+}
 
 /// Export Document into pure standards-compliant Vector PDF format
 pub fn export_pdf(doc: &Document) -> Vec<u8> {
@@ -19,82 +147,7 @@ pub fn export_pdf(doc: &Document) -> Vec<u8> {
         }
 
         for obj in &layer.objects {
-            if !obj.visible {
-                continue;
-            }
-
-            let mut path = obj.to_path_data();
-            path.transform(&obj.transform.matrix());
-
-            if path.elements.is_empty() {
-                continue;
-            }
-
-            let _ = writeln!(stream_content, "q");
-
-            let has_fill = if let Some(fill) = &path.fill {
-                let [r, g, b, _] = fill.color;
-                let _ = writeln!(stream_content, "{:.3} {:.3} {:.3} rg", r, g, b);
-                true
-            } else {
-                false
-            };
-
-            let has_stroke = if let Some(stroke) = &path.stroke {
-                let [r, g, b, _] = stroke.color;
-                let _ = writeln!(stream_content, "{:.3} {:.3} {:.3} RG", r, g, b);
-                let _ = writeln!(stream_content, "{:.2} w", stroke.width);
-                true
-            } else {
-                false
-            };
-
-            for elem in &path.elements {
-                match elem {
-                    PathElement::MoveTo(p) => {
-                        let _ = writeln!(stream_content, "{:.2} {:.2} m", p.x, p.y);
-                    }
-                    PathElement::LineTo(p) => {
-                        let _ = writeln!(stream_content, "{:.2} {:.2} l", p.x, p.y);
-                    }
-                    PathElement::CurveTo(seg) => {
-                        let _ = writeln!(
-                            stream_content,
-                            "{:.2} {:.2} {:.2} {:.2} {:.2} {:.2} c",
-                            seg.control1.x,
-                            seg.control1.y,
-                            seg.control2.x,
-                            seg.control2.y,
-                            seg.end.x,
-                            seg.end.y
-                        );
-                    }
-                    PathElement::ClosePath => {
-                        let _ = writeln!(stream_content, "h");
-                    }
-                }
-            }
-
-            if path.closed {
-                let _ = writeln!(stream_content, "h");
-            }
-
-            match (has_fill, has_stroke) {
-                (true, true) => {
-                    let _ = writeln!(stream_content, "B");
-                }
-                (true, false) => {
-                    let _ = writeln!(stream_content, "f");
-                }
-                (false, true) => {
-                    let _ = writeln!(stream_content, "S");
-                }
-                (false, false) => {
-                    let _ = writeln!(stream_content, "n");
-                }
-            }
-
-            let _ = writeln!(stream_content, "Q");
+            render_obj_pdf(obj, &[1.0, 0.0, 0.0, 1.0, 0.0, 0.0], &mut stream_content);
         }
     }
 

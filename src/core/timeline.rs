@@ -165,17 +165,14 @@ impl Timeline {
     pub fn apply_to_document(&self, doc: &mut Document) {
         for track in &self.tracks {
             if let Some(val) = track.eval_at(self.current_frame) {
-                for (_, obj) in doc.all_objects_mut() {
-                    if obj.id == track.object_id {
-                        match track.property {
-                            AnimProperty::PositionX => obj.transform.x = val,
-                            AnimProperty::PositionY => obj.transform.y = val,
-                            AnimProperty::Rotation => obj.transform.rotation = val.to_radians(),
-                            AnimProperty::ScaleX => obj.transform.scale_x = val,
-                            AnimProperty::ScaleY => obj.transform.scale_y = val,
-                            AnimProperty::Opacity => obj.opacity = val as f32,
-                        }
-                        break;
+                if let Some(obj) = doc.find_object_mut(&track.object_id) {
+                    match track.property {
+                        AnimProperty::PositionX => obj.transform.x = val,
+                        AnimProperty::PositionY => obj.transform.y = val,
+                        AnimProperty::Rotation => obj.transform.rotation = val.to_radians(),
+                        AnimProperty::ScaleX => obj.transform.scale_x = val,
+                        AnimProperty::ScaleY => obj.transform.scale_y = val,
+                        AnimProperty::Opacity => obj.opacity = val as f32,
                     }
                 }
             }

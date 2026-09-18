@@ -32,6 +32,8 @@ pub fn generate_halftone_from_path(
 
     let mut y = min_y + spacing * 0.5;
     let mut row = 0;
+    // Dot count scales with canvas area; budget it so huge documents cannot OOM.
+    let mut dot_budget: usize = 200_000;
 
     while y <= max_y {
         let x_offset = match pattern {
@@ -51,6 +53,10 @@ pub fn generate_halftone_from_path(
                 let dot_r = r_max * factor;
 
                 if dot_r > 0.5 {
+                    if dot_budget == 0 {
+                        break;
+                    }
+                    dot_budget -= 1;
                     match pattern {
                         HalftonePattern::ScanlineMatrix => {
                             let mut line = PathData::new();

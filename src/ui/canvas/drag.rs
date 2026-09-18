@@ -158,7 +158,21 @@ impl CanvasWidget {
                 DragMode::MoveObject => {
                     let moved = self.select_state.end_drag(state);
                     if alt_down {
-                        // Alt+Drag duplicates selected objects!
+                        // Alt+Drag duplicates: the live drag displaced the
+                        // originals without recording undo, so restore them
+                        // first (net-zero change needs no command) and place
+                        // the duplicates at the dragged offset.
+                        for (id, old_x, old_y, _, _) in &moved {
+                            for (_, obj) in state.document.all_objects_mut() {
+                                if &obj.id == id {
+                                    obj.transform.x = *old_x;
+                                    obj.transform.y = *old_y;
+                                    break;
+                                }
+                            }
+                        }
+                        // Alt+Drag duplicates selected objects at the dragged
+                        // offset; originals were restored above.
                         let mut duplicated = Vec::new();
                         for id in &state.selected_ids {
                             if let Some((_, obj)) =
@@ -167,6 +181,12 @@ impl CanvasWidget {
                                 let mut dup = obj.clone();
                                 dup.id = uuid::Uuid::new_v4().to_string();
                                 dup.name = format!("{} Copy", obj.name);
+                                if let Some((_, _, _, new_x, new_y)) =
+                                    moved.iter().find(|(mid, _, _, _, _)| mid == id)
+                                {
+                                    dup.transform.x = *new_x;
+                                    dup.transform.y = *new_y;
+                                }
                                 duplicated.push(dup);
                             }
                         }
@@ -259,57 +279,76 @@ impl CanvasWidget {
                 }
                 DragMode::EraserDrag => {
                     if drag.pencil_points.len() >= 2 {
-                        let min_x = drag
-                            .pencil_points
-                            .iter()
-                            .map(|p| p.x)
-                            .fold(f64::INFINITY, f64::min);
-                        let max_x = drag
-                            .pencil_points
-                            .iter()
-                            .map(|p| p.x)
-                            .fold(f64::NEG_INFINITY, f64::max);
-                        let min_y = drag
-                            .pencil_points
-                            .iter()
-                            .map(|p| p.y)
-                            .fold(f64::INFINITY, f64::min);
-                        let max_y = drag
-                            .pencil_points
-                            .iter()
-                            .map(|p| p.y)
-                            .fold(f64::NEG_INFINITY, f64::max);
-
-                        let eraser_margin = 10.0;
-                        let eraser_rect_min = (min_x - eraser_margin, min_y - eraser_margin);
-                        let eraser_rect_max = (max_x + eraser_margin, max_y + eraser_margin);
-
+                        // Delete only objects the eraser stroke actually touches:
+                        // an object is hit when any eraser point comes within
+                        // range of its world-space outline. The previous
+                        // whole-drag bounding-box test deleted everything in
+                        // the swept band even without contact.
+                        let eraser_radius = 10.0;
                         let mut ids_to_remove = Vec::new();
                         for (_, obj) in state.document.all_objects() {
                             if !obj.visible || obj.locked {
                                 continue;
                             }
-                            if let Some((bb_min, bb_max)) = obj.bounding_box() {
-                                let intersects = bb_max.x >= eraser_rect_min.0
-                                    && bb_min.x <= eraser_rect_max.0
-                                    && bb_max.y >= eraser_rect_min.1
-                                    && bb_min.y <= eraser_rect_max.1;
-                                if intersects {
-                                    ids_to_remove.push(obj.id.clone());
+                            if ids_to_remove.iter().any(|hid: &String| hid == &obj.id) {
+                                continue;
+                            }
+                            // Cheap bbox pre-filter per eraser point.
+                            let poly = obj.to_world_polygon();
+                            if poly.is_empty() {
+                                continue;
+                            }
+                            let mut touched = false;
+                            'points: for ep in &drag.pencil_points {
+                                if poly.iter().any(|p| {
+                                    (p.x - ep.x).abs() <= eraser_radius
+                                        && (p.y - ep.y).abs() <= eraser_radius
+                                }) {
+                                    // Precise segment-distance check (closed).
+                                    for w in 0..poly.len() {
+                                        let p0 = poly[w];
+                                        let p1 = poly[(w + 1) % poly.len()];
+                                        let d =
+                                            crate::core::geometry::distance_to_segment(
+                                                crate::core::path::AnchorPoint::new(ep.x, ep.y),
+                                                p0,
+                                                p1,
+                                            );
+                                        if d <= eraser_radius {
+                                            touched = true;
+                                            break;
+                                        }
+                                    }
+                                    if touched {
+                                        break 'points;
+                                    }
                                 }
+                            }
+                            if touched {
+                                ids_to_remove.push(obj.id.clone());
                             }
                         }
                         for id in &ids_to_remove {
-                            let layer_idx = state
-                                .document
-                                .layers
-                                .iter()
-                                .position(|l| l.objects.iter().any(|o| &o.id == id))
-                                .unwrap_or(0);
-                            if let Some(obj) = state.document.remove_object(id) {
-                                let cmd = Box::new(crate::core::history::RemoveObjectCommand::new(
-                                    obj, layer_idx, 0,
-                                ));
+                            // Record the true layer/position so Undo restores
+                            // the original z-order instead of position 0.
+                            let mut found = None;
+                            for (l_idx, layer) in
+                                state.document.layers.iter().enumerate()
+                            {
+                                if let Some(pos) =
+                                    layer.objects.iter().position(|o| &o.id == id)
+                                {
+                                    found = Some((layer.objects[pos].clone(), l_idx, pos));
+                                    break;
+                                }
+                            }
+                            if let Some((obj, layer_idx, pos)) = found {
+                                state.document.remove_object(id);
+                                let cmd = Box::new(
+                                    crate::core::history::RemoveObjectCommand::new(
+                                        obj, layer_idx, pos,
+                                    ),
+                                );
                                 state.undo_manager.execute(cmd, &mut state.document);
                             }
                         }

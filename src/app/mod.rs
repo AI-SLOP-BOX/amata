@@ -57,7 +57,10 @@ fn is_project_file(path: &std::path::Path) -> bool {
 
 fn parse_watched_doc(path: &std::path::Path, content: &str) -> Option<crate::core::document::Document> {
     if is_project_file(path) {
-        serde_json::from_str(content).ok()
+        serde_json::from_str(content).ok().map(|mut doc| {
+            crate::core::document::Document::normalize(&mut doc);
+            doc
+        })
     } else {
         Some(crate::io::svg::parse_svg_document(content))
     }

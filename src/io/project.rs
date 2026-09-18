@@ -9,5 +9,7 @@ pub fn save_project(doc: &Document, path: &Path) -> Result<(), String> {
 
 pub fn load_project(path: &Path) -> Result<Document, String> {
     let data = fs::read_to_string(path).map_err(|e| e.to_string())?;
-    serde_json::from_str(&data).map_err(|e| e.to_string())
+    let mut doc: Document = serde_json::from_str(&data).map_err(|e| e.to_string())?;
+    doc.normalize();
+    Ok(doc)
 }

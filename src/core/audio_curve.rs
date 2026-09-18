@@ -20,10 +20,13 @@ pub fn generate_audio_waveform(
     height: f64,
     samples: usize,
 ) -> PathData {
-    let mut pts = Vec::with_capacity(samples);
+    // samples feeds with_capacity directly; harmonics multiplies per-sample
+    // cost. Bound both so CLI typos cannot OOM or hang the process.
+    let sample_count = samples.clamp(32, 200_000);
+    let harmonics = harmonics.min(1024);
+    let mut pts = Vec::with_capacity(sample_count);
     let cy = height * 0.5;
     let amp = height * 0.4;
-    let sample_count = samples.max(32);
 
     for i in 0..sample_count {
         let t = i as f64 / (sample_count - 1) as f64;

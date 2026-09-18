@@ -34,6 +34,7 @@ pub fn generate_particle_trail(
         return Vec::new();
     }
 
+    let count = count.min(100_000);
     let mut particles = Vec::with_capacity(count);
 
     for i in 0..count {

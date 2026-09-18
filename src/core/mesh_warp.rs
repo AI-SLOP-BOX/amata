@@ -25,8 +25,8 @@ pub fn apply_lattice_warp(
     let width = (max_pt.x - min_pt.x).max(1.0);
     let height = (max_pt.y - min_pt.y).max(1.0);
 
-    let cols = grid_cols.max(2);
-    let rows = grid_rows.max(2);
+    let cols = grid_cols.clamp(2, 256);
+    let rows = grid_rows.clamp(2, 256);
 
     // Initialize regular lattice grid
     let mut lattice = Vec::with_capacity(rows);

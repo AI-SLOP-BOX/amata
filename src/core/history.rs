@@ -77,25 +77,25 @@ impl UndoManager {
         }
     }
 
-    pub fn undo(&mut self, doc: &mut Document) -> Option<&str> {
+    pub fn undo(&mut self, doc: &mut Document) -> Option<String> {
         if let Some(step) = self.undo_stack.pop() {
             let name = step.cmd.name().to_string();
             step.cmd.undo(doc);
             self.current_state_id = step.state_id_before;
             self.redo_stack.push(step);
-            Some(Box::leak(name.into_boxed_str()))
+            Some(name)
         } else {
             None
         }
     }
 
-    pub fn redo(&mut self, doc: &mut Document) -> Option<&str> {
+    pub fn redo(&mut self, doc: &mut Document) -> Option<String> {
         if let Some(step) = self.redo_stack.pop() {
             let name = step.cmd.name().to_string();
             step.cmd.execute(doc);
             self.current_state_id = step.state_id_after;
             self.undo_stack.push(step);
-            Some(Box::leak(name.into_boxed_str()))
+            Some(name)
         } else {
             None
         }
@@ -222,22 +222,16 @@ pub struct MoveObjectCommand {
 
 impl Command for MoveObjectCommand {
     fn execute(&self, doc: &mut Document) {
-        for obj in doc.all_objects_mut().map(|(_, o)| o) {
-            if obj.id == self.object_id {
-                obj.transform.x = self.new_x;
-                obj.transform.y = self.new_y;
-                break;
-            }
+        if let Some(obj) = doc.find_object_mut(&self.object_id) {
+            obj.transform.x = self.new_x;
+            obj.transform.y = self.new_y;
         }
     }
 
     fn undo(&self, doc: &mut Document) {
-        for obj in doc.all_objects_mut().map(|(_, o)| o) {
-            if obj.id == self.object_id {
-                obj.transform.x = self.old_x;
-                obj.transform.y = self.old_y;
-                break;
-            }
+        if let Some(obj) = doc.find_object_mut(&self.object_id) {
+            obj.transform.x = self.old_x;
+            obj.transform.y = self.old_y;
         }
     }
 
@@ -300,23 +294,17 @@ impl ModifyPathCommand {
 
 impl Command for ModifyPathCommand {
     fn execute(&self, doc: &mut Document) {
-        for (_, obj) in doc.all_objects_mut() {
-            if obj.id == self.object_id {
-                if let crate::core::document::ObjectType::Path(ref mut p) = obj.object_type {
-                    p.elements = self.new_elements.clone();
-                }
-                break;
+        if let Some(obj) = doc.find_object_mut(&self.object_id) {
+            if let crate::core::document::ObjectType::Path(ref mut p) = obj.object_type {
+                p.elements = self.new_elements.clone();
             }
         }
     }
 
     fn undo(&self, doc: &mut Document) {
-        for (_, obj) in doc.all_objects_mut() {
-            if obj.id == self.object_id {
-                if let crate::core::document::ObjectType::Path(ref mut p) = obj.object_type {
-                    p.elements = self.old_elements.clone();
-                }
-                break;
+        if let Some(obj) = doc.find_object_mut(&self.object_id) {
+            if let crate::core::document::ObjectType::Path(ref mut p) = obj.object_type {
+                p.elements = self.old_elements.clone();
             }
         }
     }
@@ -354,28 +342,22 @@ impl ModifyTextCommand {
 
 impl Command for ModifyTextCommand {
     fn execute(&self, doc: &mut Document) {
-        for (_, obj) in doc.all_objects_mut() {
-            if obj.id == self.object_id {
-                obj.object_type = crate::core::document::ObjectType::Text {
-                    text: self.new_text.clone(),
-                    font_size: self.new_style.font_size,
-                    style: self.new_style.clone(),
-                };
-                break;
-            }
+        if let Some(obj) = doc.find_object_mut(&self.object_id) {
+            obj.object_type = crate::core::document::ObjectType::Text {
+                text: self.new_text.clone(),
+                font_size: self.new_style.font_size,
+                style: self.new_style.clone(),
+            };
         }
     }
 
     fn undo(&self, doc: &mut Document) {
-        for (_, obj) in doc.all_objects_mut() {
-            if obj.id == self.object_id {
-                obj.object_type = crate::core::document::ObjectType::Text {
-                    text: self.old_text.clone(),
-                    font_size: self.old_style.font_size,
-                    style: self.old_style.clone(),
-                };
-                break;
-            }
+        if let Some(obj) = doc.find_object_mut(&self.object_id) {
+            obj.object_type = crate::core::document::ObjectType::Text {
+                text: self.old_text.clone(),
+                font_size: self.old_style.font_size,
+                style: self.old_style.clone(),
+            };
         }
     }
 

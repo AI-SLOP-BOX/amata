@@ -16,6 +16,14 @@ pub struct ScriptEngine {
 impl ScriptEngine {
     pub fn new() -> Self {
         let mut engine = Engine::new();
+        // Bound untrusted script execution: infinite loops / exponential
+        // expansion would otherwise hang the UI thread, and unbounded
+        // collections could exhaust memory.
+        engine.set_max_operations(500_000);
+        engine.set_max_call_levels(64);
+        engine.set_max_string_size(1_000_000);
+        engine.set_max_array_size(100_000);
+        engine.set_max_map_size(10_000);
 
         // Math & geometry generation functions
         engine.register_fn(
@@ -122,18 +130,23 @@ impl ScriptEngine {
 
         let mut result = ScriptResult::default();
 
-        // Canvas dimensions & name
+        // Canvas dimensions & name (validated: scripts must not poison the
+        // document with NaN/negative sizes)
         if let Some(w) = result_value
             .get("width")
             .and_then(|v| v.clone().try_cast::<f64>())
         {
-            document.width = w;
+            if w.is_finite() && w > 0.0 {
+                document.width = w.min(16384.0);
+            }
         }
         if let Some(h) = result_value
             .get("height")
             .and_then(|v| v.clone().try_cast::<f64>())
         {
-            document.height = h;
+            if h.is_finite() && h > 0.0 {
+                document.height = h.min(16384.0);
+            }
         }
         if let Some(name) = result_value
             .get("name")
@@ -188,6 +201,10 @@ impl ScriptEngine {
                 }
             }
         }
+
+        // Scripts may clear or shrink layers; restore invariants so later
+        // operations cannot panic on an empty layer list or stale index.
+        document.normalize();
 
         Ok(result)
     }

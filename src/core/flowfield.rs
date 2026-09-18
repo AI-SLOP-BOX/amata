@@ -17,6 +17,8 @@ pub fn generate_flowfield_streamlines(
     step_count: usize,
     step_length: f64,
 ) -> Vec<Object> {
+    let line_count = line_count.min(5000);
+    let step_count = step_count.min(2000);
     let mut objects = Vec::with_capacity(line_count);
     let cx = width * 0.5;
     let cy = height * 0.5;

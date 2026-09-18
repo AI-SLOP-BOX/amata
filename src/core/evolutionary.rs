@@ -7,7 +7,7 @@ pub fn evolve_vector_composition(
     polygon_count: usize,
     generations: usize,
 ) -> Vec<Object> {
-    let poly_count = polygon_count.max(5);
+    let poly_count = polygon_count.clamp(5, 5000);
     let mut objects = Vec::with_capacity(poly_count);
 
     let pseudo_rand =

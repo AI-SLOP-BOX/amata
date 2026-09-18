@@ -12,6 +12,13 @@ pub fn generate_voronoi_cells(
         return Vec::new();
     }
 
+    // Clipping is O(n^2); cap seeds so CLI typos cannot hang the process.
+    let seeds: &[AnchorPoint] = if seeds.len() > 2048 {
+        &seeds[..2048]
+    } else {
+        seeds
+    };
+
     let mut objects = Vec::with_capacity(seeds.len());
 
     let initial_box = vec![

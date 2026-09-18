@@ -17,8 +17,9 @@ pub fn generate_gradient_mesh(
     rows: usize,
     cols: usize,
 ) -> Vec<Object> {
-    let r_count = rows.max(2);
-    let c_count = cols.max(2);
+    // (r-1)*(c-1) feeds with_capacity; bound it against overflow/OOM.
+    let r_count = rows.clamp(2, 512);
+    let c_count = cols.clamp(2, 512);
     let mut objects = Vec::with_capacity((r_count - 1) * (c_count - 1));
 
     // Define corner colors based on preset

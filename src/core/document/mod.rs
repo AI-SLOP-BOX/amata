@@ -54,6 +54,24 @@ impl Default for Document {
 }
 
 impl Document {
+    /// Repair invariants that untrusted inputs (project JSON, scripts) may break:
+    /// at least one layer exists, the active index is in range, and canvas
+    /// dimensions are finite and positive.
+    pub fn normalize(&mut self) {
+        if self.layers.is_empty() {
+            self.layers.push(Layer::new("Layer 1"));
+        }
+        if self.active_layer_idx >= self.layers.len() {
+            self.active_layer_idx = self.layers.len() - 1;
+        }
+        if !self.width.is_finite() || self.width <= 0.0 {
+            self.width = 1920.0;
+        }
+        if !self.height.is_finite() || self.height <= 0.0 {
+            self.height = 1080.0;
+        }
+    }
+
     pub fn active_layer(&self) -> &Layer {
         &self.layers[self.active_layer_idx]
     }
@@ -84,10 +102,34 @@ impl Document {
         self.all_objects().find(|(_, o)| o.id == id)
     }
 
+    /// Deep lookup that also descends into Group / ClippingMask children.
+    /// Flat `all_objects` misses nested children, so id-addressed operations
+    /// (undo commands, timeline tracks) must use this.
+    pub fn find_object(&self, id: &str) -> Option<&Object> {
+        for layer in &self.layers {
+            if let Some(o) = find_in_objects(&layer.objects, id) {
+                return Some(o);
+            }
+        }
+        None
+    }
+
+    pub fn find_object_mut(&mut self, id: &str) -> Option<&mut Object> {
+        for layer in &mut self.layers {
+            if let Some(o) = find_in_objects_mut(&mut layer.objects, id) {
+                return Some(o);
+            }
+        }
+        None
+    }
+
     pub fn remove_object(&mut self, id: &str) -> Option<Object> {
         for layer in &mut self.layers {
             if let Some(pos) = layer.objects.iter().position(|o| o.id == id) {
                 return Some(layer.objects.remove(pos));
+            }
+            if let Some(o) = remove_from_objects(&mut layer.objects, id) {
+                return Some(o);
             }
         }
         None
@@ -206,6 +248,57 @@ impl Document {
             self.layers[to_layer].objects.push(obj);
         }
     }
+}
+
+fn find_in_objects<'a>(objs: &'a [Object], id: &str) -> Option<&'a Object> {
+    for o in objs {
+        if o.id == id {
+            return Some(o);
+        }
+        match &o.object_type {
+            ObjectType::Group(children) | ObjectType::ClippingMask { children } => {
+                if let Some(found) = find_in_objects(children, id) {
+                    return Some(found);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+fn find_in_objects_mut<'a>(objs: &'a mut [Object], id: &str) -> Option<&'a mut Object> {
+    for o in objs.iter_mut() {
+        if o.id == id {
+            return Some(o);
+        }
+        match &mut o.object_type {
+            ObjectType::Group(children) | ObjectType::ClippingMask { children } => {
+                if let Some(found) = find_in_objects_mut(children, id) {
+                    return Some(found);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+fn remove_from_objects(objs: &mut Vec<Object>, id: &str) -> Option<Object> {
+    for o in objs.iter_mut() {
+        match &mut o.object_type {
+            ObjectType::Group(children) | ObjectType::ClippingMask { children } => {
+                if let Some(pos) = children.iter().position(|c| c.id == id) {
+                    return Some(children.remove(pos));
+                }
+                if let Some(found) = remove_from_objects(children, id) {
+                    return Some(found);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
 }
 
 // ═══════════════════════════════════════════════════════════════════

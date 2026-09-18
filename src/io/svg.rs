@@ -960,6 +960,9 @@ fn tokenize_svg_tags(svg_text: &str) -> Vec<String> {
     let mut current_tag = String::new();
     let mut in_quote: Option<char> = None;
     let mut in_comment = false;
+    // Index of the currently open <text> element so nested markup content
+    // (<tspan>, <tref>, …) is accumulated into it instead of being dropped.
+    let mut open_text_idx: Option<usize> = None;
 
     let chars: Vec<char> = svg_text.chars().collect();
     let mut i = 0;
@@ -1010,6 +1013,16 @@ fn tokenize_svg_tags(svg_text: &str) -> Vec<String> {
             in_tag = false;
             current_tag.push(c);
             tags.push(current_tag.clone());
+            let pushed = tags.len() - 1;
+            let tag_head = tags[pushed]
+                .split(|ch: char| ch.is_whitespace() || ch == '>')
+                .next()
+                .unwrap_or("");
+            if tag_head == "<text" {
+                open_text_idx = Some(pushed);
+            } else if tag_head == "</text" {
+                open_text_idx = None;
+            }
             current_tag.clear();
             i += 1;
         } else if in_tag {
@@ -1020,8 +1033,13 @@ fn tokenize_svg_tags(svg_text: &str) -> Vec<String> {
             }
             i += 1;
         } else {
-            // Text content outside tags (for <text>...</text>)
-            if let Some(last) = tags.last_mut() {
+            // Text content outside tags (for <text>...</text>, including
+            // nested <tspan> content which belongs to the open <text>)
+            if let Some(idx) = open_text_idx {
+                if let Some(text_tag) = tags.get_mut(idx) {
+                    text_tag.push(c);
+                }
+            } else if let Some(last) = tags.last_mut() {
                 if last.starts_with("<text") && !last.contains("</text>") {
                     last.push(c);
                 }

@@ -13,7 +13,7 @@ impl FormulaCurves {
         growth: f64,
         samples: usize,
     ) -> PathData {
-        let samples = samples.max(32);
+        let samples = samples.clamp(32, 100_000);
         let max_theta = turns * TAU;
         let mut points = Vec::with_capacity(samples);
 
@@ -48,7 +48,7 @@ impl FormulaCurves {
         height: f64,
         samples: usize,
     ) -> PathData {
-        let samples = samples.max(64);
+        let samples = samples.clamp(64, 100_000);
         let half_w = width * 0.5;
         let half_h = height * 0.5;
         let mut points = Vec::with_capacity(samples);
@@ -81,7 +81,11 @@ impl FormulaCurves {
         cycles: usize,
         samples_per_cycle: usize,
     ) -> PathData {
-        let total_samples = cycles * samples_per_cycle.max(32);
+        // Guard the cycles*per-cycle multiplication against overflow/OOM.
+        let cycles = cycles.min(4096);
+        let total_samples = cycles
+            .saturating_mul(samples_per_cycle.clamp(32, 4096))
+            .clamp(32, 1_000_000);
         let max_t = cycles as f64 * TAU;
         let diff = r_outer - r_inner;
         let ratio = diff / r_inner.max(1e-4);
@@ -108,7 +112,7 @@ impl FormulaCurves {
 
     /// Rose / Rhodonea Flower Curve
     pub fn rose_curve(cx: f64, cy: f64, petals_k: f64, radius: f64, samples: usize) -> PathData {
-        let samples = samples.max(64);
+        let samples = samples.clamp(64, 100_000);
         let max_theta = if (petals_k - petals_k.round()).abs() < 1e-4 && (petals_k as i64) % 2 != 0
         {
             std::f64::consts::PI
