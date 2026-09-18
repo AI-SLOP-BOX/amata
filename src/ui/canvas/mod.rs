@@ -766,15 +766,26 @@ impl CanvasWidget {
                                 self.node_edit_state.selected_target = Some(target);
                                 self.node_edit_state.selected_object_id = Some(obj_id.clone());
 
-                                let initial_elements = if let Some((_, obj)) = state
+                                // Shape-to-path conversion is destructive:
+                                // snapshot first so one Undo restores the
+                                // original shape.
+                                let needs_convert = state
                                     .document
-                                    .all_objects_mut()
-                                    .find(|(_, o)| o.id == obj_id)
+                                    .find_object(&obj_id)
+                                    .map(|o| {
+                                        !matches!(
+                                            o.object_type,
+                                            crate::core::document::ObjectType::Path(_)
+                                        )
+                                    })
+                                    .unwrap_or(false);
+                                if needs_convert {
+                                    state.ensure_object_snapshot(&obj_id);
+                                }
+                                let initial_elements = if let Some(obj) =
+                                    state.document.find_object_mut(&obj_id)
                                 {
-                                    if !matches!(
-                                        obj.object_type,
-                                        crate::core::document::ObjectType::Path(_)
-                                    ) {
+                                    if needs_convert {
                                         let p = obj.to_path_data();
                                         obj.object_type =
                                             crate::core::document::ObjectType::Path(p);
@@ -789,6 +800,9 @@ impl CanvasWidget {
                                 } else {
                                     None
                                 };
+                                if needs_convert {
+                                    state.commit_object_edits("Convert to Path");
+                                }
 
                                 let mut d = DragState::new(DragMode::MoveNode(target), wx, wy);
                                 d.initial_elements = initial_elements;

@@ -585,17 +585,35 @@ impl IrasuApp {
                 }
             }
 
-            // Cut (Ctrl+X / Cmd+X)
+            // Cut (Ctrl+X / Cmd+X): one undo step restoring all parts.
             if (i.modifiers.ctrl || i.modifiers.mac_cmd)
                 && !i.modifiers.shift
                 && i.key_pressed(egui::Key::X)
             {
                 self.state.clipboard.clear();
                 let ids = self.state.selected_ids.clone();
+                let mut cmds: Vec<Box<dyn crate::core::history::Command>> = Vec::new();
                 for id in &ids {
-                    if let Some(obj) = self.state.document.remove_object(id) {
-                        self.state.clipboard.push(obj);
+                    if let Some(obj) = self.state.document.find_object(id).cloned() {
+                        self.state.clipboard.push(obj.clone());
+                        cmds.push(Box::new(
+                            crate::core::history::RemoveObjectCommand::located(
+                                obj,
+                                &self.state.document,
+                            ),
+                        )
+                            as Box<dyn crate::core::history::Command>);
                     }
+                }
+                if cmds.len() == 1 {
+                    let cmd = cmds.pop().unwrap();
+                    self.state.undo_manager.execute(cmd, &mut self.state.document);
+                } else if !cmds.is_empty() {
+                    let batch = Box::new(crate::core::history::BatchCommand::new(
+                        "Cut Objects",
+                        cmds,
+                    ));
+                    self.state.undo_manager.execute(batch, &mut self.state.document);
                 }
                 self.state.selected_ids.clear();
             }
@@ -612,12 +630,15 @@ impl IrasuApp {
                 }
             }
 
-            // Paste (Ctrl+V) & Paste in Place (Ctrl+Shift+V / Cmd+Shift+V)
+            // Paste (Ctrl+V) & Paste in Place (Ctrl+Shift+V / Cmd+Shift+V):
+            // one undo step no matter how many parts are pasted.
             if (i.modifiers.ctrl || i.modifiers.mac_cmd) && i.key_pressed(egui::Key::V) {
                 let in_place = i.modifiers.shift;
                 self.state.selected_ids.clear();
                 let mut offset = 0.0;
-                for obj in &self.state.clipboard {
+                let mut cmds: Vec<Box<dyn crate::core::history::Command>> = Vec::new();
+                let mut new_ids = Vec::new();
+                for obj in &self.state.clipboard.clone() {
                     let mut new_obj = obj.clone();
                     new_obj.id = uuid::Uuid::new_v4().to_string();
                     new_obj.name = format!("{} (copy)", obj.name);
@@ -626,13 +647,23 @@ impl IrasuApp {
                         new_obj.transform.y += 20.0 + offset;
                         offset += 15.0;
                     }
-                    let id = new_obj.id.clone();
-                    let cmd = Box::new(crate::core::history::AddObjectCommand::new(new_obj));
-                    self.state
-                        .undo_manager
-                        .execute(cmd, &mut self.state.document);
-                    self.state.selected_ids.push(id);
+                    new_ids.push(new_obj.id.clone());
+                    cmds.push(Box::new(
+                        crate::core::history::AddObjectCommand::new(new_obj),
+                    )
+                        as Box<dyn crate::core::history::Command>);
                 }
+                if cmds.len() == 1 {
+                    let cmd = cmds.pop().unwrap();
+                    self.state.undo_manager.execute(cmd, &mut self.state.document);
+                } else if !cmds.is_empty() {
+                    let batch = Box::new(crate::core::history::BatchCommand::new(
+                        "Paste Objects",
+                        cmds,
+                    ));
+                    self.state.undo_manager.execute(batch, &mut self.state.document);
+                }
+                self.state.selected_ids = new_ids;
             }
 
             // Duplicate (Ctrl+D)
@@ -652,13 +683,21 @@ impl IrasuApp {
                     }
                 }
                 let mut new_ids = Vec::new();
+                let mut cmds: Vec<Box<dyn crate::core::history::Command>> = Vec::new();
                 for obj in new_objs {
-                    let new_id = obj.id.clone();
-                    let cmd = Box::new(crate::core::history::AddObjectCommand::new(obj));
-                    self.state
-                        .undo_manager
-                        .execute(cmd, &mut self.state.document);
-                    new_ids.push(new_id);
+                    new_ids.push(obj.id.clone());
+                    cmds.push(Box::new(crate::core::history::AddObjectCommand::new(obj))
+                        as Box<dyn crate::core::history::Command>);
+                }
+                if cmds.len() == 1 {
+                    let cmd = cmds.pop().unwrap();
+                    self.state.undo_manager.execute(cmd, &mut self.state.document);
+                } else if !cmds.is_empty() {
+                    let batch = Box::new(crate::core::history::BatchCommand::new(
+                        "Duplicate Objects",
+                        cmds,
+                    ));
+                    self.state.undo_manager.execute(batch, &mut self.state.document);
                 }
                 self.state.selected_ids = new_ids;
             }

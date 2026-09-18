@@ -590,6 +590,65 @@ fn test_timeline_playback_commits_one_undo_step() {
 }
 
 #[test]
+fn test_cut_paste_batch_semantics() {
+    use irasu_illustrator::core::history::{AddObjectCommand, BatchCommand, Command};
+    let mut doc = Document::default();
+    let mut mgr = irasu_illustrator::core::history::UndoManager::new();
+    for i in 0..3 {
+        mgr.execute(
+            Box::new(AddObjectCommand::new(Object::new_rect(
+                &format!("R{i}"),
+                i as f64 * 20.0,
+                0.0,
+                10.0,
+                10.0,
+                0.0,
+            ))),
+            &mut doc,
+        );
+    }
+    // Cut all three as one step (mirrors the Cut handler).
+    let mut cmds: Vec<Box<dyn Command>> = Vec::new();
+    for (_, o) in doc.all_objects() {
+        cmds.push(Box::new(
+            irasu_illustrator::core::history::RemoveObjectCommand::located(
+                o.clone(),
+                &doc,
+            ),
+        ));
+    }
+    mgr.execute(Box::new(BatchCommand::new("Cut Objects", cmds)), &mut doc);
+    assert_eq!(doc.all_objects().count(), 0);
+    mgr.undo(&mut doc);
+    assert_eq!(doc.all_objects().count(), 3);
+}
+
+#[test]
+fn test_shape_to_path_conversion_undoable() {
+    use irasu_illustrator::core::document::ObjectType;
+    use irasu_illustrator::core::state::AppState;
+    let mut state = AppState::default();
+    state.document.add_object(Object::new_rect("R", 0.0, 0.0, 10.0, 20.0, 0.0));
+    let id = state.document.all_objects().next().unwrap().1.id.clone();
+    // Mirror the node-tool conversion path.
+    state.ensure_object_snapshot(&id);
+    if let Some(o) = state.document.find_object_mut(&id) {
+        let p = o.to_path_data();
+        o.object_type = ObjectType::Path(p);
+    }
+    state.commit_object_edits("Convert to Path");
+    assert!(matches!(
+        state.document.find_object(&id).unwrap().object_type,
+        ObjectType::Path(_)
+    ));
+    state.undo_manager.undo(&mut state.document);
+    assert!(matches!(
+        state.document.find_object(&id).unwrap().object_type,
+        ObjectType::Rectangle { .. }
+    ));
+}
+
+#[test]
 fn test_undo_redo_return_owned_names() {
     let mut doc = Document::default();
     let mut mgr = irasu_illustrator::core::history::UndoManager::new();
