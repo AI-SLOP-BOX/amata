@@ -1,4 +1,4 @@
-use super::document::{Document, Transform};
+use super::document::{Document, Layer, Transform};
 
 pub trait Command {
     fn execute(&self, doc: &mut Document);
@@ -290,6 +290,143 @@ impl Command for ObjectCommand {
 
     fn name(&self) -> &str {
         "Edit Object"
+    }
+}
+
+fn clamp_active(doc: &mut Document, idx: usize) {
+    doc.active_layer_idx = idx.min(doc.layers.len().saturating_sub(1));
+}
+
+/// Layer creation (add / duplicate). Tracks the previous active layer so
+/// Undo restores the exact prior state.
+pub struct AddLayerCommand {
+    pub layer: Layer,
+    pub index: usize,
+    pub prev_active: usize,
+}
+
+impl Command for AddLayerCommand {
+    fn execute(&self, doc: &mut Document) {
+        let pos = self.index.min(doc.layers.len());
+        // Avoid duplicating on redo-after-undo races: replace if present.
+        if let Some(existing) = doc.layers.iter().position(|l| l.id == self.layer.id) {
+            doc.layers.remove(existing);
+        }
+        let pos = pos.min(doc.layers.len());
+        doc.layers.insert(pos, self.layer.clone());
+        clamp_active(doc, pos);
+    }
+
+    fn undo(&self, doc: &mut Document) {
+        if let Some(pos) = doc.layers.iter().position(|l| l.id == self.layer.id) {
+            doc.layers.remove(pos);
+        }
+        clamp_active(doc, self.prev_active);
+    }
+
+    fn name(&self) -> &str {
+        "Add Layer"
+    }
+}
+
+/// Layer deletion. Undo reinserts at the original index.
+pub struct RemoveLayerCommand {
+    pub layer: Layer,
+    pub index: usize,
+}
+
+impl Command for RemoveLayerCommand {
+    fn execute(&self, doc: &mut Document) {
+        if let Some(pos) = doc.layers.iter().position(|l| l.id == self.layer.id) {
+            doc.layers.remove(pos);
+        }
+        clamp_active(doc, doc.active_layer_idx);
+    }
+
+    fn undo(&self, doc: &mut Document) {
+        let pos = self.index.min(doc.layers.len());
+        if !doc.layers.iter().any(|l| l.id == self.layer.id) {
+            doc.layers.insert(pos, self.layer.clone());
+        }
+        clamp_active(doc, pos);
+    }
+
+    fn name(&self) -> &str {
+        "Delete Layer"
+    }
+}
+
+fn apply_id_order<T, F>(items: &mut Vec<T>, order: &[String], id_of: F)
+where
+    F: Fn(&T) -> &str,
+{
+    let mut ranked = std::collections::HashMap::new();
+    for (rank, id) in order.iter().enumerate() {
+        ranked.insert(id.clone(), rank);
+    }
+    let mut counter = order.len();
+    let mut fallback = std::collections::HashMap::new();
+    for item in items.iter() {
+        let key = id_of(item).to_string();
+        if !ranked.contains_key(&key) {
+            fallback.insert(key, counter);
+            counter += 1;
+        }
+    }
+    items.sort_by_key(|item| {
+        let key = id_of(item).to_string();
+        // NOTE: must be lazy — eager `unwrap_or` would index `fallback`
+        // even for keys present in `ranked` and panic.
+        if let Some(&rank) = ranked.get(&key) {
+            rank
+        } else {
+            *fallback.get(&key).unwrap_or(&usize::MAX)
+        }
+    });
+}
+
+/// Layer z-order change (move up/down).
+pub struct ReorderLayersCommand {
+    pub old_order: Vec<String>,
+    pub new_order: Vec<String>,
+}
+
+impl Command for ReorderLayersCommand {
+    fn execute(&self, doc: &mut Document) {
+        apply_id_order(&mut doc.layers, &self.new_order, |l| &l.id);
+    }
+
+    fn undo(&self, doc: &mut Document) {
+        apply_id_order(&mut doc.layers, &self.old_order, |l| &l.id);
+    }
+
+    fn name(&self) -> &str {
+        "Reorder Layers"
+    }
+}
+
+/// Object z-order change within one layer (move up/down).
+pub struct ReorderObjectsCommand {
+    pub layer_id: String,
+    pub old_order: Vec<String>,
+    pub new_order: Vec<String>,
+}
+
+impl Command for ReorderObjectsCommand {
+    fn execute(&self, doc: &mut Document) {
+        if let Some(layer) = doc.layers.iter_mut().find(|l| l.id == self.layer_id) {
+            apply_id_order(&mut layer.objects, &self.new_order, |o| &o.id);
+        }
+    }
+
+    fn undo(&self, doc: &mut Document) {
+        if let Some(layer) = doc.layers.iter_mut().find(|l| l.id == self.layer_id) {
+            apply_id_order(&mut layer.objects, &self.old_order, |o| &o.id);
+        }
+    }
+
+    fn name(&self) -> &str {
+        "Reorder Objects"
     }
 }
 

@@ -200,35 +200,114 @@ impl LayerPanel {
             }
         }
 
+        // Layer/object reorder + layer add/duplicate/delete all execute as
+        // undoable commands (previously direct mutations: destructive and
+        // invisible to dirty tracking).
         if let Some(i) = to_move_layer_up {
+            let old_order: Vec<String> =
+                state.document.layers.iter().map(|l| l.id.clone()).collect();
             state.document.move_layer_up(i);
+            let new_order: Vec<String> =
+                state.document.layers.iter().map(|l| l.id.clone()).collect();
+            if old_order != new_order {
+                state.undo_manager.execute(
+                    Box::new(crate::core::history::ReorderLayersCommand {
+                        old_order,
+                        new_order,
+                    }),
+                    &mut state.document,
+                );
+            }
         }
 
         if let Some(i) = to_move_layer_down {
+            let old_order: Vec<String> =
+                state.document.layers.iter().map(|l| l.id.clone()).collect();
             state.document.move_layer_down(i);
+            let new_order: Vec<String> =
+                state.document.layers.iter().map(|l| l.id.clone()).collect();
+            if old_order != new_order {
+                state.undo_manager.execute(
+                    Box::new(crate::core::history::ReorderLayersCommand {
+                        old_order,
+                        new_order,
+                    }),
+                    &mut state.document,
+                );
+            }
         }
 
         if let Some((l, o)) = to_move_obj_up {
-            state.document.move_object_up(l, o);
+            if let Some(layer) = state.document.layers.get(l) {
+                let layer_id = layer.id.clone();
+                let old_order: Vec<String> =
+                    layer.objects.iter().map(|o| o.id.clone()).collect();
+                state.document.move_object_up(l, o);
+                let new_order: Vec<String> = state.document.layers[l]
+                    .objects
+                    .iter()
+                    .map(|o| o.id.clone())
+                    .collect();
+                if old_order != new_order {
+                    state.undo_manager.execute(
+                        Box::new(crate::core::history::ReorderObjectsCommand {
+                            layer_id,
+                            old_order,
+                            new_order,
+                        }),
+                        &mut state.document,
+                    );
+                }
+            }
         }
 
         if let Some((l, o)) = to_move_obj_down {
-            state.document.move_object_down(l, o);
+            if let Some(layer) = state.document.layers.get(l) {
+                let layer_id = layer.id.clone();
+                let old_order: Vec<String> =
+                    layer.objects.iter().map(|o| o.id.clone()).collect();
+                state.document.move_object_down(l, o);
+                let new_order: Vec<String> = state.document.layers[l]
+                    .objects
+                    .iter()
+                    .map(|o| o.id.clone())
+                    .collect();
+                if old_order != new_order {
+                    state.undo_manager.execute(
+                        Box::new(crate::core::history::ReorderObjectsCommand {
+                            layer_id,
+                            old_order,
+                            new_order,
+                        }),
+                        &mut state.document,
+                    );
+                }
+            }
         }
 
         if let Some(i) = to_duplicate_layer {
-            let new_name = format!("{} (copy)", state.document.layers[i].name);
-            let mut new_layer = crate::core::document::Layer::new(&new_name);
-            for obj in &state.document.layers[i].objects {
-                let mut dup = obj.clone();
-                dup.id = uuid::Uuid::new_v4().to_string();
-                dup.name = format!("{} (copy)", obj.name);
-                new_layer.objects.push(dup);
+            if let Some(src) = state.document.layers.get(i) {
+                let new_name = format!("{} (copy)", src.name);
+                let mut new_layer = crate::core::document::Layer::new(&new_name);
+                for obj in &src.objects {
+                    let mut dup = obj.clone();
+                    dup.id = uuid::Uuid::new_v4().to_string();
+                    dup.name = format!("{} (copy)", obj.name);
+                    new_layer.objects.push(dup);
+                }
+                new_layer.visible = src.visible;
+                new_layer.locked = src.locked;
+                let prev_active = state.document.active_layer_idx;
+                let index = state.document.layers.len();
+                state.undo_manager.execute(
+                    Box::new(crate::core::history::AddLayerCommand {
+                        layer: new_layer,
+                        index,
+                        prev_active,
+                    }),
+                    &mut state.document,
+                );
             }
-            new_layer.visible = state.document.layers[i].visible;
-            new_layer.locked = state.document.layers[i].locked;
-            state.document.layers.push(new_layer);
-            state.document.active_layer_idx = state.document.layers.len() - 1;
         }
 
         ui.separator();
@@ -244,20 +323,37 @@ impl LayerPanel {
 
         if to_add_layer {
             let name = format!("Layer {}", layer_count + 1);
-            state
-                .document
-                .layers
-                .push(crate::core::document::Layer::new(&name));
-            state.document.active_layer_idx = state.document.layers.len() - 1;
+            let prev_active = state.document.active_layer_idx;
+            let index = state.document.layers.len();
+            state.undo_manager.execute(
+                Box::new(crate::core::history::AddLayerCommand {
+                    layer: crate::core::document::Layer::new(&name),
+                    index,
+                    prev_active,
+                }),
+                &mut state.document,
+            );
         }
 
         if to_remove_layer {
             let idx = state.document.active_layer_idx;
-            state.document.layers.remove(idx);
-            state.document.active_layer_idx = state
-                .document
-                .active_layer_idx
-                .min(state.document.layers.len() - 1);
+            if let Some(layer) = state.document.layers.get(idx).cloned() {
+                state.undo_manager.execute(
+                    Box::new(crate::core::history::RemoveLayerCommand {
+                        layer,
+                        index: idx,
+                    }),
+                    &mut state.document,
+                );
+                // Drop selection of objects that no longer exist anywhere.
+                let alive: Vec<String> = state
+                    .selected_ids
+                    .iter()
+                    .filter(|sid| state.document.find_object(sid).is_some())
+                    .cloned()
+                    .collect();
+                state.selected_ids = alive;
+            }
         }
     }
 }

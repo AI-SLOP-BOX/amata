@@ -284,6 +284,84 @@ fn test_bulk_generation_undoes_in_one_step() {
 }
 
 #[test]
+fn test_layer_add_delete_reorder_undo() {
+    use irasu_illustrator::core::document::Layer;
+    use irasu_illustrator::core::history::{
+        AddLayerCommand, RemoveLayerCommand, ReorderLayersCommand, ReorderObjectsCommand,
+    };
+    let mut doc = Document::default();
+    let mut mgr = irasu_illustrator::core::history::UndoManager::new();
+    assert_eq!(doc.layers.len(), 1);
+
+    // Add.
+    mgr.execute(
+        Box::new(AddLayerCommand {
+            layer: Layer::new("L2"),
+            index: 1,
+            prev_active: 0,
+        }),
+        &mut doc,
+    );
+    assert_eq!(doc.layers.len(), 2);
+    assert_eq!(doc.active_layer_idx, 1);
+    mgr.undo(&mut doc);
+    assert_eq!(doc.layers.len(), 1);
+    assert_eq!(doc.active_layer_idx, 0);
+    mgr.redo(&mut doc);
+    assert_eq!(doc.layers.len(), 2);
+
+    // Reorder.
+    let old_order: Vec<String> = doc.layers.iter().map(|l| l.id.clone()).collect();
+    doc.move_layer_up(0);
+    let new_order: Vec<String> = doc.layers.iter().map(|l| l.id.clone()).collect();
+    mgr.execute(
+        Box::new(ReorderLayersCommand {
+            old_order: old_order.clone(),
+            new_order,
+        }),
+        &mut doc,
+    );
+    mgr.undo(&mut doc);
+    let restored: Vec<String> = doc.layers.iter().map(|l| l.id.clone()).collect();
+    assert_eq!(restored, old_order);
+
+    // Delete restores content + position.
+    doc.add_object(Object::new_rect("R", 0.0, 0.0, 5.0, 5.0, 0.0));
+    let victim = doc.layers[1].clone();
+    mgr.execute(
+        Box::new(RemoveLayerCommand {
+            layer: victim.clone(),
+            index: 1,
+        }),
+        &mut doc,
+    );
+    assert_eq!(doc.layers.len(), 1);
+    mgr.undo(&mut doc);
+    assert_eq!(doc.layers.len(), 2);
+    assert_eq!(doc.layers[1].objects.len(), victim.objects.len());
+
+    // Object reorder within a layer.
+    doc.layers[1].objects.push(Object::new_rect("A", 0.0, 0.0, 1.0, 1.0, 0.0));
+    doc.layers[1].objects.push(Object::new_rect("B", 0.0, 0.0, 1.0, 1.0, 0.0));
+    let lid = doc.layers[1].id.clone();
+    let oo: Vec<String> = doc.layers[1].objects.iter().map(|o| o.id.clone()).collect();
+    doc.move_object_up(1, 0);
+    let no: Vec<String> = doc.layers[1].objects.iter().map(|o| o.id.clone()).collect();
+    assert_ne!(oo, no);
+    mgr.execute(
+        Box::new(ReorderObjectsCommand {
+            layer_id: lid,
+            old_order: oo.clone(),
+            new_order: no,
+        }),
+        &mut doc,
+    );
+    mgr.undo(&mut doc);
+    let back: Vec<String> = doc.layers[1].objects.iter().map(|o| o.id.clone()).collect();
+    assert_eq!(back, oo);
+}
+
+#[test]
 fn test_undo_redo_return_owned_names() {
     let mut doc = Document::default();
     let mut mgr = irasu_illustrator::core::history::UndoManager::new();
