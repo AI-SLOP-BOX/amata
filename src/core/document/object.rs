@@ -288,6 +288,18 @@ impl Transform {
     }
 }
 
+/// Approximate text block metrics: max line width and total height for
+/// explicit `\n` line breaks at 1.2em advance (matches canvas + SVG export).
+pub fn text_block_size(text: &str, font_size: f64) -> (f64, f64) {
+    let lines: Vec<&str> = text.split('\n').collect();
+    let width = lines
+        .iter()
+        .map(|l| l.chars().count() as f64 * font_size * 0.6)
+        .fold(0.0_f64, f64::max);
+    let height = font_size * (1.0 + 1.2 * (lines.len().saturating_sub(1) as f64));
+    (width, height)
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Object {
     pub id: String,
@@ -609,10 +621,10 @@ impl Object {
             ObjectType::Text {
                 text, font_size, ..
             } => {
-                // Approximate bounding rect as a path
-                let width = text.chars().count() as f64 * font_size * 0.6;
-                let height = *font_size;
-                PathData::from_rect(0.0, -height, width, height, 0.0)
+                // Approximate bounding rect as a path (multi-line aware:
+                // first baseline at y=0, 1.2em line advance).
+                let (width, height) = text_block_size(text, *font_size);
+                PathData::from_rect(0.0, -font_size, width, height, 0.0)
             }
             ObjectType::Group(children) => {
                 let mut combined = PathData::new();
@@ -695,9 +707,8 @@ impl Object {
             ObjectType::Text {
                 text, font_size, ..
             } => {
-                let width = text.chars().count() as f64 * font_size * 0.6;
-                let height = *font_size;
-                lx >= 0.0 && lx <= width && ly >= -height && ly <= 0.0
+                let (width, height) = text_block_size(text, *font_size);
+                lx >= 0.0 && lx <= width && ly >= -font_size && ly <= -font_size + height
             }
             ObjectType::Group(children) => children.iter().any(|c| c.hit_test(lx, ly)),
             ObjectType::ClippingMask { children } => children.iter().any(|c| c.hit_test(lx, ly)),

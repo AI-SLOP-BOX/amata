@@ -478,6 +478,28 @@ fn test_boolean_degenerate_and_contained() {
 }
 
 #[test]
+fn test_multiline_text_round_trip() {
+    use irasu_illustrator::core::document::ObjectType;
+    let mut doc = Document::default();
+    doc.add_object(Object::new_text("T", "hello\nworld", 10.0, 20.0, 16.0));
+    let svg = irasu_illustrator::io::svg::export_svg(&doc);
+    assert!(svg.contains("<tspan"), "multiline must export tspans");
+    assert!(svg.contains("dy=\"1.2em\""));
+    let doc2 = parse_svg_document(&svg);
+    let text = doc2
+        .all_objects()
+        .map(|(_, o)| o)
+        .find(|o| matches!(o.object_type, ObjectType::Text { .. }))
+        .expect("text round-trips");
+    if let ObjectType::Text { text, .. } = &text.object_type {
+        assert_eq!(text, "hello\nworld", "got: {text:?}");
+    }
+    // Metrics cover both lines.
+    let (w, h) = irasu_illustrator::core::document::text_block_size("hello\nworld", 16.0);
+    assert!(w > 0.0 && h > 16.0);
+}
+
+#[test]
 fn test_undo_redo_return_owned_names() {
     let mut doc = Document::default();
     let mut mgr = irasu_illustrator::core::history::UndoManager::new();

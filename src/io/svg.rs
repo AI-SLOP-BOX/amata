@@ -974,7 +974,14 @@ fn tokenize_svg_tags(svg_text: &str) -> Vec<String> {
     let mut in_comment = false;
     // Index of the currently open <text> element so nested markup content
     // (<tspan>, <tref>, …) is accumulated into it instead of being dropped.
+    // Text goes to a side buffer (flushed into the tag on </text>) so that
+    // <tspan>/<br> boundaries can inject explicit line breaks.
     let mut open_text_idx: Option<usize> = None;
+    let mut open_text_buf = String::new();
+    // Whether the innermost open <tspan> carries positioning (x/y/dx/dy):
+    // only those (and <br>) start a new line. Plain adjacent tspans are
+    // same-line continuations and must not inject breaks.
+    let mut tspan_break_pending = false;
 
     let chars: Vec<char> = svg_text.chars().collect();
     let mut i = 0;
@@ -1032,8 +1039,37 @@ fn tokenize_svg_tags(svg_text: &str) -> Vec<String> {
                 .unwrap_or("");
             if tag_head == "<text" {
                 open_text_idx = Some(pushed);
+                open_text_buf.clear();
             } else if tag_head == "</text" {
+                // Flush accumulated text (with tspan/br line breaks) into
+                // the <text> tag so content extraction below just works.
+                if let (Some(idx), buf) = (open_text_idx, std::mem::take(&mut open_text_buf))
+                {
+                    if let Some(tag) = tags.get_mut(idx) {
+                        tag.push_str(&buf);
+                    }
+                }
                 open_text_idx = None;
+            } else if open_text_idx.is_some() {
+                if tag_head == "<tspan" {
+                    let tag = &tags[pushed];
+                    tspan_break_pending = tag.contains("x=")
+                        || tag.contains("y=")
+                        || tag.contains("dx=")
+                        || tag.contains("dy=");
+                } else if tag_head == "</tspan" {
+                    if tspan_break_pending
+                        && !open_text_buf.is_empty()
+                        && !open_text_buf.ends_with('\n')
+                    {
+                        open_text_buf.push('\n');
+                    }
+                    tspan_break_pending = false;
+                } else if tag_head.starts_with("<br") || tag_head.starts_with("</br") {
+                    if !open_text_buf.is_empty() && !open_text_buf.ends_with('\n') {
+                        open_text_buf.push('\n');
+                    }
+                }
             }
             current_tag.clear();
             i += 1;
@@ -1047,10 +1083,8 @@ fn tokenize_svg_tags(svg_text: &str) -> Vec<String> {
         } else {
             // Text content outside tags (for <text>...</text>, including
             // nested <tspan> content which belongs to the open <text>)
-            if let Some(idx) = open_text_idx {
-                if let Some(text_tag) = tags.get_mut(idx) {
-                    text_tag.push(c);
-                }
+            if open_text_idx.is_some() {
+                open_text_buf.push(c);
             } else if let Some(last) = tags.last_mut() {
                 if last.starts_with("<text") && !last.contains("</text>") {
                     last.push(c);
@@ -1815,16 +1849,41 @@ fn render_object_to_svg(obj: &Object, svg: &mut String, defs: &mut String, count
                 ));
             }
 
+            // Explicit line breaks become positioned tspans (1.2em advance,
+            // matching canvas). The importer turns positioned tspans back
+            // into `\n`, so multi-line text round-trips.
+            let (tx, ty) = if transform_has_linear_part(&obj.transform) {
+                (0.0, 0.0)
+            } else {
+                (obj.transform.x, obj.transform.y)
+            };
+            let body = if text.contains('\n') {
+                let mut spans = String::new();
+                for (i, ln) in text.split('\n').enumerate() {
+                    if i == 0 {
+                        spans.push_str(&format!(
+                            "<tspan x=\"{tx}\">{}</tspan>",
+                            xml_escape(ln)
+                        ));
+                    } else {
+                        spans.push_str(&format!(
+                            "<tspan x=\"{tx}\" dy=\"1.2em\">{}</tspan>",
+                            xml_escape(ln)
+                        ));
+                    }
+                }
+                spans
+            } else {
+                escaped_text
+            };
             if transform_has_linear_part(&obj.transform) {
                 let transform_attr = svg_transform_attr(&obj.transform);
                 svg.push_str(&format!(
-                    "  <text{id_attr} x=\"0\" y=\"0\" font-size=\"{}\" font-family=\"{}\"{extra_attrs}{fill}{transform_attr}{effect_attr}>{}</text>\n",
-                    font_size, font_fam, escaped_text
+                    "  <text{id_attr} x=\"{tx}\" y=\"{ty}\" font-size=\"{font_size}\" font-family=\"{font_fam}\"{extra_attrs}{fill}{transform_attr}{effect_attr}>{body}</text>\n",
                 ));
             } else {
                 svg.push_str(&format!(
-                    "  <text{id_attr} x=\"{}\" y=\"{}\" font-size=\"{}\" font-family=\"{}\"{extra_attrs}{fill}{effect_attr}>{}</text>\n",
-                    obj.transform.x, obj.transform.y, font_size, font_fam, escaped_text
+                    "  <text{id_attr} x=\"{tx}\" y=\"{ty}\" font-size=\"{font_size}\" font-family=\"{font_fam}\"{extra_attrs}{fill}{effect_attr}>{body}</text>\n",
                 ));
             }
         }

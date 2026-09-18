@@ -229,69 +229,84 @@ impl CanvasWidget {
                 // silently rendering everything as regular.
                 let bold = style.font_weight >= 650;
                 let bold_dx = (scaled_size * 0.035).clamp(0.5, 1.5);
-
-                if style.letter_spacing != 0.0 {
-                    let letter_space_screen = (style.letter_spacing * state.zoom as f64) as f32;
-                    // Pre-measure so text-anchor (middle/end) applies to the whole run,
-                    // matching exported SVG behavior.
-                    let mut widths: Vec<(String, f32, f32)> = Vec::new();
-                    let mut total_w = 0.0;
-                    for ch in text.chars() {
-                        let ch_str = ch.to_string();
+                // Explicit line breaks: one baseline per line, advancing by
+                // the same 1.2em factor the SVG exporter uses for <tspan dy>.
+                let line_height = scaled_size * 1.2;
+                let lines: Vec<&str> = text.split('\n').collect();
+                let mut widest: f32 = 0.0;
+                for (li, line) in lines.iter().enumerate() {
+                    let line_pos =
+                        egui::pos2(pos.x, pos.y + li as f32 * line_height);
+                    if style.letter_spacing != 0.0 {
+                        let letter_space_screen =
+                            (style.letter_spacing * state.zoom as f64) as f32;
+                        // Pre-measure so text-anchor (middle/end) applies to the whole run,
+                        // matching exported SVG behavior.
+                        let mut widths: Vec<(String, f32, f32)> = Vec::new();
+                        let mut total_w = 0.0;
+                        for ch in line.chars() {
+                            let ch_str = ch.to_string();
+                            let galley =
+                                painter.layout_no_wrap(ch_str.clone(), font_id.clone(), color);
+                            let w = galley.size().x;
+                            let h = galley.size().y;
+                            widths.push((ch_str, w, h));
+                            total_w += w;
+                        }
+                        if !widths.is_empty() {
+                            total_w += letter_space_screen * (widths.len() as f32 - 1.0);
+                        }
+                        widest = widest.max(total_w);
+                        let mut curr_x = match style.text_anchor {
+                            crate::core::document::TextAnchor::Start => line_pos.x,
+                            crate::core::document::TextAnchor::Middle => {
+                                line_pos.x - total_w / 2.0
+                            }
+                            crate::core::document::TextAnchor::End => line_pos.x - total_w,
+                        };
+                        for (ch_str, w, h) in &widths {
+                            // painter::galley positions from the top-left while `pos`
+                            // is the text baseline; align bottoms explicitly.
+                            let char_pos = egui::pos2(curr_x, line_pos.y - *h);
+                            let galley =
+                                painter.layout_no_wrap(ch_str.clone(), font_id.clone(), color);
+                            painter.galley(char_pos, galley, color);
+                            if bold {
+                                let g2 = painter.layout_no_wrap(
+                                    ch_str.clone(),
+                                    font_id.clone(),
+                                    color,
+                                );
+                                painter.galley(
+                                    egui::pos2(curr_x + bold_dx, line_pos.y - *h),
+                                    g2,
+                                    color,
+                                );
+                            }
+                            curr_x += *w + letter_space_screen;
+                        }
+                    } else {
                         let galley =
-                            painter.layout_no_wrap(ch_str.clone(), font_id.clone(), color);
-                        let w = galley.size().x;
-                        let h = galley.size().y;
-                        widths.push((ch_str, w, h));
-                        total_w += w;
-                    }
-                    if !widths.is_empty() {
-                        total_w += letter_space_screen * (widths.len() as f32 - 1.0);
-                    }
-                    let mut curr_x = match style.text_anchor {
-                        crate::core::document::TextAnchor::Start => pos.x,
-                        crate::core::document::TextAnchor::Middle => pos.x - total_w / 2.0,
-                        crate::core::document::TextAnchor::End => pos.x - total_w,
-                    };
-                    for (ch_str, w, h) in &widths {
-                        // painter::galley positions from the top-left while `pos`
-                        // is the text baseline; align bottoms explicitly.
-                        let char_pos = egui::pos2(curr_x, pos.y - *h);
-                        let galley =
-                            painter.layout_no_wrap(ch_str.clone(), font_id.clone(), color);
-                        painter.galley(char_pos, galley, color);
+                            painter.layout_no_wrap(line.to_string(), font_id.clone(), color);
+                        widest = widest.max(galley.size().x);
+                        painter.text(line_pos, align, *line, font_id.clone(), color);
                         if bold {
-                            let g2 = painter.layout_no_wrap(
-                                ch_str.clone(),
+                            painter.text(
+                                egui::pos2(line_pos.x + bold_dx, line_pos.y),
+                                align,
+                                *line,
                                 font_id.clone(),
                                 color,
                             );
-                            painter.galley(
-                                egui::pos2(curr_x + bold_dx, pos.y - *h),
-                                g2,
-                                color,
-                            );
                         }
-                        curr_x += *w + letter_space_screen;
-                    }
-                } else {
-                    painter.text(pos, align, text, font_id.clone(), color);
-                    if bold {
-                        painter.text(
-                            egui::pos2(pos.x + bold_dx, pos.y),
-                            align,
-                            text,
-                            font_id,
-                            color,
-                        );
                     }
                 }
 
                 if !is_avail && state.selected_ids.contains(&obj.id) {
-                    let text_w = text.chars().count() as f32 * scaled_size * 0.6;
+                    let text_h = line_height * lines.len() as f32;
                     let text_rect = egui::Rect::from_min_size(
                         egui::pos2(pos.x, pos.y - scaled_size),
-                        egui::vec2(text_w, scaled_size),
+                        egui::vec2(widest.max(scaled_size * 0.6), text_h),
                     );
                     painter.rect_stroke(
                         text_rect,
