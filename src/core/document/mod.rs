@@ -29,6 +29,54 @@ impl Default for Guide {
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+/// A single artboard within a multi-artboard document.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Artboard {
+    pub id: String,
+    pub name: String,
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+}
+
+impl Artboard {
+    pub fn new(name: &str, x: f64, y: f64, width: f64, height: f64) -> Self {
+        Self {
+            id: Uuid::new_v4().to_string(),
+            name: name.to_string(),
+            x,
+            y,
+            width,
+            height,
+        }
+    }
+}
+
+/// Color mode of the document. Affects which color picker is primary and
+/// how SVG export communicates color space (CMYK values are exported as
+/// ICC-based `<color-profile>` elements).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ColorMode {
+    Rgb,
+    Cmyk,
+}
+
+impl Default for ColorMode {
+    fn default() -> Self {
+        Self::Rgb
+    }
+}
+
+impl std::fmt::Display for ColorMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Rgb => write!(f, "RGB"),
+            Self::Cmyk => write!(f, "CMYK"),
+        }
+    }
+}
+
 impl Layer {
     pub fn new(name: &str) -> Self {
         Self {
@@ -68,6 +116,14 @@ pub struct Document {
     /// Canvas guides (persisted for the same reason).
     #[serde(default)]
     pub guides: Vec<Guide>,
+    /// Color mode of the document (RGB or CMYK). Affects the primary color
+    /// picker shown in the style panel and how colors are serialized.
+    #[serde(default)]
+    pub color_mode: ColorMode,
+    /// Artboards owned by this document. Empty means a single implicit
+    /// artboard using `width`/`height`.
+    #[serde(default)]
+    pub artboards: Vec<Artboard>,
 }
 
 impl Default for Document {
@@ -81,6 +137,8 @@ impl Default for Document {
             symbols: Vec::new(),
             timeline: super::timeline::Timeline::default(),
             guides: Vec::new(),
+            color_mode: ColorMode::Rgb,
+            artboards: Vec::new(),
         };
         doc.layers.push(Layer::new("Layer 1"));
         doc
@@ -103,6 +161,26 @@ impl Document {
         }
         if !self.height.is_finite() || self.height <= 0.0 {
             self.height = 1080.0;
+        }
+    }
+
+    /// Return the effective artboard list. If `artboards` is empty, returns
+    /// a single implicit artboard derived from `width`/`height`.
+    pub fn effective_artboards(&self) -> Vec<Artboard> {
+        if self.artboards.is_empty() {
+            vec![Artboard::new("Artboard 1", 0.0, 0.0, self.width, self.height)]
+        } else {
+            self.artboards.clone()
+        }
+    }
+
+    /// Return the artboard dimensions for a given index, falling back to
+    /// the document size if the index is out of range.
+    pub fn artboard_rect(&self, idx: usize) -> (f64, f64, f64, f64) {
+        if let Some(ab) = self.artboards.get(idx) {
+            (ab.x, ab.y, ab.width, ab.height)
+        } else {
+            (0.0, 0.0, self.width, self.height)
         }
     }
 

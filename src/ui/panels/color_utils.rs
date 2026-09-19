@@ -2,6 +2,28 @@ use crate::core::path::FillStyle;
 use crate::core::state::AppState;
 use egui::{Color32, Ui, Vec2};
 
+/// Convert RGB (0.0..1.0) to CMYK (0.0..1.0 each).
+/// Simple subtractive model: K = 1 - max(R,G,B), C/M/Y = (K - channel) / K.
+pub fn rgb_to_cmyk(r: f32, g: f32, b: f32) -> (f32, f32, f32, f32) {
+    let k = 1.0 - r.max(g).max(b);
+    if k >= 1.0 {
+        return (0.0, 0.0, 0.0, 1.0);
+    }
+    let inv = 1.0 - k;
+    let c = (inv - r) / inv;
+    let m = (inv - g) / inv;
+    let y = (inv - b) / inv;
+    (c.clamp(0.0, 1.0), m.clamp(0.0, 1.0), y.clamp(0.0, 1.0), k)
+}
+
+/// Convert CMYK (0.0..1.0 each) to RGB (0.0..1.0).
+pub fn cmyk_to_rgb(c: f32, m: f32, y: f32, k: f32) -> (f32, f32, f32) {
+    let r = (1.0 - c) * (1.0 - k);
+    let g = (1.0 - m) * (1.0 - k);
+    let b = (1.0 - y) * (1.0 - k);
+    (r.clamp(0.0, 1.0), g.clamp(0.0, 1.0), b.clamp(0.0, 1.0))
+}
+
 pub fn rgb_to_hsv(r: f32, g: f32, b: f32) -> (f32, f32, f32) {
     let max = r.max(g).max(b);
     let min = r.min(g).min(b);

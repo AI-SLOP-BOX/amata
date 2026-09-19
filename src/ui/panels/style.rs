@@ -524,6 +524,53 @@ impl SwatchesPanel {
             }
         });
 
+        // ── CMYK Inputs (visible when doc is CMYK mode) ──
+        if state.document.color_mode == crate::core::document::ColorMode::Cmyk {
+            ui.add_space(4.0);
+            ui.label(RichText::new("CMYK").strong().size(11.0));
+            let (c0, m0, y0, k0) = crate::ui::panels::color_utils::rgb_to_cmyk(
+                state.fill_color[0],
+                state.fill_color[1],
+                state.fill_color[2],
+            );
+            let mut cmyk = [c0, m0, y0, k0];
+            let labels = ["C", "M", "Y", "K"];
+            ui.horizontal(|ui| {
+                for (i, label) in labels.iter().enumerate() {
+                    ui.label(RichText::new(*label).size(10.0));
+                    let resp = ui.add(
+                        egui::DragValue::new(&mut cmyk[i])
+                            .speed(0.01)
+                            .range(0.0..=1.0)
+                            .fixed_decimals(2)
+                            .custom_formatter(|v, _| format!("{:.0}", v * 100.0))
+                            .custom_parser(|s| {
+                                s.trim_end_matches('%')
+                                    .parse::<f64>()
+                                    .ok()
+                                    .map(|v| v / 100.0)
+                            }),
+                    );
+                    if resp.changed() {
+                        let (r, g, b) = crate::ui::panels::color_utils::cmyk_to_rgb(
+                            cmyk[0], cmyk[1], cmyk[2], cmyk[3],
+                        );
+                        state.fill_color = [r, g, b, state.fill_color[3]];
+                        let fc = state.fill_color;
+                        let sel = state.selected_ids.clone();
+                        for id in &sel {
+                            if let Some(o) = state.document.find_object_mut(id) {
+                                o.fill = Some(FillStyle::solid(fc));
+                            }
+                        }
+                    }
+                    if resp.drag_stopped() {
+                        state.commit_object_edits("Edit Object");
+                    }
+                }
+            });
+        }
+
         ui.add_space(8.0);
 
         // Adobe CC Hex & RGB color picker field

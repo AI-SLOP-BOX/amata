@@ -794,6 +794,7 @@ pub fn parse_svg_document(svg_text: &str) -> Document {
                 font_style,
                 letter_spacing,
                 text_anchor,
+                ..Default::default()
             };
 
             let text_content = if let Some(start) = trimmed.find('>') {
@@ -1992,25 +1993,42 @@ fn render_object_to_svg(obj: &Object, svg: &mut String, defs: &mut String, count
                 ));
             }
 
-            // Explicit line breaks become positioned tspans (1.2em advance,
+            // Explicit line breaks become positioned tspans (line-height advance,
             // matching canvas). The importer turns positioned tspans back
             // into `\n`, so multi-line text round-trips.
+            let line_height = style.effective_line_height();
             let (tx, ty) = if transform_has_linear_part(&obj.transform) {
                 (0.0, 0.0)
             } else {
                 (obj.transform.x, obj.transform.y)
             };
-            let body = if text.contains('\n') {
+            // Compute lines to emit: word-wrapped or hard-break-split
+            let emit_lines: Vec<String> = if style.word_wrap {
+                if let Some(max_w) = style.max_width {
+                    crate::core::document::object::compute_wrapped_lines(text, style, max_w)
+                } else {
+                    text.split('\n').map(String::from).collect()
+                }
+            } else {
+                text.split('\n').map(String::from).collect()
+            };
+            let body = if emit_lines.len() > 1 {
                 let mut spans = String::new();
-                for (i, ln) in text.split('\n').enumerate() {
+                for (i, ln) in emit_lines.iter().enumerate() {
                     if i == 0 {
                         spans.push_str(&format!(
                             "<tspan x=\"{tx}\">{}</tspan>",
                             xml_escape(ln)
                         ));
                     } else {
+                        let ratio = line_height / style.font_size;
+                        let dy_str = if (ratio - 1.2).abs() < 0.001 {
+                            "1.2em".to_string()
+                        } else {
+                            format!("{:.2}em", ratio)
+                        };
                         spans.push_str(&format!(
-                            "<tspan x=\"{tx}\" dy=\"1.2em\">{}</tspan>",
+                            "<tspan x=\"{tx}\" dy=\"{dy_str}\">{}</tspan>",
                             xml_escape(ln)
                         ));
                     }

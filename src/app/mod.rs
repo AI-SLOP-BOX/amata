@@ -94,6 +94,23 @@ impl IrasuApp {
         doc.name = req.name;
         doc.width = req.width;
         doc.height = req.height;
+        doc.color_mode = req.color_mode;
+        // Create initial artboards based on the requested count.  The
+        // implicit single-artboard case (artboards empty) is preserved
+        // when only one is requested so that old files behave identically.
+        if req.artboard_count > 1 {
+            doc.artboards = (0..req.artboard_count)
+                .map(|i| {
+                    crate::core::document::Artboard::new(
+                        &format!("Artboard {}", i + 1),
+                        0.0,
+                        i as f64 * doc.height,
+                        doc.width,
+                        doc.height,
+                    )
+                })
+                .collect();
+        }
         self.state.document = doc;
         self.state.adopt_doc_extras();
         self.state.zoom_to_fit();

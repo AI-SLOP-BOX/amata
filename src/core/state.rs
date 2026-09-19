@@ -141,6 +141,8 @@ pub struct AppState {
     pub clipboard: Vec<crate::core::document::Object>,
     pub timeline: super::timeline::Timeline,
     pub show_timeline: bool,
+    // Artboard navigation
+    pub active_artboard_idx: usize,
     // Symbols
     pub symbols: Vec<crate::core::document::Symbol>,
     // Guides
@@ -245,6 +247,7 @@ impl Default for AppState {
             clipboard: Vec::new(),
             timeline: super::timeline::Timeline::default(),
             show_timeline: true,
+            active_artboard_idx: 0,
             symbols: vec![
                 crate::core::document::Symbol::new(
                     "ハート (Heart)",

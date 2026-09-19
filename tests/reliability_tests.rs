@@ -1080,6 +1080,97 @@ fn atomic_write_round_trip() {
 }
 
 #[test]
+fn test_cmyk_round_trip() {
+    use irasu_illustrator::ui::panels::color_utils::{cmyk_to_rgb, rgb_to_cmyk};
+    // Black
+    let (c, m, y, k) = rgb_to_cmyk(0.0, 0.0, 0.0);
+    assert!(k > 0.9 && c < 0.01 && m < 0.01 && y < 0.01);
+    let (r, g, b) = cmyk_to_rgb(c, m, y, k);
+    assert!((r - 0.0).abs() < 0.01 && (g - 0.0).abs() < 0.01 && (b - 0.0).abs() < 0.01);
+    // White
+    let (c, m, y, k) = rgb_to_cmyk(1.0, 1.0, 1.0);
+    assert!(k < 0.01 && c < 0.01 && m < 0.01 && y < 0.01);
+    // Red
+    let (c, m, y, k) = rgb_to_cmyk(0.9, 0.2, 0.2);
+    let (r, g, b) = cmyk_to_rgb(c, m, y, k);
+    assert!((r - 0.9).abs() < 0.05 && (g - 0.2).abs() < 0.05 && (b - 0.2).abs() < 0.05);
+}
+
+#[test]
+fn test_document_cmyk_color_mode() {
+    let mut doc = irasu_illustrator::core::document::Document::default();
+    assert_eq!(doc.color_mode, irasu_illustrator::core::document::ColorMode::Rgb);
+    doc.color_mode = irasu_illustrator::core::document::ColorMode::Cmyk;
+    assert_eq!(doc.color_mode, irasu_illustrator::core::document::ColorMode::Cmyk);
+}
+
+#[test]
+fn test_artboards_effective_list() {
+    let mut doc = irasu_illustrator::core::document::Document::default();
+    // Empty artboards → implicit single artboard from width/height
+    let eff = doc.effective_artboards();
+    assert_eq!(eff.len(), 1);
+    assert_eq!(eff[0].name, "Artboard 1");
+    assert!((eff[0].width - doc.width).abs() < 0.01);
+    // With explicit artboards, they are returned as-is
+    doc.artboards.push(irasu_illustrator::core::document::Artboard::new("A", 0.0, 0.0, 800.0, 600.0));
+    doc.artboards.push(irasu_illustrator::core::document::Artboard::new("B", 0.0, 600.0, 800.0, 600.0));
+    let eff = doc.effective_artboards();
+    assert_eq!(eff.len(), 2);
+    assert_eq!(eff[1].y, 600.0);
+}
+
+#[test]
+fn test_text_style_word_wrap() {
+    use irasu_illustrator::core::document::object::{compute_wrapped_lines, TextStyle};
+    let style = TextStyle {
+        font_size: 16.0,
+        word_wrap: true,
+        max_width: Some(100.0),
+        ..Default::default()
+    };
+    let lines = compute_wrapped_lines("This is a long sentence that should wrap", &style, 100.0);
+    assert!(lines.len() > 1, "long text should wrap into multiple lines, got {lines:?}");
+    // Hard breaks always preserved
+    let hard = compute_wrapped_lines("line1\nline2", &style, 100.0);
+    assert!(hard.len() >= 2);
+    // Short text stays single-line
+    let short = compute_wrapped_lines("Hi", &style, 100.0);
+    assert_eq!(short.len(), 1);
+}
+
+#[test]
+fn test_text_style_line_height() {
+    let mut style = irasu_illustrator::core::document::object::TextStyle::default();
+    style.line_height = Some(2.0);
+    assert!((style.effective_line_height() - 48.0).abs() < 0.01); // 2.0 * 24
+    style.line_height = None;
+    assert!((style.effective_line_height() - 28.8).abs() < 0.01); // 1.2 * 24
+}
+
+#[test]
+fn test_text_block_size_word_wrap() {
+    use irasu_illustrator::core::document::object::text_block_size_with_style;
+    let style = irasu_illustrator::core::document::object::TextStyle {
+        font_size: 16.0,
+        word_wrap: true,
+        max_width: Some(50.0),
+        ..Default::default()
+    };
+    let (w, h) = text_block_size_with_style("word1 word2 word3 word4", &style);
+    assert!(h > 16.0, "wrapped text should be taller than single line, got {h}");
+}
+
+#[test]
+fn test_document_color_mode_roundtrip() {
+    let mut doc = irasu_illustrator::core::document::Document::default();
+    doc.color_mode = irasu_illustrator::core::document::ColorMode::Cmyk;
+    let json = serde_json::to_string(&doc).unwrap();
+    let reloaded: irasu_illustrator::core::document::Document = serde_json::from_str(&json).unwrap();
+    assert_eq!(reloaded.color_mode, irasu_illustrator::core::document::ColorMode::Cmyk);
+}
+
+#[test]
 fn test_undo_redo_return_owned_names() {
     let mut doc = Document::default();
     let mut mgr = irasu_illustrator::core::history::UndoManager::new();

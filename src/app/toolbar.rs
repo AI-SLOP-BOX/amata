@@ -112,17 +112,31 @@ impl IrasuApp {
 
                     ui.separator();
 
-                    // Artboard Navigator Pager — drawn as minimal text labels (crisp, no emoji)
-                    let _ = ui.small_button("|◀").on_hover_text("最初のアートボード");
-                    let _ = ui.small_button("◀").on_hover_text("前のアートボード");
+                    // Artboard Navigator Pager
+                    let ab_count = self.state.document.effective_artboards().len();
+                    if ui.small_button("|◀").on_hover_text("最初のアートボード").clicked() {
+                        self.state.active_artboard_idx = 0;
+                    }
+                    if ui.small_button("◀").on_hover_text("前のアートボード").clicked() {
+                        self.state.active_artboard_idx = self.state.active_artboard_idx.saturating_sub(1);
+                    }
                     ui.label(
-                        RichText::new(" 1 ")
+                        RichText::new(format!(" {} ", self.state.active_artboard_idx + 1))
                             .size(11.0)
                             .monospace()
                             .color(Color32::WHITE),
                     );
-                    let _ = ui.small_button("▶").on_hover_text("次のアートボード");
-                    let _ = ui.small_button("▶|").on_hover_text("最後のアートボード");
+                    if ui.small_button("▶").on_hover_text("次のアートボード").clicked() {
+                        let next = self.state.active_artboard_idx + 1;
+                        if next < ab_count {
+                            self.state.active_artboard_idx = next;
+                        }
+                    }
+                    if ui.small_button("▶|").on_hover_text("最後のアートボード").clicked() {
+                        if ab_count > 0 {
+                            self.state.active_artboard_idx = ab_count - 1;
+                        }
+                    }
 
                     ui.separator();
 

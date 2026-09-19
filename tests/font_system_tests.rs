@@ -154,6 +154,7 @@ fn test_multilanguage_text_fidelity() {
             font_style: FontStyle::Normal,
             letter_spacing: 0.5,
             text_anchor: TextAnchor::Start,
+            ..Default::default()
         };
         let obj = Object::new_text_with_style(lang, sample, 50.0, 100.0, style);
         doc.add_object(obj);
@@ -179,6 +180,7 @@ fn test_text_to_outline_real_and_mock_fallback() {
         font_style: FontStyle::Normal,
         letter_spacing: 1.0,
         text_anchor: TextAnchor::Start,
+        ..Default::default()
     };
 
     // Extract outline for Latin text with bundled Inter
@@ -196,6 +198,7 @@ fn test_text_to_outline_real_and_mock_fallback() {
         font_style: FontStyle::Normal,
         letter_spacing: 0.0,
         text_anchor: TextAnchor::Start,
+        ..Default::default()
     };
     let outline_fallback = text_to_outline_path_with_style("FallbackText", &style_fallback);
     assert!(

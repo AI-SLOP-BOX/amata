@@ -283,42 +283,88 @@ impl CanvasWidget {
             self.draw_grid(&painter, rect, origin, state);
         }
 
-        // Artboard Dimensions & Realistic Multi-Tier Soft Drop Shadow (Illustrator CC signature canvas)
+        // Artboard(s): draw all artboards owned by the document.
+        // The active artboard (or the only one) gets a header label.
+        let artboards = state.document.effective_artboards();
+        for (ab_idx, ab) in artboards.iter().enumerate() {
+            let ab_rect = Rect::from_min_size(
+                Pos2::new(
+                    origin.x + ab.x as f32 * state.zoom,
+                    origin.y + ab.y as f32 * state.zoom,
+                ),
+                Vec2::new(
+                    ab.width as f32 * state.zoom,
+                    ab.height as f32 * state.zoom,
+                ),
+            );
+            // Soft outer diffuse shadow
+            let shadow_rect1 = ab_rect.translate(Vec2::new(4.0, 4.0));
+            painter.rect_filled(shadow_rect1, 0.0_f32, Color32::from_black_alpha(35));
+            let shadow_rect2 = ab_rect.translate(Vec2::new(2.0, 2.0));
+            painter.rect_filled(shadow_rect2, 0.0_f32, Color32::from_black_alpha(70));
+            let shadow_rect3 = ab_rect.translate(Vec2::new(1.0, 1.0));
+            painter.rect_filled(shadow_rect3, 0.0_f32, Color32::from_black_alpha(90));
+
+            // Transparency checkerboard (6px squares at base zoom)
+            let check_size = 6.0 * state.zoom;
+            if check_size >= 2.0 {
+                let cols = (ab_rect.width() / check_size).ceil() as i32;
+                let rows = (ab_rect.height() / check_size).ceil() as i32;
+                let c_light = Color32::from_rgb(240, 240, 240);
+                let c_dark = Color32::from_rgb(204, 204, 204);
+                for row in 0..rows {
+                    for col in 0..cols {
+                        let x = ab_rect.min.x + col as f32 * check_size;
+                        let y = ab_rect.min.y + row as f32 * check_size;
+                        let r = Rect::from_min_size(
+                            Pos2::new(x, y),
+                            Vec2::new(check_size + 0.5, check_size + 0.5),
+                        ).intersect(ab_rect);
+                        let c = if (row + col) % 2 == 0 { c_light } else { c_dark };
+                        painter.rect_filled(r, 0.0, c);
+                    }
+                }
+            } else {
+                // Too zoomed out: just fill white
+                painter.rect_filled(ab_rect, 0.0_f32, Color32::WHITE);
+            }
+
+            painter.rect_stroke(
+                ab_rect,
+                0.0_f32,
+                Stroke::new(1.0_f32, Color32::from_rgb(60, 60, 60)),
+                StrokeKind::Outside,
+            );
+
+            // Artboard Header Tab Label
+            let tab_pos = Pos2::new(ab_rect.min.x, ab_rect.min.y - 18.0);
+            painter.text(
+                tab_pos,
+                egui::Align2::LEFT_TOP,
+                format!(
+                    "{} ({} × {} px)",
+                    ab.name,
+                    ab.width as i32,
+                    ab.height as i32
+                ),
+                FontId::proportional(11.0),
+                Color32::from_rgb(170, 170, 170),
+            );
+        }
+
+        // Compute the active artboard rect for isolation overlay / smart guides
+        let active_ab = artboards.get(state.active_artboard_idx).cloned().unwrap_or_else(|| {
+            crate::core::document::Artboard::new("Artboard 1", 0.0, 0.0, state.document.width, state.document.height)
+        });
         let artboard = Rect::from_min_size(
-            origin,
+            Pos2::new(
+                origin.x + active_ab.x as f32 * state.zoom,
+                origin.y + active_ab.y as f32 * state.zoom,
+            ),
             Vec2::new(
-                state.document.width as f32 * state.zoom,
-                state.document.height as f32 * state.zoom,
+                active_ab.width as f32 * state.zoom,
+                active_ab.height as f32 * state.zoom,
             ),
-        );
-        // Soft outer diffuse shadow
-        let shadow_rect1 = artboard.translate(Vec2::new(4.0, 4.0));
-        painter.rect_filled(shadow_rect1, 0.0_f32, Color32::from_black_alpha(35));
-        let shadow_rect2 = artboard.translate(Vec2::new(2.0, 2.0));
-        painter.rect_filled(shadow_rect2, 0.0_f32, Color32::from_black_alpha(70));
-        let shadow_rect3 = artboard.translate(Vec2::new(1.0, 1.0));
-        painter.rect_filled(shadow_rect3, 0.0_f32, Color32::from_black_alpha(90));
-
-        // Crisp White Artboard Paper
-        painter.rect_filled(artboard, 0.0_f32, Color32::WHITE);
-        painter.rect_stroke(
-            artboard,
-            0.0_f32,
-            Stroke::new(1.0_f32, Color32::from_rgb(60, 60, 60)),
-            StrokeKind::Outside,
-        );
-
-        // Artboard Header Tab Label
-        let tab_pos = Pos2::new(artboard.min.x, artboard.min.y - 18.0);
-        painter.text(
-            tab_pos,
-            egui::Align2::LEFT_TOP,
-            format!(
-                "Artboard 1 ({} × {} px)",
-                state.document.width as i32, state.document.height as i32
-            ),
-            FontId::proportional(11.0),
-            Color32::from_rgb(170, 170, 170),
         );
 
         // Decode placed images ahead of drawing (texture cache).

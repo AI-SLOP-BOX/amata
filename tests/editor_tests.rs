@@ -1003,6 +1003,8 @@ fn test_stress_save_reload_round_trip_fidelity() {
         symbols: Vec::new(),
         timeline: Default::default(),
         guides: Vec::new(),
+        color_mode: Default::default(),
+        artboards: Vec::new(),
     };
 
     let temp_dir = std::env::temp_dir();

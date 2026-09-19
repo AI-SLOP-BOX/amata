@@ -63,6 +63,8 @@ pub struct NewDocRequest {
     pub name: String,
     pub width: f64,
     pub height: f64,
+    pub color_mode: crate::core::document::ColorMode,
+    pub artboard_count: usize,
 }
 
 impl NewDocModal {
@@ -594,10 +596,17 @@ impl NewDocModal {
                                 } else {
                                     self.doc_name.trim().to_string()
                                 };
+                                let color_mode = if self.color_mode.contains("CMYK") {
+                                    crate::core::document::ColorMode::Cmyk
+                                } else {
+                                    crate::core::document::ColorMode::Rgb
+                                };
                                 request = Some(NewDocRequest {
                                     name,
                                     width: w,
                                     height: h,
+                                    color_mode,
+                                    artboard_count: self.artboard_count,
                                 });
                                 self.is_open = false;
                             }

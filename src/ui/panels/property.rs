@@ -601,9 +601,19 @@ impl PropertyPanel {
                         .size(11.0)
                         .color(Color32::from_rgb(160, 160, 160)),
                 );
-                ui.label(RichText::new("1").size(11.0).color(Color32::WHITE));
-                let _ = ui.small_button("◀");
-                let _ = ui.small_button("▶");
+                let ab_count = state.document.effective_artboards().len();
+                let idx = state.active_artboard_idx;
+                ui.label(
+                    RichText::new(format!("{}", idx + 1))
+                        .size(11.0)
+                        .color(Color32::WHITE),
+                );
+                if ui.small_button("◀").clicked() && idx > 0 {
+                    state.active_artboard_idx = idx - 1;
+                }
+                if ui.small_button("▶").clicked() && idx + 1 < ab_count {
+                    state.active_artboard_idx = idx + 1;
+                }
             });
 
             ui.add_space(4.0);

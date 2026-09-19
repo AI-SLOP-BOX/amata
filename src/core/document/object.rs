@@ -152,6 +152,16 @@ pub struct TextStyle {
     pub letter_spacing: f64,
     #[serde(default)]
     pub text_anchor: TextAnchor,
+    /// Line height multiplier.  `None` means the default 1.2× font size.
+    #[serde(default)]
+    pub line_height: Option<f64>,
+    /// Maximum width before word-wrapping kicks in.  `None` means no wrap
+    /// (legacy single-line / explicit `\n` behaviour).
+    #[serde(default)]
+    pub max_width: Option<f64>,
+    /// Enable soft word wrapping at `max_width`.
+    #[serde(default)]
+    pub word_wrap: bool,
 }
 
 impl Default for TextStyle {
@@ -163,6 +173,9 @@ impl Default for TextStyle {
             font_style: FontStyle::Normal,
             letter_spacing: 0.0,
             text_anchor: TextAnchor::Start,
+            line_height: None,
+            max_width: None,
+            word_wrap: false,
         }
     }
 }
@@ -176,7 +189,15 @@ impl TextStyle {
             font_style: FontStyle::Normal,
             letter_spacing: 0.0,
             text_anchor: TextAnchor::Start,
+            line_height: None,
+            max_width: None,
+            word_wrap: false,
         }
+    }
+
+    /// Effective line height in document units.
+    pub fn effective_line_height(&self) -> f64 {
+        self.line_height.unwrap_or(1.2) * self.font_size
     }
 }
 
@@ -320,13 +341,90 @@ impl Transform {
 /// Approximate text block metrics: max line width and total height for
 /// explicit `\n` line breaks at 1.2em advance (matches canvas + SVG export).
 pub fn text_block_size(text: &str, font_size: f64) -> (f64, f64) {
-    let lines: Vec<&str> = text.split('\n').collect();
+    text_block_size_with_style(text, &TextStyle {
+        font_size,
+        ..Default::default()
+    })
+}
+
+/// Measure a text block, honouring explicit line height and word-wrap
+/// settings when a `TextStyle` is available.
+pub fn text_block_size_with_style(text: &str, style: &TextStyle) -> (f64, f64) {
+    let lines = if style.word_wrap {
+        if let Some(max_w) = style.max_width {
+            compute_wrapped_lines(text, style, max_w)
+        } else {
+            text.split('\n').map(String::from).collect()
+        }
+    } else {
+        text.split('\n').map(String::from).collect()
+    };
+    let line_h = style.effective_line_height();
+    // Width estimate: use character count × (font_size × 0.6) as a
+    // rough per-glyph advance.  This is still monospace-biased but
+    // better than nothing; the canvas rendering uses egui's real layout.
     let width = lines
         .iter()
-        .map(|l| l.chars().count() as f64 * font_size * 0.6)
+        .map(|l| l.chars().count() as f64 * style.font_size * 0.6)
         .fold(0.0_f64, f64::max);
-    let height = font_size * (1.0 + 1.2 * (lines.len().saturating_sub(1) as f64));
+    let height = line_h + line_h * (lines.len().saturating_sub(1) as f64);
     (width, height)
+}
+
+/// Compute soft-wrapped lines by breaking at the last space before
+/// `max_width` is exceeded.  CJK characters are treated as break
+/// opportunities.  Hard breaks (`\n`) always start a new line.
+pub fn compute_wrapped_lines(text: &str, style: &TextStyle, max_width: f64) -> Vec<String> {
+    let char_w = style.font_size * 0.6; // rough per-char advance
+    let mut result = Vec::new();
+    for paragraph in text.split('\n') {
+        if paragraph.is_empty() {
+            result.push(String::new());
+            continue;
+        }
+        let mut current_line = String::new();
+        let mut current_w = 0.0f64;
+        let mut last_space_idx = None;
+        let mut last_space_w = 0.0f64;
+        for (i, ch) in paragraph.chars().enumerate() {
+            let w = char_w;
+            let is_cjk = ('\u{4E00}'..='\u{9FFF}').contains(&ch)
+                || ('\u{3400}'..='\u{4DBF}').contains(&ch)
+                || ('\u{F900}'..='\u{FAFF}').contains(&ch);
+            let is_break = ch == ' ' || is_cjk;
+            if is_break {
+                last_space_idx = Some(i);
+                last_space_w = current_w + w;
+            }
+            if current_w + w > max_width && current_w > 0.0 {
+                // Break at last space if we have one
+                if let Some(si) = last_space_idx {
+                    let kept: String = paragraph.chars().take(si).collect();
+                    result.push(kept);
+                    let rest: String = paragraph.chars().skip(si + 1).collect();
+                    // Continue wrapping the remainder
+                    if !rest.is_empty() {
+                        let sub = compute_wrapped_lines(&rest, style, max_width);
+                        result.extend(sub);
+                    }
+                    return result;
+                } else {
+                    // No break opportunity: force break at current position
+                    let kept: String = paragraph.chars().take(i).collect();
+                    result.push(kept);
+                    let rest: String = paragraph.chars().skip(i).collect();
+                    if !rest.is_empty() {
+                        let sub = compute_wrapped_lines(&rest, style, max_width);
+                        result.extend(sub);
+                    }
+                    return result;
+                }
+            }
+            current_w += w;
+        }
+        result.push(paragraph.to_string());
+    }
+    result
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

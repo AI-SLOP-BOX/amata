@@ -1,10 +1,47 @@
 use super::CanvasWidget;
-use crate::core::document::{Object, ObjectType};
+use crate::core::document::{BlendMode, Object, ObjectType};
 use crate::core::path::{
     FillStyle, FillType, LinearGradient, PathData, PatternFill, RadialGradient,
 };
 use crate::core::state::AppState;
 use egui::{Color32, FontId, Pos2, Rect, Stroke, Vec2};
+
+/// Approximate a blend mode by adjusting the source color against the
+/// assumed background.  Only the most common vector blend modes are
+/// handled; everything else falls back to Normal (opaque overlay).
+fn apply_blend_approx(src: [f32; 4], bg: [f32; 4], mode: BlendMode) -> [f32; 4] {
+    let sa = src[3];
+    let ba = bg[3];
+    let out_a = sa + ba * (1.0 - sa);
+    if out_a <= 0.0 {
+        return [0.0; 4];
+    }
+    let fn3 = |s: f32, b: f32| -> f32 { s * sa + b * ba * (1.0 - sa) / out_a };
+    let sr = src[0];
+    let sg = src[1];
+    let sb = src[2];
+    let br = bg[0];
+    let bg_ = bg[1];
+    let bb = bg[2];
+    let (r, g, b) = match mode {
+        BlendMode::Multiply => (sr * br, sg * bg_, sb * bb),
+        BlendMode::Screen => (1.0 - (1.0 - sr) * (1.0 - br), 1.0 - (1.0 - sg) * (1.0 - bg_), 1.0 - (1.0 - sb) * (1.0 - bb)),
+        BlendMode::Overlay => {
+            let f = |s: f32, d: f32| -> f32 {
+                if d < 0.5 { 2.0 * s * d } else { 1.0 - 2.0 * (1.0 - s) * (1.0 - d) }
+            };
+            (f(sr, br), f(sg, bg_), f(sb, bb))
+        }
+        BlendMode::Darken => (sr.min(br), sg.min(bg_), sb.min(bb)),
+        BlendMode::Lighten => (sr.max(br), sg.max(bg_), sb.max(bb)),
+        BlendMode::Difference => ((sr - br).abs(), (sg - bg_).abs(), (sb - bb).abs()),
+        BlendMode::Exclusion => {
+            (sr + br - 2.0 * sr * br, sg + bg_ - 2.0 * sg * bg_, sb + bb - 2.0 * sb * bb)
+        }
+        _ => (sr, sg, sb),
+    };
+    [fn3(r, br), fn3(g, bg_), fn3(b, bb), out_a]
+}
 
 fn affine_mul(m1: &[f64; 6], m2: &[f64; 6]) -> [f64; 6] {
     [
@@ -48,6 +85,28 @@ impl CanvasWidget {
 
         let fill_color = obj.fill.as_ref().and_then(|f| fill_type_color(f, opacity));
 
+        // Approximate non-Normal blend modes by blending the fill against
+        // the white artboard background.  This is a preview-only heuristic;
+        // SVG export uses the real CSS mix-blend-mode attribute.
+        let fill_color = fill_color.map(|fc| {
+            if obj.blend_mode != BlendMode::Normal {
+                let bg = [1.0, 1.0, 1.0, 1.0]; // artboard white
+                let blended = apply_blend_approx(
+                    [fc.r() as f32 / 255.0, fc.g() as f32 / 255.0, fc.b() as f32 / 255.0, fc.a() as f32 / 255.0],
+                    bg,
+                    obj.blend_mode,
+                );
+                Color32::from_rgba_unmultiplied(
+                    (blended[0] * 255.0) as u8,
+                    (blended[1] * 255.0) as u8,
+                    (blended[2] * 255.0) as u8,
+                    (blended[3] * 255.0) as u8,
+                )
+            } else {
+                fc
+            }
+        });
+
         let stroke_info = obj.stroke.as_ref().map(|s| {
             let c = s.color;
             let stroke_c = Color32::from_rgba_unmultiplied(
@@ -60,31 +119,42 @@ impl CanvasWidget {
         });
 
         if let Some(ref sh) = obj.shadow {
-            let sh_c = Color32::from_rgba_unmultiplied(
-                (sh.color[0] * 255.0_f32) as u8,
-                (sh.color[1] * 255.0_f32) as u8,
-                (sh.color[2] * 255.0_f32) as u8,
-                ((sh.color[3] * sh.opacity * opacity) * 255.0_f32) as u8,
-            );
-            let sh_to_screen = |lx: f64, ly: f64| -> Pos2 {
-                let (wx, wy) = affine_apply(
-                    &composed,
-                    lx + sh.offset_x,
-                    ly + sh.offset_y,
-                );
-                Pos2::new(
-                    origin.x + (wx as f32 * state.zoom),
-                    origin.y + (wy as f32 * state.zoom),
-                )
-            };
+            let sh_c = sh.color;
+            let sh_alpha = sh.opacity * opacity;
             let poly = obj.to_path_data().to_polygon(16);
             if poly.len() >= 3 {
-                let sh_pts: Vec<Pos2> = poly.iter().map(|p| sh_to_screen(p.x, p.y)).collect();
-                painter.add(egui::epaint::PathShape::convex_polygon(
-                    sh_pts,
-                    sh_c,
-                    Stroke::NONE,
-                ));
+                // Multi-layer shadow: draw several offset copies at
+                // decreasing opacity and increasing spread to approximate
+                // a Gaussian blur (similar to the glow code below).
+                let layers = 5u32;
+                for layer in 0..layers {
+                    let t = layer as f32 / layers as f32;
+                    let spread = sh.blur_radius as f32 * t * 0.5;
+                    let layer_alpha = sh_alpha * (1.0 - t * 0.7);
+                    let c = Color32::from_rgba_unmultiplied(
+                        (sh_c[0] * 255.0) as u8,
+                        (sh_c[1] * 255.0) as u8,
+                        (sh_c[2] * 255.0) as u8,
+                        (layer_alpha * 255.0) as u8,
+                    );
+                    let sh_to_screen = |lx: f64, ly: f64| -> Pos2 {
+                        let (wx, wy) = affine_apply(
+                            &composed,
+                            lx + sh.offset_x * (1.0 + spread as f64 * 0.1),
+                            ly + sh.offset_y * (1.0 + spread as f64 * 0.1),
+                        );
+                        Pos2::new(
+                            origin.x + (wx as f32 * state.zoom),
+                            origin.y + (wy as f32 * state.zoom),
+                        )
+                    };
+                    let sh_pts: Vec<Pos2> = poly.iter().map(|p| sh_to_screen(p.x, p.y)).collect();
+                    painter.add(egui::epaint::PathShape::convex_polygon(
+                        sh_pts,
+                        c,
+                        Stroke::NONE,
+                    ));
+                }
             }
         }
 
@@ -92,11 +162,14 @@ impl CanvasWidget {
             let base_c = gl.color;
             let poly = obj.to_path_data().to_polygon(16);
             if poly.len() >= 3 {
-                // Multi-tiered outer bloom
-                for tier in (1..=4).rev() {
-                    let spread = (gl.radius as f32 * (tier as f32 / 4.0)) * state.zoom;
-                    let tier_alpha =
-                        (base_c[3] * gl.intensity * opacity * (0.15 / tier as f32) * 255.0) as u8;
+                // Multi-tiered outer bloom with Gaussian-like alpha falloff
+                for tier in (1..=6).rev() {
+                    let tf = tier as f32 / 6.0;
+                    let spread = (gl.radius as f32 * tf) * state.zoom;
+                    // Gaussian-like falloff: alpha drops as exp(-x^2)
+                    let tier_alpha = (base_c[3] * gl.intensity * opacity
+                        * (0.25 * (-tf * tf * 2.0).exp())
+                        * 255.0) as u8;
                     let tier_color = Color32::from_rgba_unmultiplied(
                         (base_c[0] * 255.0) as u8,
                         (base_c[1] * 255.0) as u8,
@@ -343,10 +416,19 @@ impl CanvasWidget {
                 // silently rendering everything as regular.
                 let bold = style.font_weight >= 650;
                 let bold_dx = (scaled_size * 0.035).clamp(0.5, 1.5);
-                // Explicit line breaks: one baseline per line, advancing by
-                // the same 1.2em factor the SVG exporter uses for <tspan dy>.
-                let line_height = scaled_size * 1.2;
-                let lines: Vec<&str> = text.split('\n').collect();
+                // Line height from style (default 1.2em)
+                let line_height = (style.effective_line_height() * state.zoom as f64) as f32;
+                // Use word-wrapped lines when enabled
+                let lines: Vec<String> = if style.word_wrap {
+                    if let Some(max_w) = style.max_width {
+                        crate::core::document::object::compute_wrapped_lines(text, style, max_w)
+                    } else {
+                        text.split('\n').map(String::from).collect()
+                    }
+                } else {
+                    text.split('\n').map(String::from).collect()
+                };
+                let lines: Vec<&str> = lines.iter().map(|s| s.as_str()).collect();
                 let mut widest: f32 = 0.0;
                 for (li, line) in lines.iter().enumerate() {
                     let line_pos =
