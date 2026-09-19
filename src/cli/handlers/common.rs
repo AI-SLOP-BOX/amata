@@ -55,24 +55,24 @@ pub fn save_any_document_scaled(
             } else {
                 crate::io::svg::export_svg(doc)
             };
-            std::fs::write(path, svg)?;
+            crate::io::atomic::atomic_write_str(path, &svg)?;
             Ok(())
         }
         "png" => {
             let png_bytes = crate::io::raster::export_png(doc, scale, true)
                 .map_err(|e| format!("Raster export failed: {e}"))?;
-            std::fs::write(path, png_bytes)?;
+            crate::io::atomic::atomic_write_bytes(path, &png_bytes)?;
             Ok(())
         }
         "jpg" | "jpeg" => {
             let jpeg_bytes = crate::io::raster::export_jpeg(doc, scale)
                 .map_err(|e| format!("Raster export failed: {e}"))?;
-            std::fs::write(path, jpeg_bytes)?;
+            crate::io::atomic::atomic_write_bytes(path, &jpeg_bytes)?;
             Ok(())
         }
         "pdf" => {
             let pdf_bytes = crate::io::pdf::export_pdf(doc);
-            std::fs::write(path, pdf_bytes)?;
+            crate::io::atomic::atomic_write_bytes(path, &pdf_bytes)?;
             Ok(())
         }
         _ => crate::io::project::save_project(doc, path).map_err(|e| e.into()),

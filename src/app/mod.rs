@@ -230,7 +230,28 @@ impl eframe::App for IrasuApp {
         if let Some(ref mut watcher) = self.file_watcher {
             if let Some(external_content) = watcher.check_for_external_content() {
                 let file_path = watcher.file_path.clone();
-                if let Some(external_doc) = parse_watched_doc(&file_path, &external_content) {
+                // Validate before swapping documents: broken XML must not
+                // wipe the canvas. Project JSON already fails soft via
+                // parse_watched_doc; SVG goes through usvg validation with
+                // a once-per-content warning.
+                let validated = if is_project_file(&file_path) {
+                    parse_watched_doc(&file_path, &external_content)
+                } else {
+                    match crate::io::svg::try_parse_svg_document(&external_content) {
+                        Ok(doc) => Some(doc),
+                        Err(e) => {
+                            let h = crate::core::watcher::compute_hash(&external_content);
+                            if watcher.warned_invalid_hash != h {
+                                watcher.warned_invalid_hash = h;
+                                self.state.notify_error(format!(
+                                    "外部変更されたSVGを解析できません: {e}"
+                                ));
+                            }
+                            None
+                        }
+                    }
+                };
+                if let Some(external_doc) = validated {
                     if let Some(pre_edit_svg) =
                         serialize_watched_doc(&self.state.document, &file_path)
                     {
@@ -271,6 +292,11 @@ impl eframe::App for IrasuApp {
                 crate::ui::ExternalChangeAction::Accept => {
                     if let Some(notice) = self.external_change_dialog.notice.take() {
                         self.state.document = notice.external_doc;
+                        // Whole-document swap invalidates every stacked
+                        // command (Open/Load already do this): drop history
+                        // and selection instead of only marking saved.
+                        self.state.undo_manager.clear();
+                        self.state.selected_ids.clear();
                         self.state.undo_manager.mark_saved();
                         if let Some(ref mut w) = self.file_watcher {
                             w.mark_saved(&notice.external_svg);
@@ -285,12 +311,17 @@ impl eframe::App for IrasuApp {
                 }
                 crate::ui::ExternalChangeAction::Revert => {
                     if let Some(notice) = self.external_change_dialog.notice.take() {
-                        if let Err(e) = std::fs::write(&notice.file_path, &notice.pre_edit_svg) {
+                        if let Err(e) = crate::io::atomic::atomic_write_str(
+                            &notice.file_path,
+                            &notice.pre_edit_svg,
+                        ) {
                             self.state.notify_error(format!("復元に失敗しました: {e}"));
                         } else if let Some(doc) =
                             parse_watched_doc(&notice.file_path, &notice.pre_edit_svg)
                         {
                             self.state.document = doc;
+                            self.state.undo_manager.clear();
+                            self.state.selected_ids.clear();
                             self.state.undo_manager.mark_saved();
                             if let Some(ref mut w) = self.file_watcher {
                                 w.mark_saved(&notice.pre_edit_svg);
@@ -326,7 +357,10 @@ impl eframe::App for IrasuApp {
                             self.external_change_dialog.set_notice(notice);
                             return;
                         };
-                        if let Err(e) = std::fs::write(&notice.file_path, &current_content) {
+                        if let Err(e) = crate::io::atomic::atomic_write_str(
+                            &notice.file_path,
+                            &current_content,
+                        ) {
                             self.state.notify_error(format!("保存に失敗しました: {e}"));
                         } else {
                             self.state.undo_manager.mark_saved();

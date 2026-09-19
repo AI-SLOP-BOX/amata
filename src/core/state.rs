@@ -498,39 +498,35 @@ impl AppState {
     }
 
     /// Reorder objects (z-order ops) as one undo step. The mutation runs
-    /// inside `f`; orders are snapshotted per layer before/after and only
-    /// changed layers produce commands.
+    /// inside `f`; per-object absolute positions are diffed, so sibling
+    /// shifts cannot corrupt the restore.
     pub fn reorder_objects_undoable(
         &mut self,
         label: &str,
         f: impl FnOnce(&mut crate::core::document::Document),
     ) {
-        let before: Vec<(String, Vec<String>)> = self
-            .document
-            .layers
-            .iter()
-            .map(|l| {
-                (
-                    l.id.clone(),
-                    l.objects.iter().map(|o| o.id.clone()).collect(),
-                )
-            })
-            .collect();
+        let mut before: Vec<(String, usize, usize)> = Vec::new();
+        for (li, layer) in self.document.layers.iter().enumerate() {
+            for (pos, obj) in layer.objects.iter().enumerate() {
+                before.push((obj.id.clone(), li, pos));
+            }
+        }
         f(&mut self.document);
         let mut cmds: Vec<Box<dyn Command>> = Vec::new();
-        for (lid, old_order) in before {
-            if let Some(layer) = self.document.layers.iter().find(|l| l.id == lid) {
-                let new_order: Vec<String> =
-                    layer.objects.iter().map(|o| o.id.clone()).collect();
-                if old_order != new_order {
-                    cmds.push(Box::new(
-                        crate::core::history::ReorderObjectsCommand {
-                            layer_id: lid,
-                            old_order,
-                            new_order,
-                        },
-                    )
-                        as Box<dyn Command>);
+        for (id, li, old_pos) in before {
+            if let Some(layer) = self.document.layers.get(li) {
+                if let Some(new_pos) = layer.objects.iter().position(|o| o.id == id) {
+                    if new_pos != old_pos {
+                        cmds.push(Box::new(
+                            crate::core::history::ReorderObjectCommand {
+                                object_id: id,
+                                layer_idx: li,
+                                old_position: old_pos,
+                                new_position: new_pos,
+                            },
+                        )
+                            as Box<dyn Command>);
+                    }
                 }
             }
         }
@@ -577,6 +573,70 @@ impl AppState {
                 Box::new(BatchCommand::new(label, cmds)),
                 &mut self.document,
             );
+        }
+    }
+
+    /// Replace the current selection with computed results as ONE undo
+    /// step. Snapshots are taken before anything runs; when `build`
+    /// returns None (e.g. a failed compound) the document is untouched.
+    pub fn replace_selected(
+        &mut self,
+        label: &str,
+        build: impl FnOnce(Vec<Object>) -> Option<(Vec<Object>, Vec<String>)>,
+    ) {
+        let removed = crate::core::history::collect_located_objects(
+            &self.document,
+            &self.selected_ids,
+        );
+        if removed.is_empty() {
+            return;
+        }
+        let objects: Vec<Object> = removed.iter().map(|item| item.object.clone()).collect();
+        if let Some((added, new_ids)) = build(objects) {
+            let cmd = Box::new(crate::core::history::ReplaceObjectsCommand::new(
+                label, removed, added,
+            ));
+            self.undo_manager.execute(cmd, &mut self.document);
+            self.selected_ids = new_ids;
+        }
+    }
+
+    /// Like [`Self::replace_selected`], but only selected objects passing
+    /// `keep` participate — the rest stay untouched with no undo step.
+    /// (Used when an operation is a no-op for some objects, e.g. releasing
+    /// a non-compound path, where a pass-through would pointlessly move
+    /// them and pollute history.)
+    pub fn replace_selected_where(
+        &mut self,
+        label: &str,
+        mut keep: impl FnMut(&Object) -> bool,
+        build: impl FnOnce(Vec<Object>) -> Option<(Vec<Object>, Vec<String>)>,
+    ) {
+        let kept_ids: Vec<String> = self
+            .selected_ids
+            .iter()
+            .filter(|id| {
+                self.document
+                    .find_object(id)
+                    .map(|o| keep(o))
+                    .unwrap_or(false)
+            })
+            .cloned()
+            .collect();
+        if kept_ids.is_empty() {
+            return;
+        }
+        let removed = crate::core::history::collect_located_objects(&self.document, &kept_ids);
+        if removed.is_empty() {
+            return;
+        }
+        let objects: Vec<Object> = removed.iter().map(|item| item.object.clone()).collect();
+        if let Some((added, new_ids)) = build(objects) {
+            let cmd = Box::new(crate::core::history::ReplaceObjectsCommand::new(
+                label, removed, added,
+            ));
+            self.undo_manager.execute(cmd, &mut self.document);
+            self.selected_ids = new_ids;
         }
     }
 

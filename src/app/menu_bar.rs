@@ -73,35 +73,47 @@ impl IrasuApp {
                         {
                             match std::fs::read_to_string(&path) {
                                 Ok(content) => {
-                                    self.state.document =
-                                        crate::io::svg::parse_svg_document(&content);
-                                    self.state.adopt_doc_extras();
-                                    let obj_count = self.state.document.all_objects().count();
-                                    self.state.document.name = path
-                                        .file_stem()
-                                        .and_then(|s| s.to_str())
-                                        .unwrap_or("Untitled")
-                                        .to_string();
-                                    self.state.undo_manager.clear();
-                                    self.state.selected_ids.clear();
-                                    let mut watcher =
-                                        crate::core::watcher::FileWatcher::new(path.clone());
-                                    watcher.mark_saved(&content);
-                                    self.file_watcher = Some(watcher);
-                                    self.version_history_panel.refresh_history(&path);
-                                    crate::io::recent::push_recent(
-                                        &path,
-                                        self.state.document.width,
-                                        self.state.document.height,
-                                    );
-                                    if obj_count > 0 {
-                                        self.state.notify_info(format!(
-                                            "SVGをインポートしました ({} 個のオブジェクト)",
-                                            obj_count
-                                        ));
-                                    } else {
-                                        self.state
-                                            .notify_info("SVGを読み込みました (オブジェクトなし)");
+                                    match crate::io::svg::try_parse_svg_document(&content) {
+                                        Err(e) => {
+                                            self.state.notify_error(format!(
+                                                "SVGの解析に失敗しました: {e}"
+                                            ));
+                                        }
+                                        Ok(document) => {
+                                            self.state.document = document;
+                                            self.state.adopt_doc_extras();
+                                            let obj_count =
+                                                self.state.document.all_objects().count();
+                                            self.state.document.name = path
+                                                .file_stem()
+                                                .and_then(|s| s.to_str())
+                                                .unwrap_or("Untitled")
+                                                .to_string();
+                                            self.state.undo_manager.clear();
+                                            self.state.selected_ids.clear();
+                                            let mut watcher =
+                                                crate::core::watcher::FileWatcher::new(
+                                                    path.clone(),
+                                                );
+                                            watcher.mark_saved(&content);
+                                            self.file_watcher = Some(watcher);
+                                            self.version_history_panel.refresh_history(&path);
+                                            crate::io::recent::push_recent(
+                                                &path,
+                                                self.state.document.width,
+                                                self.state.document.height,
+                                            );
+                                            if obj_count > 0 {
+                                                self.state.notify_info(format!(
+                                                    "SVGをインポートしました ({} 個のオブジェクト)",
+                                                    obj_count
+                                                ));
+                                            } else {
+                                                self.state.notify_info(
+                                                    "SVGを読み込みました (オブジェクトなし)",
+                                                );
+                                            }
+                                        }
                                     }
                                 }
                                 Err(e) => {

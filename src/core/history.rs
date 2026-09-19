@@ -425,6 +425,129 @@ where
     });
 }
 
+/// An object snapshot together with its exact container location.
+/// `parent` is None for top-level objects, otherwise the containing
+/// group/mask id (nested selection, e.g. from isolation editing).
+#[derive(Clone)]
+pub struct LocatedObject {
+    pub object: super::document::Object,
+    pub layer_idx: usize,
+    pub position: usize,
+    pub parent: Option<String>,
+}
+
+/// Snapshot selected objects with their locations. MUST be taken before
+/// any removal for the matching replace command to restore order.
+pub fn collect_located_objects(
+    doc: &crate::core::document::Document,
+    selected_ids: &[String],
+) -> Vec<LocatedObject> {
+    fn walk(
+        objs: &[super::document::Object],
+        layer_idx: usize,
+        parent: &Option<String>,
+        selected_ids: &[String],
+        out: &mut Vec<LocatedObject>,
+    ) {
+        for (position, object) in objs.iter().enumerate() {
+            if selected_ids.iter().any(|id| id == &object.id) {
+                out.push(LocatedObject {
+                    object: object.clone(),
+                    layer_idx,
+                    position,
+                    parent: parent.clone(),
+                });
+            }
+            match &object.object_type {
+                super::document::ObjectType::Group(children)
+                | super::document::ObjectType::ClippingMask { children } => {
+                    walk(children, layer_idx, &Some(object.id.clone()), selected_ids, out);
+                }
+                _ => {}
+            }
+        }
+    }
+    let mut result = Vec::new();
+    for (layer_idx, layer) in doc.layers.iter().enumerate() {
+        walk(&layer.objects, layer_idx, &None, selected_ids, &mut result);
+    }
+    result
+}
+
+/// Replace a set of objects with another set as ONE undo step.
+/// Undo reinserts in ascending (layer, position) order, which is the only
+/// order that restores multi-removes exactly — removing in selection order
+/// and undoing reversed shifts siblings when 3+ share a layer.
+pub struct ReplaceObjectsCommand {
+    name: String,
+    removed: Vec<LocatedObject>,
+    added: Vec<super::document::Object>,
+}
+
+impl ReplaceObjectsCommand {
+    pub fn new(
+        name: impl Into<String>,
+        mut removed: Vec<LocatedObject>,
+        added: Vec<super::document::Object>,
+    ) -> Self {
+        // Ascending restore order matters for undo (see above).
+        // Containers sort independently: layer order, then parent groups.
+        removed.sort_by_key(|item| {
+            (
+                item.layer_idx,
+                item.parent.clone().unwrap_or_default(),
+                item.position,
+            )
+        });
+        Self {
+            name: name.into(),
+            removed,
+            added,
+        }
+    }
+}
+
+impl Command for ReplaceObjectsCommand {
+    fn execute(&self, doc: &mut Document) {
+        for item in &self.removed {
+            doc.remove_object(&item.object.id);
+        }
+        for object in &self.added {
+            doc.add_object(object.clone());
+        }
+    }
+
+    fn undo(&self, doc: &mut Document) {
+        for object in &self.added {
+            doc.remove_object(&object.id);
+        }
+        // Ascending position order restores the original sequence exactly.
+        for item in &self.removed {
+            if let Some(ref pid) = item.parent {
+                if let Some(parent) = doc.find_object_mut(pid) {
+                    match &mut parent.object_type {
+                        super::document::ObjectType::Group(children)
+                        | super::document::ObjectType::ClippingMask { children } => {
+                            let pos = item.position.min(children.len());
+                            children.insert(pos, item.object.clone());
+                            continue;
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            if let Some(layer) = doc.layers.get_mut(item.layer_idx) {
+                let pos = item.position.min(layer.objects.len());
+                layer.objects.insert(pos, item.object.clone());
+            }
+        }
+    }
+
+    fn name(&self) -> &str {
+        &self.name
+    }
+}
+
 /// Layer z-order change (move up/down).
 pub struct ReorderLayersCommand {
     pub old_order: Vec<String>,
@@ -445,28 +568,43 @@ impl Command for ReorderLayersCommand {
     }
 }
 
-/// Object z-order change within one layer (move up/down).
-pub struct ReorderObjectsCommand {
-    pub layer_id: String,
-    pub old_order: Vec<String>,
-    pub new_order: Vec<String>,
+/// Single-object z-order move within its layer. Multi-object arranges
+/// batch these; one command per object keeps positions absolute and
+/// immune to sibling shifts.
+pub struct ReorderObjectCommand {
+    pub object_id: String,
+    pub layer_idx: usize,
+    pub old_position: usize,
+    pub new_position: usize,
 }
 
-impl Command for ReorderObjectsCommand {
+impl Command for ReorderObjectCommand {
     fn execute(&self, doc: &mut Document) {
-        if let Some(layer) = doc.layers.iter_mut().find(|l| l.id == self.layer_id) {
-            apply_id_order(&mut layer.objects, &self.new_order, |o| &o.id);
-        }
+        let Some(layer) = doc.layers.get_mut(self.layer_idx) else {
+            return;
+        };
+        let Some(pos) = layer.objects.iter().position(|o| o.id == self.object_id) else {
+            return;
+        };
+        let object = layer.objects.remove(pos);
+        let target = self.new_position.min(layer.objects.len());
+        layer.objects.insert(target, object);
     }
 
     fn undo(&self, doc: &mut Document) {
-        if let Some(layer) = doc.layers.iter_mut().find(|l| l.id == self.layer_id) {
-            apply_id_order(&mut layer.objects, &self.old_order, |o| &o.id);
-        }
+        let Some(layer) = doc.layers.get_mut(self.layer_idx) else {
+            return;
+        };
+        let Some(pos) = layer.objects.iter().position(|o| o.id == self.object_id) else {
+            return;
+        };
+        let object = layer.objects.remove(pos);
+        let target = self.old_position.min(layer.objects.len());
+        layer.objects.insert(target, object);
     }
 
     fn name(&self) -> &str {
-        "Reorder Objects"
+        "Reorder Object"
     }
 }
 

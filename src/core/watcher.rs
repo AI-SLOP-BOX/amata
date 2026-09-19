@@ -17,12 +17,16 @@ pub struct FileWatcher {
     pub debounce_duration: Duration,
     pub pending_invalid_last_change: Option<Instant>,
     pub pending_invalid_last_hash: u64,
+    /// Content hash of the last invalid SVG we already warned about, so a
+    /// persistently broken external file notifies once instead of spamming
+    /// every frame.
+    pub warned_invalid_hash: u64,
     pub partial_write_timeout: Duration,
     pub last_full_verify: Instant,
     pub periodic_verify_interval: Duration,
 }
 
-fn compute_hash(data: &str) -> u64 {
+pub(crate) fn compute_hash(data: &str) -> u64 {
     let mut hasher = DefaultHasher::new();
     data.hash(&mut hasher);
     hasher.finish()
@@ -40,6 +44,7 @@ impl FileWatcher {
             debounce_duration: Duration::from_millis(50),
             pending_invalid_last_change: None,
             pending_invalid_last_hash: 0,
+            warned_invalid_hash: 0,
             partial_write_timeout: Duration::from_millis(500),
             last_full_verify: Instant::now(),
             periodic_verify_interval: Duration::from_millis(1000),
@@ -78,6 +83,7 @@ impl FileWatcher {
 
     /// Mark that Amata itself wrote this content to disk, preventing self-write loop
     pub fn mark_saved(&mut self, content: &str) {
+        self.warned_invalid_hash = 0;
         self.last_content_hash = compute_hash(content);
         self.last_file_size = content.len() as u64;
         if let Ok(metadata) = std::fs::metadata(&self.file_path) {

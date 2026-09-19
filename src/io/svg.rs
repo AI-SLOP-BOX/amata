@@ -401,6 +401,19 @@ pub fn parse_svg_color(color_str: &str) -> Option<[f32; 4]> {
     }
 }
 
+/// Validate SVG text with the real SVG parser (usvg) before converting.
+/// Returns Err for broken XML / invalid SVG so callers can refuse a
+/// document swap with feedback instead of silently loading an empty canvas.
+/// Scope note: usvg also normalizes and may reject exotic-but-tolerable
+/// input, so this gate is used at interactive replacement points (Open,
+/// external-change notice) — never in batch/CLI paths, which stay lenient.
+pub fn try_parse_svg_document(svg_text: &str) -> Result<Document, String> {
+    let options = resvg::usvg::Options::default();
+    resvg::usvg::Tree::from_str(svg_text, &options)
+        .map_err(|e| format!("Invalid SVG: {e}"))?;
+    Ok(parse_svg_document(svg_text))
+}
+
 pub fn parse_svg_document(svg_text: &str) -> Document {
     let mut doc = Document {
         name: "SVG Import".to_string(),

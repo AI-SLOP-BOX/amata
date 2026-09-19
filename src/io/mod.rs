@@ -1,3 +1,4 @@
+pub mod atomic;
 pub mod git;
 pub mod pdf;
 pub mod project;

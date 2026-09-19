@@ -4,7 +4,7 @@ use std::path::Path;
 
 pub fn save_project(doc: &Document, path: &Path) -> Result<(), String> {
     let json = serde_json::to_string_pretty(doc).map_err(|e| e.to_string())?;
-    fs::write(path, json).map_err(|e| e.to_string())
+    super::atomic::atomic_write_str(path, &json).map_err(|e| e.to_string())
 }
 
 pub fn load_project(path: &Path) -> Result<Document, String> {

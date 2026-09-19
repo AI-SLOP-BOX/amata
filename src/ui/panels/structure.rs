@@ -269,51 +269,15 @@ impl LayerPanel {
         }
 
         if let Some((l, o)) = to_move_obj_up {
-            if let Some(layer) = state.document.layers.get(l) {
-                let layer_id = layer.id.clone();
-                let old_order: Vec<String> =
-                    layer.objects.iter().map(|o| o.id.clone()).collect();
-                state.document.move_object_up(l, o);
-                let new_order: Vec<String> = state.document.layers[l]
-                    .objects
-                    .iter()
-                    .map(|o| o.id.clone())
-                    .collect();
-                if old_order != new_order {
-                    state.undo_manager.execute(
-                        Box::new(crate::core::history::ReorderObjectsCommand {
-                            layer_id,
-                            old_order,
-                            new_order,
-                        }),
-                        &mut state.document,
-                    );
-                }
-            }
+            state.reorder_objects_undoable("Move Object", |doc| {
+                doc.move_object_up(l, o);
+            });
         }
 
         if let Some((l, o)) = to_move_obj_down {
-            if let Some(layer) = state.document.layers.get(l) {
-                let layer_id = layer.id.clone();
-                let old_order: Vec<String> =
-                    layer.objects.iter().map(|o| o.id.clone()).collect();
-                state.document.move_object_down(l, o);
-                let new_order: Vec<String> = state.document.layers[l]
-                    .objects
-                    .iter()
-                    .map(|o| o.id.clone())
-                    .collect();
-                if old_order != new_order {
-                    state.undo_manager.execute(
-                        Box::new(crate::core::history::ReorderObjectsCommand {
-                            layer_id,
-                            old_order,
-                            new_order,
-                        }),
-                        &mut state.document,
-                    );
-                }
-            }
+            state.reorder_objects_undoable("Move Object", |doc| {
+                doc.move_object_down(l, o);
+            });
         }
 
         if let Some(i) = to_duplicate_layer {
@@ -606,44 +570,17 @@ impl PathfinderPanel {
     }
 
     pub fn apply_op(state: &mut AppState, op: BooleanOp) {
-        let mut selected_objs: Vec<Object> = Vec::new();
-        for id in &state.selected_ids {
-            if let Some(obj) = state.document.find_object(id) {
-                selected_objs.push(obj.clone());
+        let name = format!("Pathfinder: {}", op.name());
+        state.replace_selected(&name, |objects| {
+            if objects.len() < 2 {
+                return None;
             }
-        }
-
-        if selected_objs.len() < 2 {
-            return;
-        }
-
-        let obj_refs: Vec<&Object> = selected_objs.iter().collect();
-        if let Some(result_obj) = execute_pathfinder(&obj_refs, op) {
-            // Atomic: removals (with true locations) + result in one step.
-            // Previously the sources were deleted outside any command, so
-            // Undo removed the result while the originals stayed lost.
-            let mut cmds: Vec<Box<dyn crate::core::history::Command>> = Vec::new();
-            for obj in &selected_objs {
-                cmds.push(Box::new(
-                    crate::core::history::RemoveObjectCommand::located(
-                        obj.clone(),
-                        &state.document,
-                    ),
-                )
-                    as Box<dyn crate::core::history::Command>);
-            }
-            let new_id = result_obj.id.clone();
-            cmds.push(Box::new(crate::core::history::AddObjectCommand::new(
-                result_obj,
-            ))
-                as Box<dyn crate::core::history::Command>);
-            let batch = Box::new(crate::core::history::BatchCommand::new(
-                "Pathfinder",
-                cmds,
-            ));
-            state.undo_manager.execute(batch, &mut state.document);
-            state.selected_ids = vec![new_id];
-        }
+            let refs: Vec<&Object> = objects.iter().collect();
+            execute_pathfinder(&refs, op).map(|result| {
+                let new_id = result.id.clone();
+                (vec![result], vec![new_id])
+            })
+        });
     }
 
     /// Simplify selected paths (Visvalingam, curves preserved) as one step.
@@ -681,75 +618,37 @@ impl PathfinderPanel {
     }
 
     /// Combine selection into a compound path (EvenOdd holes) as one step.
+    /// Conversion runs before any mutation: failure leaves the document
+    /// untouched.
     pub fn apply_compound(state: &mut AppState) {
-        let mut selected_objs: Vec<Object> = Vec::new();
-        for id in &state.selected_ids {
-            if let Some(obj) = state.document.find_object(id) {
-                selected_objs.push(obj.clone());
+        state.replace_selected("Make Compound Path", |objects| {
+            if objects.len() < 2 {
+                return None;
             }
-        }
-        if selected_objs.len() < 2 {
-            return;
-        }
-        if let Some(compound) = Object::make_compound_path(&selected_objs) {
-            let mut cmds: Vec<Box<dyn crate::core::history::Command>> = Vec::new();
-            for obj in &selected_objs {
-                cmds.push(Box::new(
-                    crate::core::history::RemoveObjectCommand::located(
-                        obj.clone(),
-                        &state.document,
-                    ),
-                )
-                    as Box<dyn crate::core::history::Command>);
-            }
-            let new_id = compound.id.clone();
-            cmds.push(Box::new(crate::core::history::AddObjectCommand::new(
-                compound,
-            ))
-                as Box<dyn crate::core::history::Command>);
-            let batch = Box::new(crate::core::history::BatchCommand::new(
-                "Compound Path",
-                cmds,
-            ));
-            state.undo_manager.execute(batch, &mut state.document);
-            state.selected_ids = vec![new_id];
-        }
+            Object::make_compound_path(&objects).map(|compound| {
+                let new_id = compound.id.clone();
+                (vec![compound], vec![new_id])
+            })
+        });
     }
 
     /// Release a compound path back into parts as one step.
     pub fn apply_release_compound(state: &mut AppState) {
-        let ids = state.selected_ids.clone();
-        let mut cmds: Vec<Box<dyn crate::core::history::Command>> = Vec::new();
-        let mut new_ids = Vec::new();
-        for id in &ids {
-            if let Some(obj) = state.document.find_object(id) {
-                let parts = obj.release_compound_path();
-                if parts.len() > 1 {
-                    cmds.push(Box::new(
-                        crate::core::history::RemoveObjectCommand::located(
-                            obj.clone(),
-                            &state.document,
-                        ),
-                    )
-                        as Box<dyn crate::core::history::Command>);
-                    for part in parts {
+        state.replace_selected_where(
+            "Release Compound",
+            |o| o.release_compound_path().len() > 1,
+            |objects| {
+                let mut added = Vec::new();
+                let mut new_ids = Vec::new();
+                for obj in objects {
+                    for part in obj.release_compound_path() {
                         new_ids.push(part.id.clone());
-                        cmds.push(Box::new(crate::core::history::AddObjectCommand::new(
-                            part,
-                        ))
-                            as Box<dyn crate::core::history::Command>);
+                        added.push(part);
                     }
                 }
-            }
-        }
-        if !cmds.is_empty() {
-            let batch = Box::new(crate::core::history::BatchCommand::new(
-                "Release Compound",
-                cmds,
-            ));
-            state.undo_manager.execute(batch, &mut state.document);
-            state.selected_ids = new_ids;
-        }
+                Some((added, new_ids))
+            },
+        );
     }
 }
 
@@ -896,46 +795,19 @@ impl KnifePanel {
                             if let Some((part_a, part_b)) =
                                 crate::core::knife::slice_object_with_line(obj, p1, p2)
                             {
-                                // One atomic undo step with the true layer/position
-                                // so Undo restores the original z-order.
-                                let mut found = None;
-                                for (l_idx, layer) in
-                                    state.document.layers.iter().enumerate()
-                                {
-                                    if let Some(pos) = layer
-                                        .objects
-                                        .iter()
-                                        .position(|o| o.id == obj.id)
-                                    {
-                                        found = Some((l_idx, pos));
-                                        break;
-                                    }
-                                }
-                                if let Some((l_idx, pos)) = found {
-                                    let rm = Box::new(
-                                        crate::core::history::RemoveObjectCommand::new(
-                                            obj.clone(),
-                                            l_idx,
-                                            pos,
-                                        ),
-                                    )
-                                        as Box<dyn crate::core::history::Command>;
-                                    let add_a = Box::new(
-                                        crate::core::history::AddObjectCommand::new(part_a),
-                                    )
-                                        as Box<dyn crate::core::history::Command>;
-                                    let add_b = Box::new(
-                                        crate::core::history::AddObjectCommand::new(part_b),
-                                    )
-                                        as Box<dyn crate::core::history::Command>;
-                                    let batch = Box::new(
-                                        crate::core::history::BatchCommand::new(
-                                            "Slice Object",
-                                            vec![rm, add_a, add_b],
-                                        ),
+                                let removed =
+                                    crate::core::history::collect_located_objects(
+                                        &state.document,
+                                        std::slice::from_ref(&obj.id),
                                     );
-                                    state.undo_manager.execute(batch, &mut state.document);
-                                }
+                                let cmd = Box::new(
+                                    crate::core::history::ReplaceObjectsCommand::new(
+                                        "Slice Object",
+                                        removed,
+                                        vec![part_a, part_b],
+                                    ),
+                                );
+                                state.undo_manager.execute(cmd, &mut state.document);
                             }
                         }
                     }
@@ -954,44 +826,19 @@ impl KnifePanel {
                             if let Some((part_a, part_b)) =
                                 crate::core::knife::slice_object_with_line(obj, p1, p2)
                             {
-                                let mut found = None;
-                                for (l_idx, layer) in
-                                    state.document.layers.iter().enumerate()
-                                {
-                                    if let Some(pos) = layer
-                                        .objects
-                                        .iter()
-                                        .position(|o| o.id == obj.id)
-                                    {
-                                        found = Some((l_idx, pos));
-                                        break;
-                                    }
-                                }
-                                if let Some((l_idx, pos)) = found {
-                                    let rm = Box::new(
-                                        crate::core::history::RemoveObjectCommand::new(
-                                            obj.clone(),
-                                            l_idx,
-                                            pos,
-                                        ),
-                                    )
-                                        as Box<dyn crate::core::history::Command>;
-                                    let add_a = Box::new(
-                                        crate::core::history::AddObjectCommand::new(part_a),
-                                    )
-                                        as Box<dyn crate::core::history::Command>;
-                                    let add_b = Box::new(
-                                        crate::core::history::AddObjectCommand::new(part_b),
-                                    )
-                                        as Box<dyn crate::core::history::Command>;
-                                    let batch = Box::new(
-                                        crate::core::history::BatchCommand::new(
-                                            "Slice Object",
-                                            vec![rm, add_a, add_b],
-                                        ),
+                                let removed =
+                                    crate::core::history::collect_located_objects(
+                                        &state.document,
+                                        std::slice::from_ref(&obj.id),
                                     );
-                                    state.undo_manager.execute(batch, &mut state.document);
-                                }
+                                let cmd = Box::new(
+                                    crate::core::history::ReplaceObjectsCommand::new(
+                                        "Slice Object",
+                                        removed,
+                                        vec![part_a, part_b],
+                                    ),
+                                );
+                                state.undo_manager.execute(cmd, &mut state.document);
                             }
                         }
                     }

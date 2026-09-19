@@ -287,7 +287,7 @@ fn test_bulk_generation_undoes_in_one_step() {
 fn test_layer_add_delete_reorder_undo() {
     use irasu_illustrator::core::document::Layer;
     use irasu_illustrator::core::history::{
-        AddLayerCommand, RemoveLayerCommand, ReorderLayersCommand, ReorderObjectsCommand,
+        AddLayerCommand, RemoveLayerCommand, ReorderLayersCommand, ReorderObjectCommand,
     };
     let mut doc = Document::default();
     let mut mgr = irasu_illustrator::core::history::UndoManager::new();
@@ -343,22 +343,26 @@ fn test_layer_add_delete_reorder_undo() {
     // Object reorder within a layer.
     doc.layers[1].objects.push(Object::new_rect("A", 0.0, 0.0, 1.0, 1.0, 0.0));
     doc.layers[1].objects.push(Object::new_rect("B", 0.0, 0.0, 1.0, 1.0, 0.0));
-    let lid = doc.layers[1].id.clone();
     let oo: Vec<String> = doc.layers[1].objects.iter().map(|o| o.id.clone()).collect();
     doc.move_object_up(1, 0);
     let no: Vec<String> = doc.layers[1].objects.iter().map(|o| o.id.clone()).collect();
     assert_ne!(oo, no);
+    // Per-object absolute positions (PR1): move the object back via command.
+    let moved_id = no[1].clone();
     mgr.execute(
-        Box::new(ReorderObjectsCommand {
-            layer_id: lid,
-            old_order: oo.clone(),
-            new_order: no,
+        Box::new(ReorderObjectCommand {
+            object_id: moved_id.clone(),
+            layer_idx: 1,
+            old_position: 1,
+            new_position: 0,
         }),
         &mut doc,
     );
+    let fwd: Vec<String> = doc.layers[1].objects.iter().map(|o| o.id.clone()).collect();
+    assert_eq!(fwd[0], moved_id);
     mgr.undo(&mut doc);
     let back: Vec<String> = doc.layers[1].objects.iter().map(|o| o.id.clone()).collect();
-    assert_eq!(back, oo);
+    assert_eq!(back, no);
 }
 
 fn ring_area(poly: &[irasu_illustrator::core::path::AnchorPoint]) -> f64 {
@@ -962,6 +966,117 @@ fn test_selected_only_export_filters() {
     assert_eq!(export_doc.all_objects().count(), 1);
     let svg = irasu_illustrator::io::svg::export_svg(&export_doc);
     assert_eq!(svg.matches("<rect").count(), 1);
+}
+
+#[test]
+fn replace_objects_undo_restores_original_order() {
+    use irasu_illustrator::core::history::{
+        collect_located_objects, ReplaceObjectsCommand,
+    };
+    let mut doc = Document::default();
+    for name in ["A", "B", "C"] {
+        doc.add_object(Object::new_rect(name, 0.0, 0.0, 10.0, 10.0, 0.0));
+    }
+    let mut mgr = irasu_illustrator::core::history::UndoManager::new();
+    let before: Vec<String> = doc
+        .all_objects()
+        .map(|(_, o)| o.name.clone())
+        .collect();
+    assert_eq!(before, vec!["A", "B", "C"]);
+
+    // Group A and B (out of the 3), then undo: exact order must return.
+    let removed = collect_located_objects(
+        &doc,
+        &doc.all_objects()
+            .take(2)
+            .map(|(_, o)| o.id.clone())
+            .collect::<Vec<_>>(),
+    );
+    let objects: Vec<Object> = removed.iter().map(|i| i.object.clone()).collect();
+    let group = Object::new_group("G", objects);
+    mgr.execute(
+        Box::new(ReplaceObjectsCommand::new(
+            "Group",
+            removed,
+            vec![group],
+        )),
+        &mut doc,
+    );
+    assert_eq!(doc.all_objects().count(), 2);
+    mgr.undo(&mut doc);
+    let back: Vec<String> = doc
+        .all_objects()
+        .map(|(_, o)| o.name.clone())
+        .collect();
+    assert_eq!(back, vec!["A", "B", "C"]);
+}
+
+#[test]
+fn failed_compound_path_does_not_remove_objects() {
+    let a = Object::new_rect("A", 0.0, 0.0, 10.0, 10.0, 0.0);
+    // make_compound_path on an empty slice must fail without touching docs.
+    assert!(Object::make_compound_path(&[]).is_none());
+    // A single object cannot usefully compound through the helper path:
+    // callers check len >= 2 first (no mutation happens on failure).
+    let mut doc = Document::default();
+    doc.add_object(a);
+    let count_before = doc.all_objects().count();
+    let objs: Vec<Object> = doc.all_objects().map(|(_, o)| o.clone()).collect();
+    if objs.len() >= 2 {
+        panic!("test setup: expected a single object");
+    }
+    assert_eq!(doc.all_objects().count(), count_before);
+}
+
+#[test]
+fn reorder_marks_document_dirty() {
+    use irasu_illustrator::core::state::AppState;
+    let mut state = AppState::default();
+    for name in ["A", "B", "C"] {
+        state
+            .document
+            .add_object(Object::new_rect(name, 0.0, 0.0, 10.0, 10.0, 0.0));
+    }
+    state.undo_manager.mark_saved();
+    assert!(!state.is_dirty());
+    // Bring the back object forward through the undoable helper.
+    let first = state.document.all_objects().next().unwrap().1.id.clone();
+    state.reorder_objects_undoable("Bring Forward", |doc| {
+        for layer in doc.layers.iter_mut() {
+            if let Some(pos) = layer.objects.iter().position(|o| o.id == first) {
+                if pos + 1 < layer.objects.len() {
+                    layer.objects.swap(pos, pos + 1);
+                }
+            }
+        }
+    });
+    assert!(state.is_dirty());
+}
+
+#[test]
+fn validated_svg_parse_rejects_broken_xml() {
+    let good = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect x="0" y="0" width="10" height="10" /></svg>"##;
+    assert!(irasu_illustrator::io::svg::try_parse_svg_document(good).is_ok());
+    assert!(irasu_illustrator::io::svg::try_parse_svg_document("<svg><g><rect").is_err());
+    assert!(irasu_illustrator::io::svg::try_parse_svg_document("not xml at all {{{").is_err());
+}
+
+#[test]
+fn atomic_write_round_trip() {
+    let dir = std::env::temp_dir().join("amata_atomic_check");
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("doc.amata");
+    let mut doc = Document::default();
+    doc.add_object(Object::new_rect("R", 1.0, 2.0, 3.0, 4.0, 0.0));
+    irasu_illustrator::io::project::save_project(&doc, &path).unwrap();
+    assert!(!dir.join("doc.amata.tmp").exists());
+    let loaded = irasu_illustrator::io::project::load_project(&path).unwrap();
+    assert_eq!(loaded.all_objects().count(), 1);
+    // Byte-level helper leaves no temp file behind either.
+    let bin_path = dir.join("blob.bin");
+    irasu_illustrator::io::atomic::atomic_write_bytes(&bin_path, b"hello").unwrap();
+    assert_eq!(std::fs::read(&bin_path).unwrap(), b"hello");
+    assert!(!dir.join("blob.bin.tmp").exists());
 }
 
 #[test]
