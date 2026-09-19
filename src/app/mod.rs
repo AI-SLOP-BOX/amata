@@ -39,6 +39,7 @@ pub struct IrasuApp {
     version_history_panel: crate::ui::panels::VersionHistoryPanel,
     file_watcher: Option<crate::core::watcher::FileWatcher>,
     external_change_dialog: crate::ui::ExternalChangeDialog,
+    autosave_last: std::time::Instant,
 }
 
 /// AmataApp is the primary application struct for the Amata vector editor.
@@ -78,6 +79,43 @@ fn serialize_watched_doc(
 }
 
 impl IrasuApp {
+    /// Open a file in the editor, rebinding save destination, watcher,
+    /// history and recents. Shared by CLI startup and the home screen.
+    pub fn open_path_in_editor(&mut self, path: std::path::PathBuf) {
+        match crate::cli::handlers::common::load_any_document(&path) {
+            Err(e) => {
+                self.state
+                    .notify_error(format!("開けませんでした: {e}"));
+            }
+            Ok(doc) => {
+                self.state.document = doc;
+                self.state.zoom_to_fit();
+                self.state.undo_manager.clear();
+                self.state.selected_ids.clear();
+                self.state.exit_isolation();
+                self.version_history_panel.refresh_history(&path);
+                let mut watcher = crate::core::watcher::FileWatcher::new(path.clone());
+                if let Ok(content) = std::fs::read_to_string(&watcher.file_path) {
+                    watcher.mark_saved(&content);
+                }
+                // Rebind the save destination to the opened file (same
+                // stale-destination class as Load Project had).
+                self.file_watcher = Some(watcher);
+                crate::io::recent::push_recent(
+                    &path,
+                    self.state.document.width,
+                    self.state.document.height,
+                );
+                self.home_view.is_open = false;
+                self.home_view.refresh_recents();
+                self.state.notify_info(format!(
+                    "開きました: {}",
+                    path.file_name().and_then(|s| s.to_str()).unwrap_or("?")
+                ));
+            }
+        }
+    }
+
     pub fn with_file(path: Option<std::path::PathBuf>) -> Self {
         let mut app = Self::default();
         if let Some(p) = path {
@@ -85,11 +123,16 @@ impl IrasuApp {
                 app.state.document = doc;
                 app.state.zoom_to_fit();
                 app.version_history_panel.refresh_history(&p);
-                let mut watcher = crate::core::watcher::FileWatcher::new(p);
+                let mut watcher = crate::core::watcher::FileWatcher::new(p.clone());
                 if let Ok(content) = std::fs::read_to_string(&watcher.file_path) {
                     watcher.mark_saved(&content);
                 }
                 app.file_watcher = Some(watcher);
+                crate::io::recent::push_recent(
+                    &p,
+                    app.state.document.width,
+                    app.state.document.height,
+                );
             } else {
                 eprintln!("⚠️ Failed to load file: {}", p.display());
             }
@@ -114,6 +157,7 @@ impl Default for IrasuApp {
             version_history_panel: crate::ui::panels::VersionHistoryPanel::default(),
             file_watcher: None,
             external_change_dialog: crate::ui::ExternalChangeDialog::default(),
+            autosave_last: std::time::Instant::now(),
         }
     }
 }
@@ -295,15 +339,66 @@ impl eframe::App for IrasuApp {
         // Left Vertical Toolbar
         self.show_toolbar(ctx);
 
+        // Periodic autosave of dirty work to a recovery slot (temp dir,
+        // always full-fidelity project JSON — never touches the user's
+        // file, so the external-change watcher stays quiet).
+        if self.state.is_dirty()
+            && self.autosave_last.elapsed() >= std::time::Duration::from_secs(30)
+        {
+            self.autosave_last = std::time::Instant::now();
+            let original = self.file_watcher.as_ref().map(|w| w.file_path.clone());
+            if crate::io::project::save_recovery(&self.state.document, original.as_deref())
+                .is_ok()
+            {
+                log::info!("autosaved recovery snapshot");
+            }
+        }
+
         // Check if Home Hub is open (Image 1)
         if self.home_view.is_open {
             let mut tour_open = false;
-            self.home_view.show(
+            let home_action = self.home_view.show(
                 ctx,
                 &mut self.state,
                 &mut self.new_doc_modal,
                 &mut tour_open,
             );
+            match home_action {
+                Some(crate::ui::home_view::HomeAction::OpenFile(p)) => {
+                    self.open_path_in_editor(p)
+                }
+                Some(crate::ui::home_view::HomeAction::RestoreRecovery) => {
+                    if let Some((original, doc)) = crate::io::project::load_recovery() {
+                        self.state.document = doc;
+                        self.state.zoom_to_fit();
+                        self.state.undo_manager.clear();
+                        self.state.undo_manager.mark_dirty();
+                        self.state.selected_ids.clear();
+                        self.state.exit_isolation();
+                        if let Some(path) = original.filter(|p| p.exists()) {
+                            self.version_history_panel.refresh_history(&path);
+                            let watcher =
+                                crate::core::watcher::FileWatcher::new(path.clone());
+                            self.file_watcher = Some(watcher);
+                            crate::io::recent::push_recent(
+                                &path,
+                                self.state.document.width,
+                                self.state.document.height,
+                            );
+                        } else {
+                            self.file_watcher = None;
+                        }
+                        self.home_view.is_open = false;
+                        self.state.notify_success("未保存の作業を復元しました");
+                    } else {
+                        self.state.notify_error("復元データが見つかりません");
+                    }
+                }
+                Some(crate::ui::home_view::HomeAction::DismissRecovery) => {
+                    crate::io::project::clear_recovery();
+                }
+                None => {}
+            }
             if tour_open {
                 self.home_view.is_open = false;
                 self.onboarding_tour.is_active = true;

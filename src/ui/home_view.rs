@@ -25,6 +25,15 @@ pub struct RecentFileItem {
     pub dimensions: (f64, f64),
     pub color: Color32,
     pub accent: Color32,
+    pub path: std::path::PathBuf,
+}
+
+/// Actions the home screen can request; handled by the app (file IO,
+// watcher rebinding and history live there, not in the view).
+pub enum HomeAction {
+    OpenFile(std::path::PathBuf),
+    RestoreRecovery,
+    DismissRecovery,
 }
 
 pub struct HomeView {
@@ -37,70 +46,36 @@ pub struct HomeView {
 
 impl Default for HomeView {
     fn default() -> Self {
-        Self {
+        let mut view = Self {
             is_open: true, // Show Home by default like CC
             current_tab: HomeSidebarTab::Home,
             preset_cat: HomePresetCategory::Recommend,
             search_query: String::new(),
-            recent_files: vec![
+            recent_files: Vec::new(),
+        };
+        view.refresh_recents();
+        view
+    }
+}
+
+impl HomeView {
+    /// Reload real recent-file entries (missing files are filtered out by
+    /// the loader, so the grid never shows dead cards).
+    pub fn refresh_recents(&mut self) {
+        self.recent_files = crate::io::recent::load_recents()
+            .into_iter()
+            .map(|e| {
+                let (c, a) = crate::io::recent::entry_colors(&e.path);
                 RecentFileItem {
-                    title: "ブランドガイド.ai".into(),
-                    date: "昨日 14:32".into(),
-                    dimensions: (1920.0, 1080.0),
-                    color: Color32::from_rgb(220, 110, 60),
-                    accent: Color32::from_rgb(240, 190, 80),
-                },
-                RecentFileItem {
-                    title: "リーフレットデザイン.ai".into(),
-                    date: "3日前 11:20".into(),
-                    dimensions: (210.0, 297.0),
-                    color: Color32::from_rgb(80, 150, 100),
-                    accent: Color32::from_rgb(120, 190, 140),
-                },
-                RecentFileItem {
-                    title: "ポスター案.ai".into(),
-                    date: "4日前 16:05".into(),
-                    dimensions: (297.0, 420.0),
-                    color: Color32::from_rgb(60, 110, 150),
-                    accent: Color32::from_rgb(180, 210, 220),
-                },
-                RecentFileItem {
-                    title: "SNSバナー.ai".into(),
-                    date: "6日前 9:18".into(),
-                    dimensions: (1080.0, 1080.0),
-                    color: Color32::from_rgb(40, 60, 140),
-                    accent: Color32::from_rgb(180, 160, 200),
-                },
-                RecentFileItem {
-                    title: "パッケージ展開図.ai".into(),
-                    date: "7日前 13:41".into(),
-                    dimensions: (350.0, 240.0),
-                    color: Color32::from_rgb(190, 170, 150),
-                    accent: Color32::from_rgb(220, 200, 180),
-                },
-                RecentFileItem {
-                    title: "ロゴバリエーション.ai".into(),
-                    date: "1週間前".into(),
-                    dimensions: (800.0, 600.0),
-                    color: Color32::from_rgb(50, 50, 50),
-                    accent: Color32::from_rgb(240, 240, 240),
-                },
-                RecentFileItem {
-                    title: "イラスト_風景.ai".into(),
-                    date: "1週間前".into(),
-                    dimensions: (1920.0, 1080.0),
-                    color: Color32::from_rgb(70, 120, 160),
-                    accent: Color32::from_rgb(120, 170, 130),
-                },
-                RecentFileItem {
-                    title: "パターン素材.ai".into(),
-                    date: "1週間前".into(),
-                    dimensions: (500.0, 500.0),
-                    color: Color32::from_rgb(210, 130, 130),
-                    accent: Color32::from_rgb(240, 200, 160),
-                },
-            ],
-        }
+                    title: e.name,
+                    date: crate::io::recent::friendly_age(e.last_opened_secs),
+                    dimensions: (e.width, e.height),
+                    color: Color32::from_rgb(c[0], c[1], c[2]),
+                    accent: Color32::from_rgb(a[0], a[1], a[2]),
+                    path: std::path::PathBuf::from(e.path),
+                }
+            })
+            .collect();
     }
 }
 
@@ -111,11 +86,12 @@ impl HomeView {
         state: &mut AppState,
         new_doc_modal: &mut crate::ui::NewDocModal,
         tour_guide_open: &mut bool,
-    ) {
+    ) -> Option<HomeAction> {
         if !self.is_open {
-            return;
+            return None;
         }
 
+        let mut action = None;
         egui::CentralPanel::default()
             .frame(egui::Frame::NONE.fill(Color32::from_rgb(26, 26, 26)))
             .show(ctx, |ui| {
@@ -133,11 +109,16 @@ impl HomeView {
                                 // Main Content (Welcome, New Doc Presets, Recent Files)
                                 ui.vertical(|ui| {
                                     ui.set_max_width(780.0);
+                                    if let Some(a) = self.show_recovery_banner(ui) {
+                                        action = Some(a);
+                                    }
                                     self.show_welcome_banner(ui);
                                     ui.add_space(16.0);
                                     self.show_preset_section(ui, state);
                                     ui.add_space(20.0);
-                                    self.show_recent_files(ui, state);
+                                    if let Some(a) = self.show_recent_files(ui, state) {
+                                        action = Some(a);
+                                    }
                                 });
 
                                 ui.add_space(16.0);
@@ -149,12 +130,40 @@ impl HomeView {
                                     ui.add_space(14.0);
                                     self.show_tips_widget(ui);
                                     ui.add_space(14.0);
-                                    self.show_recent_projects_list(ui, state);
+                                    if let Some(a) = self.show_recent_projects_list(ui, state) {
+                                        action = Some(a);
+                                    }
                                 });
                             });
                         });
                 });
             });
+        action
+    }
+
+    /// Autosave recovery banner (only when a recovery snapshot exists).
+    fn show_recovery_banner(&mut self, ui: &mut Ui) -> Option<HomeAction> {
+        if !crate::io::project::has_recovery() {
+            return None;
+        }
+        let mut action = None;
+        ui.group(|ui| {
+            ui.horizontal(|ui| {
+                ui.label(
+                    RichText::new("🛟 未保存の作業データがあります")
+                        .strong()
+                        .color(Color32::from_rgb(255, 200, 100)),
+                );
+                if ui.button("復元する").clicked() {
+                    action = Some(HomeAction::RestoreRecovery);
+                }
+                if ui.button("破棄する").clicked() {
+                    action = Some(HomeAction::DismissRecovery);
+                }
+            });
+        });
+        ui.add_space(8.0);
+        action
     }
 
     fn show_sidebar(&mut self, ui: &mut Ui, new_doc_modal: &mut crate::ui::NewDocModal) {
@@ -420,7 +429,20 @@ impl HomeView {
         });
     }
 
-    fn show_recent_files(&mut self, ui: &mut Ui, state: &mut AppState) {
+    fn show_recent_files(
+        &mut self,
+        ui: &mut Ui,
+        _state: &mut AppState,
+    ) -> Option<HomeAction> {
+        if self.recent_files.is_empty() {
+            ui.label(
+                RichText::new("最近開いたファイルはここに表示されます")
+                    .weak()
+                    .size(11.0),
+            );
+            return None;
+        }
+        let mut action = None;
         ui.horizontal(|ui| {
             ui.label(
                 RichText::new("最近使用したファイル")
@@ -491,9 +513,7 @@ impl HomeView {
                     );
 
                     if resp.clicked() {
-                        state.document.width = file.dimensions.0;
-                        state.document.height = file.dimensions.1;
-                        self.is_open = false; // Open into workspace
+                        action = Some(HomeAction::OpenFile(file.path.clone()));
                     }
 
                     if (i + 1) % 4 == 0 {
@@ -501,6 +521,7 @@ impl HomeView {
                     }
                 }
             });
+        action
     }
 
     fn show_tutorial_widget(&self, ui: &mut Ui, tour_guide_open: &mut bool) {
@@ -644,7 +665,12 @@ impl HomeView {
         }
     }
 
-    fn show_recent_projects_list(&self, ui: &mut Ui, _state: &mut AppState) {
+    fn show_recent_projects_list(
+        &mut self,
+        ui: &mut Ui,
+        _state: &mut AppState,
+    ) -> Option<HomeAction> {
+        let mut action = None;
         let (rect, _) = ui.allocate_exact_size(Vec2::new(265.0, 170.0), egui::Sense::hover());
         ui.painter()
             .rect_filled(rect, 6.0, Color32::from_rgb(33, 33, 36));
@@ -664,16 +690,8 @@ impl HomeView {
             Color32::from_rgb(170, 170, 170),
         );
 
-        let projects = [
-            ("ブランドガイド.ai", "昨日 14:32"),
-            ("リーフレットデザイン.ai", "3日前 11:20"),
-            ("ポスター案.ai", "4日前 16:05"),
-            ("SNSバナー.ai", "6日前 9:18"),
-            ("パッケージ展開図.ai", "7日前 13:41"),
-        ];
-
         let mut y = rect.min.y + 36.0;
-        for (name, date) in projects {
+        for file in self.recent_files.iter().take(5) {
             let row_rect = Rect::from_min_max(
                 Pos2::new(rect.min.x + 8.0, y),
                 Pos2::new(rect.max.x - 8.0, y + 24.0),
@@ -691,22 +709,23 @@ impl HomeView {
             ui.painter().text(
                 Pos2::new(row_rect.min.x + 24.0, row_rect.center().y),
                 egui::Align2::LEFT_CENTER,
-                name,
+                &file.title,
                 egui::FontId::proportional(10.5),
                 Color32::WHITE,
             );
             ui.painter().text(
                 Pos2::new(row_rect.max.x - 8.0, row_rect.center().y),
                 egui::Align2::RIGHT_CENTER,
-                date,
+                &file.date,
                 egui::FontId::proportional(9.0),
                 Color32::from_rgb(130, 130, 130),
             );
 
             if resp.clicked() {
-                // Open project
+                action = Some(HomeAction::OpenFile(file.path.clone()));
             }
             y += 25.0;
         }
+        action
     }
 }

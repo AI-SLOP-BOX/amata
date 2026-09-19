@@ -88,6 +88,11 @@ impl IrasuApp {
                                     watcher.mark_saved(&content);
                                     self.file_watcher = Some(watcher);
                                     self.version_history_panel.refresh_history(&path);
+                                    crate::io::recent::push_recent(
+                                        &path,
+                                        self.state.document.width,
+                                        self.state.document.height,
+                                    );
                                     if obj_count > 0 {
                                         self.state.notify_info(format!(
                                             "SVGをインポートしました ({} 個のオブジェクト)",
@@ -159,6 +164,12 @@ impl IrasuApp {
                                     self.state.undo_manager.mark_saved();
                                     self.version_history_panel
                                         .refresh_history(&watcher.file_path);
+                                    crate::io::recent::push_recent(
+                                        &watcher.file_path,
+                                        self.state.document.width,
+                                        self.state.document.height,
+                                    );
+                                    crate::io::project::clear_recovery();
                                     self.state.notify_success("ファイルを上書き保存しました");
                                 }
                             }
@@ -176,6 +187,12 @@ impl IrasuApp {
                                 self.file_watcher = Some(watcher);
                                 self.state.undo_manager.mark_saved();
                                 self.version_history_panel.refresh_history(&path);
+                                crate::io::recent::push_recent(
+                                    &path,
+                                    self.state.document.width,
+                                    self.state.document.height,
+                                );
+                                crate::io::project::clear_recovery();
                                 self.state.notify_success("SVGを保存しました");
                             }
                         }
@@ -188,6 +205,12 @@ impl IrasuApp {
                         {
                             match crate::io::project::save_project(&self.state.document, &path) {
                                 Ok(_) => {
+                                    crate::io::recent::push_recent(
+                                        &path,
+                                        self.state.document.width,
+                                        self.state.document.height,
+                                    );
+                                    crate::io::project::clear_recovery();
                                     self.state.notify_info("プロジェクトを保存しました");
                                 }
                                 Err(e) => {
@@ -217,6 +240,11 @@ impl IrasuApp {
                                     }
                                     self.file_watcher = Some(watcher);
                                     self.version_history_panel.refresh_history(&path);
+                                    crate::io::recent::push_recent(
+                                        &path,
+                                        self.state.document.width,
+                                        self.state.document.height,
+                                    );
                                     self.state.notify_info("プロジェクトを読み込みました");
                                 }
                                 Err(e) => {

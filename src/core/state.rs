@@ -182,6 +182,8 @@ pub struct AppState {
     // step when playback stops (otherwise played values stick forever
     // with no undo and no dirty flag).
     pub timeline_was_playing: bool,
+    // Pathfinder simplify tolerance (squared px area) remembered by UI.
+    pub simplify_tolerance: f64,
     // In-progress panel transform gesture: (object id, transform at gesture
     // start). Committed as one undo step when the gesture ends.
     pub pending_transforms: Vec<(String, Transform)>,
@@ -334,6 +336,7 @@ impl Default for AppState {
             is_comparing_diff: false,
             isolated_group_id: None,
             timeline_was_playing: false,
+            simplify_tolerance: 5.0,
             pending_transforms: Vec::new(),
             pending_objects: Vec::new(),
             pending_layers: Vec::new(),

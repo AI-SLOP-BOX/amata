@@ -569,12 +569,46 @@ impl PathfinderPanel {
                 }
             }
         });
+
+        ui.add_space(4.0);
+        ui.separator();
+        ui.label(RichText::new("単純化・複合パス").strong().size(11.0));
+        ui.horizontal(|ui| {
+            ui.label("許容値:");
+            ui.add(
+                egui::Slider::new(&mut state.simplify_tolerance, 0.5..=50.0)
+                    .show_value(true),
+            );
+            if ui
+                .add_enabled(sel_count >= 1, egui::Button::new("単純化"))
+                .on_hover_text("共線点を削減（ベジェは保持）")
+                .clicked()
+            {
+                Self::apply_simplify(state, state.simplify_tolerance);
+            }
+        });
+        ui.horizontal_wrapped(|ui| {
+            if ui
+                .add_enabled(is_enabled, egui::Button::new("⧉ 複合パス化"))
+                .on_hover_text("重なりを中マド化 (EvenOdd)")
+                .clicked()
+            {
+                Self::apply_compound(state);
+            }
+            if ui
+                .add_enabled(sel_count >= 1, egui::Button::new("複合解除"))
+                .on_hover_text("複合パスを分割")
+                .clicked()
+            {
+                Self::apply_release_compound(state);
+            }
+        });
     }
 
     pub fn apply_op(state: &mut AppState, op: BooleanOp) {
         let mut selected_objs: Vec<Object> = Vec::new();
         for id in &state.selected_ids {
-            if let Some((_, obj)) = state.document.all_objects().find(|(_, o)| &o.id == id) {
+            if let Some(obj) = state.document.find_object(id) {
                 selected_objs.push(obj.clone());
             }
         }
@@ -585,13 +619,136 @@ impl PathfinderPanel {
 
         let obj_refs: Vec<&Object> = selected_objs.iter().collect();
         if let Some(result_obj) = execute_pathfinder(&obj_refs, op) {
-            for id in &state.selected_ids {
-                state.document.remove_object(id);
+            // Atomic: removals (with true locations) + result in one step.
+            // Previously the sources were deleted outside any command, so
+            // Undo removed the result while the originals stayed lost.
+            let mut cmds: Vec<Box<dyn crate::core::history::Command>> = Vec::new();
+            for obj in &selected_objs {
+                cmds.push(Box::new(
+                    crate::core::history::RemoveObjectCommand::located(
+                        obj.clone(),
+                        &state.document,
+                    ),
+                )
+                    as Box<dyn crate::core::history::Command>);
             }
             let new_id = result_obj.id.clone();
-            let cmd = Box::new(crate::core::history::AddObjectCommand::new(result_obj));
-            state.undo_manager.execute(cmd, &mut state.document);
+            cmds.push(Box::new(crate::core::history::AddObjectCommand::new(
+                result_obj,
+            ))
+                as Box<dyn crate::core::history::Command>);
+            let batch = Box::new(crate::core::history::BatchCommand::new(
+                "Pathfinder",
+                cmds,
+            ));
+            state.undo_manager.execute(batch, &mut state.document);
             state.selected_ids = vec![new_id];
+        }
+    }
+
+    /// Simplify selected paths (Visvalingam, curves preserved) as one step.
+    pub fn apply_simplify(state: &mut AppState, tolerance: f64) {
+        let ids = state.selected_ids.clone();
+        let mut cmds: Vec<Box<dyn crate::core::history::Command>> = Vec::new();
+        for id in &ids {
+            if let Some(obj) = state.document.find_object(id) {
+                if let ObjectType::Path(ref p) = obj.object_type {
+                    let simplified =
+                        crate::core::simplify::simplify_path_visvalingam(p, tolerance);
+                    if simplified.elements != p.elements {
+                        cmds.push(Box::new(
+                            crate::core::history::ModifyPathCommand::new(
+                                id.clone(),
+                                p.elements.clone(),
+                                simplified.elements,
+                            ),
+                        )
+                            as Box<dyn crate::core::history::Command>);
+                    }
+                }
+            }
+        }
+        if cmds.len() == 1 {
+            let cmd = cmds.pop().unwrap();
+            state.undo_manager.execute(cmd, &mut state.document);
+        } else if !cmds.is_empty() {
+            let batch = Box::new(crate::core::history::BatchCommand::new(
+                "Simplify Path",
+                cmds,
+            ));
+            state.undo_manager.execute(batch, &mut state.document);
+        }
+    }
+
+    /// Combine selection into a compound path (EvenOdd holes) as one step.
+    pub fn apply_compound(state: &mut AppState) {
+        let mut selected_objs: Vec<Object> = Vec::new();
+        for id in &state.selected_ids {
+            if let Some(obj) = state.document.find_object(id) {
+                selected_objs.push(obj.clone());
+            }
+        }
+        if selected_objs.len() < 2 {
+            return;
+        }
+        if let Some(compound) = Object::make_compound_path(&selected_objs) {
+            let mut cmds: Vec<Box<dyn crate::core::history::Command>> = Vec::new();
+            for obj in &selected_objs {
+                cmds.push(Box::new(
+                    crate::core::history::RemoveObjectCommand::located(
+                        obj.clone(),
+                        &state.document,
+                    ),
+                )
+                    as Box<dyn crate::core::history::Command>);
+            }
+            let new_id = compound.id.clone();
+            cmds.push(Box::new(crate::core::history::AddObjectCommand::new(
+                compound,
+            ))
+                as Box<dyn crate::core::history::Command>);
+            let batch = Box::new(crate::core::history::BatchCommand::new(
+                "Compound Path",
+                cmds,
+            ));
+            state.undo_manager.execute(batch, &mut state.document);
+            state.selected_ids = vec![new_id];
+        }
+    }
+
+    /// Release a compound path back into parts as one step.
+    pub fn apply_release_compound(state: &mut AppState) {
+        let ids = state.selected_ids.clone();
+        let mut cmds: Vec<Box<dyn crate::core::history::Command>> = Vec::new();
+        let mut new_ids = Vec::new();
+        for id in &ids {
+            if let Some(obj) = state.document.find_object(id) {
+                let parts = obj.release_compound_path();
+                if parts.len() > 1 {
+                    cmds.push(Box::new(
+                        crate::core::history::RemoveObjectCommand::located(
+                            obj.clone(),
+                            &state.document,
+                        ),
+                    )
+                        as Box<dyn crate::core::history::Command>);
+                    for part in parts {
+                        new_ids.push(part.id.clone());
+                        cmds.push(Box::new(crate::core::history::AddObjectCommand::new(
+                            part,
+                        ))
+                            as Box<dyn crate::core::history::Command>);
+                    }
+                }
+            }
+        }
+        if !cmds.is_empty() {
+            let batch = Box::new(crate::core::history::BatchCommand::new(
+                "Release Compound",
+                cmds,
+            ));
+            state.undo_manager.execute(batch, &mut state.document);
+            state.selected_ids = new_ids;
         }
     }
 }

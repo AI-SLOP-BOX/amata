@@ -832,6 +832,41 @@ fn test_placed_image_decode_and_svg_round_trip() {
 }
 
 #[test]
+fn test_pathfinder_apply_is_atomic() {
+    use irasu_illustrator::core::boolean::{execute_pathfinder, BooleanOp};
+    use irasu_illustrator::core::history::{BatchCommand, Command};
+    let mut doc = Document::default();
+    let mut mgr = irasu_illustrator::core::history::UndoManager::new();
+    doc.add_object(Object::new_rect("A", 0.0, 0.0, 100.0, 100.0, 0.0));
+    doc.add_object(Object::new_rect("B", 50.0, 50.0, 100.0, 100.0, 0.0));
+    let objs: Vec<Object> = doc.all_objects().map(|(_, o)| o.clone()).collect();
+    let refs: Vec<&Object> = objs.iter().collect();
+    let result = execute_pathfinder(&refs, BooleanOp::Union).unwrap();
+    // Mirror PathfinderPanel::apply_op: removals + result in one step.
+    let mut cmds: Vec<Box<dyn Command>> = Vec::new();
+    for o in &objs {
+        cmds.push(Box::new(
+            irasu_illustrator::core::history::RemoveObjectCommand::located(o.clone(), &doc),
+        ) as Box<dyn Command>);
+    }
+    cmds.push(Box::new(irasu_illustrator::core::history::AddObjectCommand::new(result))
+        as Box<dyn Command>);
+    mgr.execute(Box::new(BatchCommand::new("Pathfinder", cmds)), &mut doc);
+    assert_eq!(doc.all_objects().count(), 1);
+    mgr.undo(&mut doc);
+    assert_eq!(doc.all_objects().count(), 2);
+}
+
+#[test]
+fn test_compound_create_release_round_trip() {
+    let a = Object::new_rect("A", 0.0, 0.0, 100.0, 100.0, 0.0);
+    let b = Object::new_rect("B", 25.0, 25.0, 50.0, 50.0, 0.0);
+    let compound = Object::make_compound_path(&[a, b]).expect("compound");
+    let parts = compound.release_compound_path();
+    assert!(parts.len() >= 2, "release yields parts");
+}
+
+#[test]
 fn test_undo_redo_return_owned_names() {
     let mut doc = Document::default();
     let mut mgr = irasu_illustrator::core::history::UndoManager::new();

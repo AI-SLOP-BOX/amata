@@ -239,6 +239,12 @@ impl IrasuApp {
                             self.state.undo_manager.mark_saved();
                             self.version_history_panel
                                 .refresh_history(&watcher.file_path);
+                            crate::io::recent::push_recent(
+                                &watcher.file_path,
+                                self.state.document.width,
+                                self.state.document.height,
+                            );
+                            crate::io::project::clear_recovery();
                             self.state.notify_success("ファイルを保存しました");
                         }
                         Err(e) => {
