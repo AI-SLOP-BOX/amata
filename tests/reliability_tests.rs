@@ -913,6 +913,58 @@ fn test_new_document_resets_save_destination() {
 }
 
 #[test]
+fn test_timeline_and_guides_survive_save_reload() {
+    use irasu_illustrator::core::document::{Guide, GuideOrientation};
+    use irasu_illustrator::core::timeline::{AnimProperty, EaseType};
+    let mut doc = Document::default();
+    doc.add_object(Object::new_rect("R", 0.0, 0.0, 10.0, 10.0, 0.0));
+    let id = doc.all_objects().next().unwrap().1.id.clone();
+    let track = doc.timeline.add_or_get_track_mut(&id, AnimProperty::PositionX);
+    track.add_keyframe(0, 0.0, EaseType::Linear);
+    track.add_keyframe(10, 50.0, EaseType::Linear);
+    doc.guides.push(Guide {
+        orientation: GuideOrientation::Vertical,
+        position: 100.0,
+    });
+    let dir = std::env::temp_dir().join("amata_persist_check");
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("anim.amata");
+    irasu_illustrator::io::project::save_project(&doc, &path).unwrap();
+    let loaded = irasu_illustrator::io::project::load_project(&path).unwrap();
+    assert_eq!(loaded.timeline.tracks.len(), 1);
+    assert_eq!(loaded.timeline.tracks[0].object_id, id);
+    assert_eq!(loaded.guides.len(), 1);
+    assert!((loaded.guides[0].position - 100.0).abs() < 1e-9);
+    // Old files without the new keys still load (serde defaults).
+    let legacy = r#"{"name":"o","layers":[],"active_layer_idx":0,"width":100.0,"height":100.0,"symbols":[]}"#;
+    let legacy_path = dir.join("legacy.amata");
+    std::fs::write(&legacy_path, legacy).unwrap();
+    let legacy_doc = irasu_illustrator::io::project::load_project(&legacy_path).unwrap();
+    assert_eq!(legacy_doc.layers.len(), 1);
+    assert!(legacy_doc.timeline.tracks.is_empty());
+}
+
+#[test]
+fn test_selected_only_export_filters() {
+    let mut doc = Document::default();
+    doc.add_object(Object::new_rect("A", 0.0, 0.0, 10.0, 10.0, 0.0));
+    doc.add_object(Object::new_rect("B", 50.0, 50.0, 10.0, 10.0, 0.0));
+    let keep: Vec<String> = doc
+        .all_objects()
+        .take(1)
+        .map(|(_, o)| o.id.clone())
+        .collect();
+    // Mirror the utility export scope filter.
+    let mut export_doc = doc.clone();
+    for layer in &mut export_doc.layers {
+        layer.objects.retain(|o| keep.contains(&o.id));
+    }
+    assert_eq!(export_doc.all_objects().count(), 1);
+    let svg = irasu_illustrator::io::svg::export_svg(&export_doc);
+    assert_eq!(svg.matches("<rect").count(), 1);
+}
+
+#[test]
 fn test_undo_redo_return_owned_names() {
     let mut doc = Document::default();
     let mut mgr = irasu_illustrator::core::history::UndoManager::new();

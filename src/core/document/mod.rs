@@ -3,6 +3,29 @@ pub use object::{
     BlendMode, FontStyle, Object, ObjectType, TextAnchor, TextStyle, Transform,
 };
 
+/// Canvas guide (moved here from AppState so guides persist with the
+/// document instead of evaporating on every save/reload).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum GuideOrientation {
+    Horizontal,
+    Vertical,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Guide {
+    pub orientation: GuideOrientation,
+    pub position: f64,
+}
+
+impl Default for Guide {
+    fn default() -> Self {
+        Self {
+            orientation: GuideOrientation::Horizontal,
+            position: 0.0,
+        }
+    }
+}
+
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -38,6 +61,13 @@ pub struct Document {
     pub height: f64,
     #[serde(default)]
     pub symbols: Vec<Symbol>,
+    /// Timeline animation (persisted; previously AppState-only, so every
+    /// animation evaporated on save/reload).
+    #[serde(default)]
+    pub timeline: super::timeline::Timeline,
+    /// Canvas guides (persisted for the same reason).
+    #[serde(default)]
+    pub guides: Vec<Guide>,
 }
 
 impl Default for Document {
@@ -49,6 +79,8 @@ impl Default for Document {
             width: 1920.0,
             height: 1080.0,
             symbols: Vec::new(),
+            timeline: super::timeline::Timeline::default(),
+            guides: Vec::new(),
         };
         doc.layers.push(Layer::new("Layer 1"));
         doc

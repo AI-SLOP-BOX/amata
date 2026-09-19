@@ -200,26 +200,7 @@ pub struct ToastNotification {
     pub created_at: std::time::Instant,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Guide {
-    pub orientation: GuideOrientation,
-    pub position: f64,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum GuideOrientation {
-    Horizontal,
-    Vertical,
-}
-
-impl Default for Guide {
-    fn default() -> Self {
-        Self {
-            orientation: GuideOrientation::Horizontal,
-            position: 0.0,
-        }
-    }
-}
+pub use super::document::{Guide, GuideOrientation};
 
 impl Default for AppState {
     fn default() -> Self {
@@ -413,6 +394,19 @@ impl AppState {
     pub fn exit_isolation(&mut self) {
         self.isolated_group_id = None;
         self.selected_ids.clear();
+    }
+
+    /// Push live timeline/guides into the document before any
+    /// save/export/checkpoint/autosave so they persist.
+    pub fn sync_doc_extras(&mut self) {
+        self.document.timeline = self.timeline.clone();
+        self.document.guides = self.guides.clone();
+    }
+
+    /// Pull timeline/guides from a freshly loaded document into live state.
+    pub fn adopt_doc_extras(&mut self) {
+        self.timeline = self.document.timeline.clone();
+        self.guides = self.document.guides.clone();
     }
 
     /// Snapshot a whole object before a non-transform panel edit.

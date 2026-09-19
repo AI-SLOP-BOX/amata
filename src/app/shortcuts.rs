@@ -230,6 +230,7 @@ impl IrasuApp {
                     );
                 }
                 if let Some(ref mut watcher) = self.file_watcher {
+                    self.state.sync_doc_extras();
                     match crate::cli::handlers::common::save_any_document(
                         &self.state.document,
                         &watcher.file_path,

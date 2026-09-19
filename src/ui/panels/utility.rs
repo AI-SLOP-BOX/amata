@@ -238,15 +238,32 @@ impl ExportPanel {
                 .add_filter(format.as_str(), filter)
                 .save_file()
             {
+                state.sync_doc_extras();
+                // "Selected Only" previously did nothing and exported the
+                // whole document anyway.
+                let mut export_doc;
+                let doc_ref = if state.export_scope == "Selected"
+                    && !state.selected_ids.is_empty()
+                {
+                    export_doc = state.document.clone();
+                    for layer in &mut export_doc.layers {
+                        layer
+                            .objects
+                            .retain(|o| state.selected_ids.contains(&o.id));
+                    }
+                    &export_doc
+                } else {
+                    &state.document
+                };
                 if format == "SVG" {
-                    let svg = crate::io::svg::export_svg(&state.document);
+                    let svg = crate::io::svg::export_svg(doc_ref);
                     match std::fs::write(&path, svg) {
                         Ok(_) => state.notify_info("SVGを書き出しました"),
                         Err(e) => state.notify_error(format!("SVG書き出しに失敗しました: {e}")),
                     }
                 } else if format == "PNG" {
                     match crate::io::raster::export_png(
-                        &state.document,
+                        doc_ref,
                         state.export_scale,
                         state.export_transparent,
                     ) {
@@ -257,7 +274,7 @@ impl ExportPanel {
                         Err(e) => state.notify_error(format!("ラスタライズに失敗しました: {e}")),
                     }
                 } else if format == "JSON" {
-                    match serde_json::to_string_pretty(&state.document) {
+                    match serde_json::to_string_pretty(doc_ref) {
                         Ok(json) => match std::fs::write(&path, json) {
                             Ok(_) => state.notify_info("JSONを保存しました"),
                             Err(e) => state.notify_error(format!("保存に失敗しました: {e}")),

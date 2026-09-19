@@ -37,14 +37,14 @@ impl EaseType {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Keyframe {
     pub frame: usize,
     pub value: f64,
     pub ease: EaseType,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Track {
     pub object_id: String,
     pub property: AnimProperty,
@@ -99,7 +99,7 @@ impl Track {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Timeline {
     pub fps: f64,
     pub total_frames: usize,

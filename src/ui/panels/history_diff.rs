@@ -95,6 +95,7 @@ impl VersionHistoryPanel {
                         .unwrap_or_else(|| PathBuf::from("poster.svg"));
                     // Auto-save current document to file in its own format
                     // (project files must stay JSON, never SVG bytes).
+                    state.sync_doc_extras();
                     match crate::cli::handlers::common::save_any_document(
                         &state.document,
                         &file_path,
@@ -139,6 +140,7 @@ impl VersionHistoryPanel {
                     .current_file
                     .clone()
                     .unwrap_or_else(|| PathBuf::from("poster.svg"));
+                state.sync_doc_extras();
                 match crate::cli::handlers::common::save_any_document(
                     &state.document,
                     &file_path,
@@ -189,6 +191,7 @@ impl VersionHistoryPanel {
                     {
                         let parent = p.parent().unwrap_or(std::path::Path::new("."));
                         if git::init_git_repository(parent).is_ok() {
+                            state.sync_doc_extras();
                             match crate::cli::handlers::common::save_any_document(
                                 &state.document,
                                 &p,
@@ -294,6 +297,7 @@ impl VersionHistoryPanel {
                         Ok(content) => match parse_stored_doc(file_path, &content) {
                             Some(doc) => {
                                 state.document = doc;
+                                state.adopt_doc_extras();
                                 state.undo_manager.clear();
                                 state.selected_ids.clear();
                                 state.notify_info(format!(
@@ -320,6 +324,7 @@ impl VersionHistoryPanel {
                                 self.preview_backup = Some(state.document.clone());
                             }
                             state.document = doc;
+                            state.adopt_doc_extras();
                             state.notify_info(format!(
                                 "バージョン {} をプレビュー中",
                                 &rev[..7.min(rev.len())]
@@ -364,6 +369,7 @@ impl VersionHistoryPanel {
                     self.active_diff = None;
                     if let Some(backup) = self.preview_backup.take() {
                         state.document = backup;
+                        state.adopt_doc_extras();
                         state.notify_info("プレビューを終了し、作業内容に戻しました");
                     }
                 }

@@ -75,6 +75,7 @@ impl IrasuApp {
                                 Ok(content) => {
                                     self.state.document =
                                         crate::io::svg::parse_svg_document(&content);
+                                    self.state.adopt_doc_extras();
                                     let obj_count = self.state.document.all_objects().count();
                                     self.state.document.name = path
                                         .file_stem()
@@ -146,6 +147,7 @@ impl IrasuApp {
                     }
                     if ui.button("Save (Cmd+S)").clicked() {
                         if let Some(ref mut watcher) = self.file_watcher {
+                            self.state.sync_doc_extras();
                             match crate::cli::handlers::common::save_any_document(
                                 &self.state.document,
                                 &watcher.file_path,
@@ -178,6 +180,7 @@ impl IrasuApp {
                             .save_file()
                         {
                             let svg = crate::io::svg::export_svg(&self.state.document);
+                            self.state.sync_doc_extras();
                             if let Err(e) = std::fs::write(&path, &svg) {
                                 self.state.notify_error(format!("保存に失敗しました: {e}"));
                             } else {
@@ -203,6 +206,7 @@ impl IrasuApp {
                             .add_filter("Amata Project", &["amata", "json"])
                             .save_file()
                         {
+                            self.state.sync_doc_extras();
                             match crate::io::project::save_project(&self.state.document, &path) {
                                 Ok(_) => {
                                     crate::io::recent::push_recent(
@@ -228,6 +232,7 @@ impl IrasuApp {
                             match crate::io::project::load_project(&path) {
                                 Ok(doc) => {
                                     self.state.document = doc;
+                                    self.state.adopt_doc_extras();
                                     self.state.undo_manager.clear();
                                     self.state.selected_ids.clear();
                                     // Rebind save destination + watcher to the loaded project.

@@ -95,6 +95,7 @@ impl IrasuApp {
         doc.width = req.width;
         doc.height = req.height;
         self.state.document = doc;
+        self.state.adopt_doc_extras();
         self.state.zoom_to_fit();
         self.state.undo_manager.clear();
         self.state.selected_ids.clear();
@@ -115,6 +116,7 @@ impl IrasuApp {
             }
             Ok(doc) => {
                 self.state.document = doc;
+                self.state.adopt_doc_extras();
                 self.state.zoom_to_fit();
                 self.state.undo_manager.clear();
                 self.state.selected_ids.clear();
@@ -147,6 +149,7 @@ impl IrasuApp {
         if let Some(p) = path {
             if let Ok(doc) = crate::cli::handlers::common::load_any_document(&p) {
                 app.state.document = doc;
+                app.state.adopt_doc_extras();
                 app.state.zoom_to_fit();
                 app.version_history_panel.refresh_history(&p);
                 let mut watcher = crate::core::watcher::FileWatcher::new(p.clone());
@@ -372,6 +375,7 @@ impl eframe::App for IrasuApp {
             && self.autosave_last.elapsed() >= std::time::Duration::from_secs(30)
         {
             self.autosave_last = std::time::Instant::now();
+            self.state.sync_doc_extras();
             let original = self.file_watcher.as_ref().map(|w| w.file_path.clone());
             if crate::io::project::save_recovery(&self.state.document, original.as_deref())
                 .is_ok()
@@ -396,6 +400,7 @@ impl eframe::App for IrasuApp {
                 Some(crate::ui::home_view::HomeAction::RestoreRecovery) => {
                     if let Some((original, doc)) = crate::io::project::load_recovery() {
                         self.state.document = doc;
+                        self.state.adopt_doc_extras();
                         self.state.zoom_to_fit();
                         self.state.undo_manager.clear();
                         self.state.undo_manager.mark_dirty();
