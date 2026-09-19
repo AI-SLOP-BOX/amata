@@ -79,6 +79,32 @@ fn serialize_watched_doc(
 }
 
 impl IrasuApp {
+    /// Create a fresh document from the New Document dialog. Refuses while
+    /// dirty (the old code silently wiped the canvas, dropped undo and
+    /// kept the stale save destination, so the next Cmd+S overwrote the
+    /// previous file with a blank document).
+    pub fn create_new_document(&mut self, req: crate::ui::NewDocRequest) {
+        if self.state.is_dirty() {
+            self.state.notify_error(
+                "未保存の変更があります。先に保存してください".to_string(),
+            );
+            return;
+        }
+        let mut doc = crate::core::document::Document::default();
+        doc.name = req.name;
+        doc.width = req.width;
+        doc.height = req.height;
+        self.state.document = doc;
+        self.state.zoom_to_fit();
+        self.state.undo_manager.clear();
+        self.state.selected_ids.clear();
+        self.state.exit_isolation();
+        self.file_watcher = None;
+        crate::io::project::clear_recovery();
+        self.home_view.is_open = false;
+        self.state.notify_success("新規ドキュメントを作成しました");
+    }
+
     /// Open a file in the editor, rebinding save destination, watcher,
     /// history and recents. Shared by CLI startup and the home screen.
     pub fn open_path_in_editor(&mut self, path: std::path::PathBuf) {
@@ -406,7 +432,9 @@ impl eframe::App for IrasuApp {
             }
             self.preferences_dialog.show(ctx, &mut self.state);
             self.export_modal.show(ctx, &mut self.state);
-            self.new_doc_modal.show(ctx, &mut self.state);
+            if let Some(req) = self.new_doc_modal.show(ctx, &mut self.state) {
+                self.create_new_document(req);
+            }
             self.about_modal.show(ctx);
             return;
         }
@@ -445,7 +473,9 @@ impl eframe::App for IrasuApp {
         // Show Modals if open (Images 2, 4, 5)
         self.preferences_dialog.show(ctx, &mut self.state);
         self.export_modal.show(ctx, &mut self.state);
-        self.new_doc_modal.show(ctx, &mut self.state);
+        if let Some(req) = self.new_doc_modal.show(ctx, &mut self.state) {
+            self.create_new_document(req);
+        }
         self.about_modal.show(ctx);
 
         // Floating Toast Notification

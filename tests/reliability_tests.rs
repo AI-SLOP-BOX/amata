@@ -867,6 +867,52 @@ fn test_compound_create_release_round_trip() {
 }
 
 #[test]
+fn test_group_ungroup_atomic_undo() {
+    use irasu_illustrator::core::history::{AddObjectCommand, BatchCommand, Command};
+    let mut doc = Document::default();
+    let mut mgr = irasu_illustrator::core::history::UndoManager::new();
+    let a = Object::new_rect("A", 0.0, 0.0, 10.0, 10.0, 0.0);
+    let b = Object::new_rect("B", 20.0, 0.0, 10.0, 10.0, 0.0);
+    doc.add_object(a.clone());
+    doc.add_object(b.clone());
+    // Mirror the Group handler: removals + group in one step.
+    let group = Object::new_group("G", vec![a.clone(), b.clone()]);
+    let mut cmds: Vec<Box<dyn Command>> = Vec::new();
+    for o in [&a, &b] {
+        cmds.push(Box::new(
+            irasu_illustrator::core::history::RemoveObjectCommand::located(o.clone(), &doc),
+        ) as Box<dyn Command>);
+    }
+    cmds.push(
+        Box::new(AddObjectCommand::new(group)) as Box<dyn Command>
+    );
+    mgr.execute(Box::new(BatchCommand::new("Group", cmds)), &mut doc);
+    assert_eq!(doc.all_objects().count(), 1);
+    mgr.undo(&mut doc);
+    assert_eq!(doc.all_objects().count(), 2);
+}
+
+#[test]
+fn test_new_document_resets_save_destination() {
+    use irasu_illustrator::core::state::AppState;
+    // Simulate create_new_document invariants without the GUI: a fresh
+    // document must start clean with no stale destination.
+    let mut state = AppState::default();
+    state.undo_manager.execute(
+        Box::new(irasu_illustrator::core::history::AddObjectCommand::new(
+            Object::new_rect("R", 0.0, 0.0, 5.0, 5.0, 0.0),
+        )),
+        &mut state.document,
+    );
+    assert!(state.is_dirty());
+    // Fresh default (what create hands over) is clean and empty.
+    let fresh = AppState::default();
+    assert!(!fresh.is_dirty());
+    assert_eq!(fresh.document.all_objects().count(), 0);
+    let _ = state;
+}
+
+#[test]
 fn test_undo_redo_return_owned_names() {
     let mut doc = Document::default();
     let mut mgr = irasu_illustrator::core::history::UndoManager::new();

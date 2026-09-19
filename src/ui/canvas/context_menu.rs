@@ -195,16 +195,34 @@ impl CanvasWidget {
                     if ui.button("グループ化   Cmd+G").clicked() {
                         let sel = state.selected_ids.clone();
                         let mut children = Vec::new();
+                        let mut cmds: Vec<Box<dyn crate::core::history::Command>> = Vec::new();
                         for id in &sel {
-                            if let Some(obj) = state.document.remove_object(id) {
-                                children.push(obj);
+                            if let Some(obj) = state.document.find_object(id).cloned() {
+                                children.push(obj.clone());
+                                cmds.push(Box::new(
+                                    crate::core::history::RemoveObjectCommand::located(
+                                        obj,
+                                        &state.document,
+                                    ),
+                                )
+                                    as Box<dyn crate::core::history::Command>);
                             }
                         }
-                        let grp = crate::core::document::Object::new_group("グループ", children);
-                        let new_id = grp.id.clone();
-                        let cmd = Box::new(crate::core::history::AddObjectCommand::new(grp));
-                        state.undo_manager.execute(cmd, &mut state.document);
-                        state.selected_ids = vec![new_id];
+                        if children.len() >= 2 {
+                            let grp =
+                                crate::core::document::Object::new_group("グループ", children);
+                            let new_id = grp.id.clone();
+                            cmds.push(Box::new(crate::core::history::AddObjectCommand::new(
+                                grp,
+                            ))
+                                as Box<dyn crate::core::history::Command>);
+                            let batch = Box::new(crate::core::history::BatchCommand::new(
+                                "Group",
+                                cmds,
+                            ));
+                            state.undo_manager.execute(batch, &mut state.document);
+                            state.selected_ids = vec![new_id];
+                        }
                         ui.close_menu();
                     }
                 }
@@ -218,23 +236,35 @@ impl CanvasWidget {
                     if has_group && ui.button("グループ解除   Cmd+Shift+G").clicked() {
                         let ids = state.selected_ids.clone();
                         let mut new_ids = Vec::new();
+                        let mut cmds: Vec<Box<dyn crate::core::history::Command>> = Vec::new();
                         for id in &ids {
-                            if let Some(obj) = state.document.remove_object(id) {
+                            if let Some(obj) = state.document.find_object(id).cloned() {
+                                cmds.push(Box::new(
+                                    crate::core::history::RemoveObjectCommand::located(
+                                        obj.clone(),
+                                        &state.document,
+                                    ),
+                                )
+                                    as Box<dyn crate::core::history::Command>);
                                 if let ObjectType::Group(children) = obj.object_type {
                                     for child in children {
                                         new_ids.push(child.id.clone());
-                                        let cmd = Box::new(
+                                        cmds.push(Box::new(
                                             crate::core::history::AddObjectCommand::new(child),
-                                        );
-                                        state.undo_manager.execute(cmd, &mut state.document);
+                                        )
+                                            as Box<dyn crate::core::history::Command>);
                                     }
                                 } else {
                                     new_ids.push(obj.id.clone());
-                                    let cmd =
-                                        Box::new(crate::core::history::AddObjectCommand::new(obj));
-                                    state.undo_manager.execute(cmd, &mut state.document);
                                 }
                             }
+                        }
+                        if !cmds.is_empty() {
+                            let batch = Box::new(crate::core::history::BatchCommand::new(
+                                "Ungroup",
+                                cmds,
+                            ));
+                            state.undo_manager.execute(batch, &mut state.document);
                         }
                         state.selected_ids = new_ids;
                         ui.close_menu();

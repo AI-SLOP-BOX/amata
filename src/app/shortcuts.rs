@@ -223,6 +223,12 @@ impl IrasuApp {
                 && !i.modifiers.shift
                 && i.key_pressed(egui::Key::S)
             {
+                if self.file_watcher.is_none() {
+                    // Previously a silent no-op on new documents.
+                    self.state.notify_info(
+                        "保存先がありません。メニューの保存から選んでください".to_string(),
+                    );
+                }
                 if let Some(ref mut watcher) = self.file_watcher {
                     match crate::cli::handlers::common::save_any_document(
                         &self.state.document,
@@ -314,53 +320,82 @@ impl IrasuApp {
                 }
             }
 
-            // Group (Ctrl+G)
+            // Group (Ctrl+G): atomic — the sources were previously deleted
+            // outside any command, so Undo dropped the group while the
+            // originals stayed lost.
             if (i.modifiers.ctrl || i.modifiers.mac_cmd)
                 && !i.modifiers.shift
                 && i.key_pressed(egui::Key::G)
                 && self.state.selected_ids.len() >= 2
             {
                 let mut objs = Vec::new();
+                let mut cmds: Vec<Box<dyn crate::core::history::Command>> = Vec::new();
                 for id in &self.state.selected_ids {
-                    if let Some(o) = self.state.document.remove_object(id) {
-                        objs.push(o);
+                    if let Some(o) = self.state.document.find_object(id).cloned() {
+                        objs.push(o.clone());
+                        cmds.push(Box::new(
+                            crate::core::history::RemoveObjectCommand::located(
+                                o,
+                                &self.state.document,
+                            ),
+                        )
+                            as Box<dyn crate::core::history::Command>);
                     }
                 }
-                let group = Object::new_group("Group", objs);
-                let gid = group.id.clone();
-                let cmd = Box::new(crate::core::history::AddObjectCommand::new(group));
-                self.state
-                    .undo_manager
-                    .execute(cmd, &mut self.state.document);
-                self.state.selected_ids = vec![gid];
+                if objs.len() >= 2 {
+                    let group = Object::new_group("Group", objs);
+                    let gid = group.id.clone();
+                    cmds.push(Box::new(crate::core::history::AddObjectCommand::new(group))
+                        as Box<dyn crate::core::history::Command>);
+                    let batch = Box::new(crate::core::history::BatchCommand::new(
+                        "Group",
+                        cmds,
+                    ));
+                    self.state.undo_manager.execute(batch, &mut self.state.document);
+                    self.state.selected_ids = vec![gid];
+                }
             }
 
-            // Ungroup (Ctrl+Shift+G)
+            // Ungroup (Ctrl+Shift+G): atomic for the same reason.
             if (i.modifiers.ctrl || i.modifiers.mac_cmd)
                 && i.modifiers.shift
                 && i.key_pressed(egui::Key::G)
             {
                 let ids = self.state.selected_ids.clone();
                 let mut new_ids = Vec::new();
+                let mut cmds: Vec<Box<dyn crate::core::history::Command>> = Vec::new();
                 for id in &ids {
-                    if let Some(obj) = self.state.document.remove_object(id) {
+                    if let Some(obj) = self.state.document.find_object(id).cloned() {
+                        cmds.push(Box::new(
+                            crate::core::history::RemoveObjectCommand::located(
+                                obj.clone(),
+                                &self.state.document,
+                            ),
+                        )
+                            as Box<dyn crate::core::history::Command>);
                         if let ObjectType::Group(children) = obj.object_type {
                             for child in children {
                                 new_ids.push(child.id.clone());
-                                let cmd =
-                                    Box::new(crate::core::history::AddObjectCommand::new(child));
-                                self.state
-                                    .undo_manager
-                                    .execute(cmd, &mut self.state.document);
+                                cmds.push(Box::new(
+                                    crate::core::history::AddObjectCommand::new(child),
+                                )
+                                    as Box<dyn crate::core::history::Command>);
                             }
                         } else {
                             new_ids.push(obj.id.clone());
-                            let cmd = Box::new(crate::core::history::AddObjectCommand::new(obj));
-                            self.state
-                                .undo_manager
-                                .execute(cmd, &mut self.state.document);
+                            cmds.push(Box::new(
+                                crate::core::history::AddObjectCommand::new(obj),
+                            )
+                                as Box<dyn crate::core::history::Command>);
                         }
                     }
+                }
+                if !cmds.is_empty() {
+                    let batch = Box::new(crate::core::history::BatchCommand::new(
+                        "Ungroup",
+                        cmds,
+                    ));
+                    self.state.undo_manager.execute(batch, &mut self.state.document);
                 }
                 self.state.selected_ids = new_ids;
             }
@@ -372,24 +407,37 @@ impl IrasuApp {
             {
                 let sel = self.state.selected_ids.clone();
                 let mut new_ids = Vec::new();
+                let mut cmds: Vec<Box<dyn crate::core::history::Command>> = Vec::new();
                 for id in &sel {
-                    if let Some(obj) = self.state.document.remove_object(id) {
-                        if let Some(outlined) = crate::core::text_path::create_text_outlines(&obj) {
-                            let nid = outlined.id.clone();
-                            new_ids.push(nid);
-                            let cmd =
-                                Box::new(crate::core::history::AddObjectCommand::new(outlined));
-                            self.state
-                                .undo_manager
-                                .execute(cmd, &mut self.state.document);
+                    if let Some(obj) = self.state.document.find_object(id).cloned() {
+                        if let Some(outlined) = crate::core::text_path::create_text_outlines(&obj)
+                        {
+                            cmds.push(Box::new(
+                                crate::core::history::RemoveObjectCommand::located(
+                                    obj,
+                                    &self.state.document,
+                                ),
+                            )
+                                as Box<dyn crate::core::history::Command>);
+                            new_ids.push(outlined.id.clone());
+                            cmds.push(Box::new(
+                                crate::core::history::AddObjectCommand::new(outlined),
+                            )
+                                as Box<dyn crate::core::history::Command>);
                         } else {
                             new_ids.push(obj.id.clone());
-                            let cmd = Box::new(crate::core::history::AddObjectCommand::new(obj));
-                            self.state
-                                .undo_manager
-                                .execute(cmd, &mut self.state.document);
                         }
                     }
+                }
+                if cmds.len() == 1 {
+                    let cmd = cmds.pop().unwrap();
+                    self.state.undo_manager.execute(cmd, &mut self.state.document);
+                } else if !cmds.is_empty() {
+                    let batch = Box::new(crate::core::history::BatchCommand::new(
+                        "Create Outlines",
+                        cmds,
+                    ));
+                    self.state.undo_manager.execute(batch, &mut self.state.document);
                 }
                 self.state.selected_ids = new_ids;
             }
@@ -442,13 +490,28 @@ impl IrasuApp {
                             object_type: ObjectType::ClippingMask { children },
                             ..Object::new_rect("Clipping Mask", 0.0, 0.0, 100.0, 100.0, 0.0)
                         };
+                        let mut cmds: Vec<Box<dyn crate::core::history::Command>> = Vec::new();
                         for remove_id in &ids_to_remove {
-                            self.state.document.remove_object(remove_id);
+                            if let Some(obj) = self.state.document.find_object(remove_id).cloned()
+                            {
+                                cmds.push(Box::new(
+                                    crate::core::history::RemoveObjectCommand::located(
+                                        obj,
+                                        &self.state.document,
+                                    ),
+                                )
+                                    as Box<dyn crate::core::history::Command>);
+                            }
                         }
-                        let cmd = Box::new(crate::core::history::AddObjectCommand::new(clipping));
-                        self.state
-                            .undo_manager
-                            .execute(cmd, &mut self.state.document);
+                        cmds.push(Box::new(crate::core::history::AddObjectCommand::new(
+                            clipping,
+                        ))
+                            as Box<dyn crate::core::history::Command>);
+                        let batch = Box::new(crate::core::history::BatchCommand::new(
+                            "Clipping Mask",
+                            cmds,
+                        ));
+                        self.state.undo_manager.execute(batch, &mut self.state.document);
                     }
                 }
             }
@@ -457,36 +520,67 @@ impl IrasuApp {
             if (i.modifiers.ctrl || i.modifiers.mac_cmd) && i.key_pressed(egui::Key::Num8) {
                 let sel = self.state.selected_ids.clone();
                 if i.modifiers.shift && i.modifiers.alt {
-                    // Release Compound Path
+                    // Release Compound Path: atomic.
                     let mut new_ids = Vec::new();
+                    let mut cmds: Vec<Box<dyn crate::core::history::Command>> = Vec::new();
                     for id in &sel {
-                        if let Some(obj) = self.state.document.remove_object(id) {
+                        if let Some(obj) = self.state.document.find_object(id).cloned() {
                             let released = obj.release_compound_path();
-                            for r in released {
-                                let nid = r.id.clone();
-                                new_ids.push(nid);
-                                let cmd = Box::new(crate::core::history::AddObjectCommand::new(r));
-                                self.state
-                                    .undo_manager
-                                    .execute(cmd, &mut self.state.document);
+                            if released.len() > 1 {
+                                cmds.push(Box::new(
+                                    crate::core::history::RemoveObjectCommand::located(
+                                        obj,
+                                        &self.state.document,
+                                    ),
+                                )
+                                    as Box<dyn crate::core::history::Command>);
+                                for r in released {
+                                    new_ids.push(r.id.clone());
+                                    cmds.push(Box::new(
+                                        crate::core::history::AddObjectCommand::new(r),
+                                    )
+                                        as Box<dyn crate::core::history::Command>);
+                                }
                             }
                         }
                     }
+                    if !cmds.is_empty() {
+                        let batch = Box::new(crate::core::history::BatchCommand::new(
+                            "Release Compound",
+                            cmds,
+                        ));
+                        self.state.undo_manager.execute(batch, &mut self.state.document);
+                    }
                     self.state.selected_ids = new_ids;
                 } else if sel.len() >= 2 {
-                    // Make Compound Path
+                    // Make Compound Path: atomic.
                     let mut objs = Vec::new();
                     for id in &sel {
-                        if let Some(obj) = self.state.document.remove_object(id) {
+                        if let Some(obj) = self.state.document.find_object(id).cloned() {
                             objs.push(obj);
                         }
                     }
                     if let Some(compound) = Object::make_compound_path(&objs) {
+                        let mut cmds: Vec<Box<dyn crate::core::history::Command>> = Vec::new();
+                        for obj in &objs {
+                            cmds.push(Box::new(
+                                crate::core::history::RemoveObjectCommand::located(
+                                    obj.clone(),
+                                    &self.state.document,
+                                ),
+                            )
+                                as Box<dyn crate::core::history::Command>);
+                        }
                         let nid = compound.id.clone();
-                        let cmd = Box::new(crate::core::history::AddObjectCommand::new(compound));
-                        self.state
-                            .undo_manager
-                            .execute(cmd, &mut self.state.document);
+                        cmds.push(Box::new(crate::core::history::AddObjectCommand::new(
+                            compound,
+                        ))
+                            as Box<dyn crate::core::history::Command>);
+                        let batch = Box::new(crate::core::history::BatchCommand::new(
+                            "Compound Path",
+                            cmds,
+                        ));
+                        self.state.undo_manager.execute(batch, &mut self.state.document);
                         self.state.selected_ids = vec![nid];
                     }
                 }
@@ -517,16 +611,32 @@ impl IrasuApp {
                 nudge_y += nudge;
             }
 
+            // Arrow-key nudge: one undo step per keypress (previously
+            // invisible to undo and dirty tracking entirely).
             if nudge_x != 0.0 || nudge_y != 0.0 {
-                for id in &self.state.selected_ids {
-                    let id = id.clone();
-                    for (_, obj) in self.state.document.all_objects_mut() {
-                        if obj.id == id {
-                            obj.transform.x += nudge_x;
-                            obj.transform.y += nudge_y;
-                            break;
-                        }
+                let ids = self.state.selected_ids.clone();
+                let mut cmds: Vec<Box<dyn crate::core::history::Command>> = Vec::new();
+                for id in &ids {
+                    if let Some(obj) = self.state.document.find_object(id) {
+                        cmds.push(Box::new(crate::core::history::MoveObjectCommand {
+                            object_id: id.clone(),
+                            old_x: obj.transform.x,
+                            old_y: obj.transform.y,
+                            new_x: obj.transform.x + nudge_x,
+                            new_y: obj.transform.y + nudge_y,
+                        })
+                            as Box<dyn crate::core::history::Command>);
                     }
+                }
+                if cmds.len() == 1 {
+                    let cmd = cmds.pop().unwrap();
+                    self.state.undo_manager.execute(cmd, &mut self.state.document);
+                } else if !cmds.is_empty() {
+                    let batch = Box::new(crate::core::history::BatchCommand::new(
+                        "Nudge",
+                        cmds,
+                    ));
+                    self.state.undo_manager.execute(batch, &mut self.state.document);
                 }
             }
 

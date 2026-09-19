@@ -15,7 +15,7 @@ pub use canvas::CanvasWidget;
 pub use export_modal::ExportModal;
 pub use external_change_modal::{ExternalChangeAction, ExternalChangeDialog, ExternalChangeNotice};
 pub use home_view::HomeView;
-pub use new_doc_modal::NewDocModal;
+pub use new_doc_modal::{NewDocModal, NewDocRequest};
 pub use onboarding_tour::OnboardingTour;
 pub use panels::*;
 pub use preferences_dialog::PreferencesDialog;

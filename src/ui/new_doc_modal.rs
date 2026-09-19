@@ -58,11 +58,39 @@ impl Default for NewDocModal {
     }
 }
 
+/// A validated new-document request: dimensions already converted to px.
+pub struct NewDocRequest {
+    pub name: String,
+    pub width: f64,
+    pub height: f64,
+}
+
 impl NewDocModal {
-    pub fn show(&mut self, ctx: &egui::Context, state: &mut AppState) {
+    /// Unit conversion applied on create (previously the unit selector was
+    /// decorative: 210mm produced a 210px canvas).
+    fn dims_to_px(&self) -> (f64, f64) {
+        const PX_PER_INCH: f64 = 96.0;
+        let factor = match self.unit.as_str() {
+            "ミリメートル" => PX_PER_INCH / 25.4,
+            "インチ" => PX_PER_INCH,
+            "ポイント" => PX_PER_INCH / 72.0,
+            _ => 1.0,
+        };
+        (
+            (self.width * factor).clamp(10.0, 16384.0),
+            (self.height * factor).clamp(10.0, 16384.0),
+        )
+    }
+
+    pub fn show(
+        &mut self,
+        ctx: &egui::Context,
+        _state: &mut AppState,
+    ) -> Option<NewDocRequest> {
         if !self.is_open {
-            return;
+            return None;
         }
+        let mut request = None;
 
         let mut is_open = self.is_open;
         egui::Window::new("新規ドキュメント")
@@ -560,20 +588,30 @@ impl NewDocModal {
                                 )
                                 .clicked()
                             {
-                                state.document.width = self.width;
-                                state.document.height = self.height;
-                                state.document.layers.clear();
-                                state
-                                    .document
-                                    .layers
-                                    .push(crate::core::document::Layer::new("レイヤー 1"));
-                                state.selected_ids.clear();
+                                let (w, h) = self.dims_to_px();
+                                let name = if self.doc_name.trim().is_empty() {
+                                    "名称未設定".to_string()
+                                } else {
+                                    self.doc_name.trim().to_string()
+                                };
+                                request = Some(NewDocRequest {
+                                    name,
+                                    width: w,
+                                    height: h,
+                                });
                                 self.is_open = false;
                             }
                         });
                     });
                 });
             });
-        self.is_open = is_open;
+        // A submitted request always closes the modal (the old code
+        // restored `is_open` unconditionally, so Create never closed it).
+        if request.is_some() {
+            self.is_open = false;
+        } else {
+            self.is_open = is_open;
+        }
+        request
     }
 }
