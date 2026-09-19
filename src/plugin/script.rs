@@ -311,6 +311,7 @@ fn parse_object_map(map: &rhai::Map) -> Option<Object> {
                 glow: None,
                 opacity: 1.0,
                 blend_mode: BlendMode::Normal,
+                width_profile: None,
                 visible: true,
                 locked: false,
             }
@@ -343,6 +344,7 @@ fn parse_object_map(map: &rhai::Map) -> Option<Object> {
                 glow: None,
                 opacity: 1.0,
                 blend_mode: BlendMode::Normal,
+                width_profile: None,
                 visible: true,
                 locked: false,
             }

@@ -1,5 +1,84 @@
+use super::document::WidthProfile;
 use super::geometry::signed_polygon_area;
 use super::path::{AnchorPoint, FillStyle, PathData};
+
+/// Sample a width profile (position 0..1, width multiplier) at `t`.
+fn sample_width_profile(profile: &WidthProfile, t: f64) -> f64 {
+    let pts = &profile.points;
+    if pts.is_empty() {
+        return 1.0;
+    }
+    if pts.len() == 1 || t <= pts[0].position {
+        return pts[0].width.max(0.0);
+    }
+    if t >= pts[pts.len() - 1].position {
+        return pts[pts.len() - 1].width.max(0.0);
+    }
+    for w in pts.windows(2) {
+        if t >= w[0].position && t <= w[1].position {
+            let span = (w[1].position - w[0].position).max(1e-6);
+            let lt = (t - w[0].position) / span;
+            return (w[0].width + (w[1].width - w[0].width) * lt).max(0.0);
+        }
+    }
+    1.0
+}
+
+/// Build a variable-width ribbon outline for an open polyline, honouring
+/// a width profile (multiplier of `base_width`). Closed loops are handled
+/// by wrapping tangents. Used by the Width tool on canvas and SVG export.
+pub fn variable_width_outline(
+    poly: &[AnchorPoint],
+    profile: &WidthProfile,
+    base_width: f64,
+    closed: bool,
+) -> Vec<AnchorPoint> {
+    let n = poly.len();
+    if n < 2 {
+        return poly.to_vec();
+    }
+    // Arclength parameter.
+    let mut lengths = vec![0.0];
+    let mut total = 0.0;
+    for i in 0..n - 1 {
+        total += poly[i].distance(poly[i + 1]);
+        lengths.push(total);
+    }
+    if total <= 1e-6 {
+        return poly.to_vec();
+    }
+    let mut left = Vec::with_capacity(n);
+    let mut right = Vec::with_capacity(n);
+    for i in 0..n {
+        let (dx, dy) = if closed {
+            let p0 = poly[(i + n - 1) % n];
+            let p1 = poly[(i + 1) % n];
+            (p1.x - p0.x, p1.y - p0.y)
+        } else if i == 0 {
+            (poly[1].x - poly[0].x, poly[1].y - poly[0].y)
+        } else if i == n - 1 {
+            (poly[n - 1].x - poly[n - 2].x, poly[n - 1].y - poly[n - 2].y)
+        } else {
+            (poly[i + 1].x - poly[i - 1].x, poly[i + 1].y - poly[i - 1].y)
+        };
+        let len = (dx * dx + dy * dy).sqrt().max(1e-6);
+        let t = lengths[i.min(lengths.len() - 1)] / total;
+        let half = sample_width_profile(profile, t) * base_width * 0.5;
+        let nx = -dy / len;
+        let ny = dx / len;
+        left.push(AnchorPoint::new(
+            poly[i].x + nx * half,
+            poly[i].y + ny * half,
+        ));
+        right.push(AnchorPoint::new(
+            poly[i].x - nx * half,
+            poly[i].y - ny * half,
+        ));
+    }
+    right.reverse();
+    left.extend(right);
+    left
+}
 
 /// Offset a closed polygon outward (delta > 0) or inward (delta < 0)
 pub fn offset_polygon(poly: &[AnchorPoint], delta: f64) -> Vec<AnchorPoint> {

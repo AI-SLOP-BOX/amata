@@ -31,8 +31,9 @@ impl CanvasWidget {
         origin: Pos2,
         state: &AppState,
         parent: &[f64; 6],
+        ancestor_opacity: f32,
     ) {
-        let opacity = obj.opacity.clamp(0.0_f32, 1.0_f32);
+        let opacity = (obj.opacity * ancestor_opacity).clamp(0.0_f32, 1.0_f32);
         // Compose ancestor (group) transforms: previously group transforms
         // were silently ignored, so moved/rotated groups rendered stale
         // while hit-testing and export used the new positions.
@@ -130,11 +131,50 @@ impl CanvasWidget {
                     }
                 }
                 if let Some(stroke) = stroke_info {
-                    for sp in subpaths {
+                    // Variable-width profile: stroke becomes a filled ribbon
+                    // honouring per-position multipliers.
+                    let ribbon_profile = obj.width_profile.as_ref().filter(|_| {
+                        obj.stroke
+                            .as_ref()
+                            .map(|s| s.width > 0.0)
+                            .unwrap_or(false)
+                    });
+                    for sp in &subpaths {
                         if sp.len() >= 2 {
-                            let screen_pts: Vec<Pos2> =
-                                sp.iter().map(|p| to_screen(p.x, p.y)).collect();
-                            painter.add(egui::epaint::PathShape::line(screen_pts, stroke));
+                            if let Some(prof) = ribbon_profile {
+                                let base_w = obj
+                                    .stroke
+                                    .as_ref()
+                                    .map(|s| s.width)
+                                    .unwrap_or(1.0);
+                                let ribbon =
+                                    crate::core::offset::variable_width_outline(
+                                        sp, prof, base_w, path.closed,
+                                    );
+                                if ribbon.len() >= 3 {
+                                    let screen_pts: Vec<Pos2> = ribbon
+                                        .iter()
+                                        .map(|p| to_screen(p.x, p.y))
+                                        .collect();
+                                    // Ribbon carries stroke color as fill.
+                                    let c = obj.stroke.as_ref().unwrap().color;
+                                    let rc = Color32::from_rgba_unmultiplied(
+                                        (c[0] * 255.0) as u8,
+                                        (c[1] * 255.0) as u8,
+                                        (c[2] * 255.0) as u8,
+                                        ((c[3] * opacity) * 255.0) as u8,
+                                    );
+                                    painter.add(egui::epaint::PathShape::convex_polygon(
+                                        screen_pts,
+                                        rc,
+                                        Stroke::NONE,
+                                    ));
+                                }
+                            } else {
+                                let screen_pts: Vec<Pos2> =
+                                    sp.iter().map(|p| to_screen(p.x, p.y)).collect();
+                                painter.add(egui::epaint::PathShape::line(screen_pts, stroke));
+                            }
                         }
                     }
                 }
@@ -224,6 +264,56 @@ impl CanvasWidget {
                 let p2 = to_screen(*x2, *y2);
                 let stroke = stroke_info.unwrap_or_else(|| Stroke::new(2.0_f32, Color32::BLACK));
                 painter.line_segment([p1, p2], stroke);
+            }
+            ObjectType::Image { width, height, .. } => {
+                if let Some(tex) = self.image_textures.get(&obj.id) {
+                    // UV-mapped quad so rotation/skew stay exact.
+                    let corners = [
+                        to_screen(0.0, 0.0),
+                        to_screen(*width, 0.0),
+                        to_screen(*width, *height),
+                        to_screen(0.0, *height),
+                    ];
+                    let uvs = [
+                        Pos2::new(0.0, 0.0),
+                        Pos2::new(1.0, 0.0),
+                        Pos2::new(1.0, 1.0),
+                        Pos2::new(0.0, 1.0),
+                    ];
+                    let tint = Color32::from_rgba_unmultiplied(
+                        255,
+                        255,
+                        255,
+                        (opacity * 255.0).round().clamp(0.0, 255.0) as u8,
+                    );
+                    let mut mesh = egui::epaint::Mesh {
+                        texture_id: tex.id(),
+                        ..Default::default()
+                    };
+                    for (pos, uv) in corners.into_iter().zip(uvs) {
+                        mesh.vertices.push(egui::epaint::Vertex {
+                            pos,
+                            uv,
+                            color: tint,
+                        });
+                    }
+                    mesh.indices.extend([0, 1, 2, 0, 2, 3]);
+                    painter.add(mesh);
+                } else {
+                    // Bytes missing or undecodable: visible placeholder.
+                    let a = to_screen(0.0, 0.0);
+                    let b = to_screen(*width, *height);
+                    let r = egui::Rect::from_min_max(
+                        Pos2::new(a.x.min(b.x), a.y.min(b.y)),
+                        Pos2::new(a.x.max(b.x), a.y.max(b.y)),
+                    );
+                    painter.rect_stroke(
+                        r,
+                        0.0,
+                        Stroke::new(1.0_f32, Color32::from_rgb(200, 80, 80)),
+                        egui::StrokeKind::Outside,
+                    );
+                }
             }
             ObjectType::Text {
                 text,
@@ -342,12 +432,12 @@ impl CanvasWidget {
             }
             ObjectType::Group(children) => {
                 for child in children {
-                    self.draw_object(painter, child, origin, state, &composed);
+                    self.draw_object(painter, child, origin, state, &composed, ancestor_opacity);
                 }
             }
             ObjectType::ClippingMask { children } => {
                 for child in children {
-                    self.draw_object(painter, child, origin, state, &composed);
+                    self.draw_object(painter, child, origin, state, &composed, ancestor_opacity);
                 }
             }
             ObjectType::Use { href, .. } => {
@@ -356,7 +446,14 @@ impl CanvasWidget {
                     let mut instance_obj = sym.object.clone();
                     instance_obj.transform.x += obj.transform.x;
                     instance_obj.transform.y += obj.transform.y;
-                    self.draw_object(painter, &instance_obj, origin, state, parent);
+                    self.draw_object(
+                        painter,
+                        &instance_obj,
+                        origin,
+                        state,
+                        parent,
+                        ancestor_opacity,
+                    );
                 }
             }
         }

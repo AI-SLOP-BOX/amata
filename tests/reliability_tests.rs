@@ -246,7 +246,7 @@ fn test_object_gesture_coalesces_to_one_undo_step() {
     }
 
     // Whole-object undo also restores nested children.
-    let mut inner = Object::new_rect("Inner", 0.0, 0.0, 5.0, 5.0, 0.0);
+    let inner = Object::new_rect("Inner", 0.0, 0.0, 5.0, 5.0, 0.0);
     let inner_id = inner.id.clone();
     state.document.add_object(Object::new_group("G", vec![inner]));
     state.ensure_object_snapshot(&inner_id);
@@ -711,6 +711,124 @@ fn test_stored_checkpoint_parses_by_format() {
     )
     .expect("svg checkpoint parses as svg");
     assert_eq!(svg_doc.layers[0].objects.len(), 0);
+}
+
+#[test]
+fn test_layer_opacity_and_blend_export() {
+    let mut doc = Document::default();
+    doc.layers[0].opacity = 0.5;
+    let mut obj = Object::new_rect("R", 0.0, 0.0, 10.0, 10.0, 0.0);
+    obj.blend_mode = irasu_illustrator::core::document::BlendMode::Multiply;
+    doc.add_object(obj);
+    let svg = irasu_illustrator::io::svg::export_svg(&doc);
+    assert!(svg.contains("<g opacity="), "layer group must carry opacity");
+    assert!(
+        svg.contains("mix-blend-mode=\"multiply\""),
+        "blend mode must export"
+    );
+    // Opacity composes through import.
+    let doc2 = parse_svg_document(&svg);
+    let obj2 = doc2.all_objects().next().map(|(_, o)| o).unwrap();
+    assert!((obj2.opacity - 0.5).abs() < 0.02, "got {}", obj2.opacity);
+}
+
+#[test]
+fn test_variable_width_ribbon_export() {
+    use irasu_illustrator::core::document::{WidthPoint, WidthProfile, WidthSide};
+    use irasu_illustrator::core::path::PathData;
+    let mut path = PathData::new();
+    path.push_move_to(0.0, 0.0);
+    path.push_line_to(50.0, 0.0);
+    path.push_line_to(100.0, 0.0);
+    let mut obj = Object::new_path("P", path);
+    obj.stroke = Some(irasu_illustrator::core::path::StrokeStyle {
+        color: [1.0, 0.0, 0.0, 1.0],
+        width: 10.0,
+        dash_pattern: None,
+        ..Default::default()
+    });
+    obj.width_profile = Some(WidthProfile {
+        points: vec![
+            WidthPoint {
+                position: 0.0,
+                width: 0.2,
+                side: WidthSide::Both,
+            },
+            WidthPoint {
+                position: 1.0,
+                width: 2.0,
+                side: WidthSide::Both,
+            },
+        ],
+    });
+    let poly = obj.to_path_data().to_polygon(8);
+    let ribbon = irasu_illustrator::core::offset::variable_width_outline(
+        &poly,
+        obj.width_profile.as_ref().unwrap(),
+        10.0,
+        false,
+    );
+    assert!(ribbon.len() >= 6, "ribbon ring expected");
+    // Start is narrow, end is wide.
+    let start_w = (ribbon[0].y - ribbon[ribbon.len() - 1].y).abs();
+    assert!(start_w < 10.0, "tapered start {start_w}");
+    let mut doc = Document::default();
+    doc.add_object(obj);
+    let svg = irasu_illustrator::io::svg::export_svg(&doc);
+    assert!(!svg.contains("stroke-width"), "ribbon must bake stroke");
+    assert!(svg.contains("fill=\"#ff0000\""));
+}
+
+fn tiny_test_png() -> Vec<u8> {
+    // 4x2 RGBA checkerboard encoded as PNG.
+    let mut img = image::RgbaImage::new(4, 2);
+    for (x, y, px) in img.enumerate_pixels_mut() {
+        let v = if (x + y) % 2 == 0 { 255 } else { 0 };
+        *px = image::Rgba([v, 128, 64, 255]);
+    }
+    let mut buf = Vec::new();
+    img.write_to(
+        &mut std::io::Cursor::new(&mut buf),
+        image::ImageFormat::Png,
+    )
+    .unwrap();
+    buf
+}
+
+#[test]
+fn test_placed_image_decode_and_svg_round_trip() {
+    let png = tiny_test_png();
+    let (w, h, placed) = irasu_illustrator::io::raster::decode_placed_image(&png).unwrap();
+    assert!((w - 4.0).abs() < 1e-6 && (h - 2.0).abs() < 1e-6);
+    assert!(placed.starts_with(&[0x89, b'P', b'N', b'G']));
+
+    let mut doc = Document::default();
+    doc.add_object(Object::new_image("Img", 10.0, 20.0, w, h, placed));
+    let svg = irasu_illustrator::io::svg::export_svg(&doc);
+    assert!(svg.contains("<image"));
+    assert!(svg.contains("data:image/png;base64,"));
+    let doc2 = parse_svg_document(&svg);
+    let img = doc2
+        .all_objects()
+        .map(|(_, o)| o)
+        .find(|o| {
+            matches!(
+                o.object_type,
+                irasu_illustrator::core::document::ObjectType::Image { .. }
+            )
+        })
+        .expect("image round-trips");
+    if let irasu_illustrator::core::document::ObjectType::Image {
+        width,
+        height,
+        png_bytes,
+    } = &img.object_type
+    {
+        assert!((*width - 4.0).abs() < 1e-6);
+        assert!((*height - 2.0).abs() < 1e-6);
+        assert!(!png_bytes.is_empty());
+    }
+    assert!((img.transform.x - 10.0).abs() < 1e-6);
 }
 
 #[test]

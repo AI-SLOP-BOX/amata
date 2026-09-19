@@ -473,6 +473,9 @@ pub fn parse_svg_document(svg_text: &str) -> Document {
 
     // 2. Parse Elements & Nested Groups
     let mut group_stack: Vec<[f64; 6]> = vec![affine_identity()];
+    // Accumulated group opacity (SVG groups compose opacity
+    // multiplicatively; previously dropped on import).
+    let mut group_opacity: Vec<f32> = vec![1.0];
     let mut in_defs = false;
 
     for tag in &tags {
@@ -523,6 +526,9 @@ pub fn parse_svg_document(svg_text: &str) -> Document {
             let local = parse_svg_transform(trimmed);
             let current = group_stack.last().copied().unwrap_or(affine_identity());
             group_stack.push(affine_multiply(&current, &local));
+            let parent_op = group_opacity.last().copied().unwrap_or(1.0);
+            let local_op = extract_opacity(trimmed).unwrap_or(1.0);
+            group_opacity.push(parent_op * local_op);
             continue;
         }
 
@@ -531,10 +537,14 @@ pub fn parse_svg_document(svg_text: &str) -> Document {
             if group_stack.len() > 1 {
                 group_stack.pop();
             }
+            if group_opacity.len() > 1 {
+                group_opacity.pop();
+            }
             continue;
         }
 
         let group_m = group_stack.last().copied().unwrap_or(affine_identity());
+        let group_op = group_opacity.last().copied().unwrap_or(1.0);
         let elem_m = parse_svg_transform(trimmed);
         let total_m = affine_multiply(&group_m, &elem_m);
         let (total_tx, total_ty) = (total_m[4], total_m[5]);
@@ -592,9 +602,8 @@ pub fn parse_svg_document(svg_text: &str) -> Document {
                         obj.id = extract_attr_str(trimmed, "id")
                             .map(|s| s.to_string())
                             .unwrap_or_else(|| format!("auto_path_{obj_count}"));
-                        if let Some(op) = extract_opacity(trimmed) {
-                            obj.opacity = op;
-                        }
+                        obj.opacity = group_op
+                            * extract_opacity(trimmed).unwrap_or(1.0);
                         doc.add_object(obj);
                     }
                 }
@@ -663,9 +672,7 @@ pub fn parse_svg_document(svg_text: &str) -> Document {
                 if let Some(stroke) = extract_stroke(trimmed) {
                     obj.stroke = Some(stroke);
                 }
-                if let Some(op) = extract_opacity(trimmed) {
-                    obj.opacity = op;
-                }
+                obj.opacity = group_op * extract_opacity(trimmed).unwrap_or(1.0);
                 doc.add_object(obj);
             }
         } else if trimmed.starts_with("<circle") || trimmed.starts_with("<ellipse") {
@@ -694,9 +701,7 @@ pub fn parse_svg_document(svg_text: &str) -> Document {
                 if let Some(stroke) = extract_stroke(trimmed) {
                     obj.stroke = Some(stroke);
                 }
-                if let Some(op) = extract_opacity(trimmed) {
-                    obj.opacity = op;
-                }
+                obj.opacity = group_op * extract_opacity(trimmed).unwrap_or(1.0);
                 doc.add_object(obj);
             }
         } else if trimmed.starts_with("<line") {
@@ -727,9 +732,7 @@ pub fn parse_svg_document(svg_text: &str) -> Document {
                 if let Some(stroke) = extract_stroke(trimmed) {
                     obj.stroke = Some(stroke);
                 }
-                if let Some(op) = extract_opacity(trimmed) {
-                    obj.opacity = op;
-                }
+                obj.opacity = group_op * extract_opacity(trimmed).unwrap_or(1.0);
                 doc.add_object(obj);
             }
         } else if trimmed.starts_with("<text") {
@@ -812,9 +815,7 @@ pub fn parse_svg_document(svg_text: &str) -> Document {
                 if let Some(fill) = extract_fill(trimmed, &gradients) {
                     obj.fill = Some(fill);
                 }
-                if let Some(op) = extract_opacity(trimmed) {
-                    obj.opacity = op;
-                }
+                obj.opacity = group_op * extract_opacity(trimmed).unwrap_or(1.0);
                 doc.add_object(obj);
             }
         } else if trimmed.starts_with("<use") {
@@ -840,10 +841,44 @@ pub fn parse_svg_document(svg_text: &str) -> Document {
                 obj.id = extract_attr_str(trimmed, "id")
                     .map(|s| s.to_string())
                     .unwrap_or_else(|| format!("auto_use_{obj_count}"));
-                if let Some(op) = extract_opacity(trimmed) {
-                    obj.opacity = op;
-                }
+                obj.opacity = group_op * extract_opacity(trimmed).unwrap_or(1.0);
                 doc.add_object(obj);
+            }
+        } else if trimmed.starts_with("<image") {
+            // Embedded data URIs only; external file references cannot be
+            // resolved without the source document's location.
+            let href = extract_attr_str(trimmed, "href")
+                .or_else(|| extract_attr_str(trimmed, "xlink:href"))
+                .unwrap_or("");
+            if let Some(b64) = href.strip_prefix("data:image/png;base64,") {
+                if let Some(png) = base64_decode(b64.trim()) {
+                    let x = extract_attr_f64(trimmed, "x").unwrap_or(0.0);
+                    let y = extract_attr_f64(trimmed, "y").unwrap_or(0.0);
+                    let w = extract_attr_f64(trimmed, "width").unwrap_or(0.0);
+                    let h = extract_attr_f64(trimmed, "height").unwrap_or(0.0);
+                    if w > 0.0 && h > 0.0 && !png.is_empty() {
+                        obj_count += 1;
+                        let mut obj = Object::new_image(
+                            &format!("Image {obj_count}"),
+                            x,
+                            y,
+                            w,
+                            h,
+                            png,
+                        );
+                        if has_linear {
+                            obj.transform = affine_to_transform(&total_m, x, y);
+                        } else {
+                            obj.transform.x = x + total_tx;
+                            obj.transform.y = y + total_ty;
+                        }
+                        obj.id = extract_attr_str(trimmed, "id")
+                            .map(|s| s.to_string())
+                            .unwrap_or_else(|| format!("auto_image_{obj_count}"));
+                        obj.opacity = group_op * extract_opacity(trimmed).unwrap_or(1.0);
+                        doc.add_object(obj);
+                    }
+                }
             }
         }
     }
@@ -1439,8 +1474,21 @@ pub fn export_svg(doc: &Document) -> String {
         if !layer.visible {
             continue;
         }
-        for obj in &layer.objects {
-            render_object_to_svg(obj, &mut svg, &mut defs, &mut id_counter);
+        // Layer opacity travels as a group attribute so canvas, SVG and
+        // resvg-based raster export agree. (Previously it was model-only.)
+        if (layer.opacity - 1.0).abs() > 1e-3 {
+            let mut group = String::new();
+            for obj in &layer.objects {
+                render_object_to_svg(obj, &mut group, &mut defs, &mut id_counter);
+            }
+            svg.push_str(&format!(
+                "  <g opacity=\"{:.3}\">\n{}  </g>\n",
+                layer.opacity, group
+            ));
+        } else {
+            for obj in &layer.objects {
+                render_object_to_svg(obj, &mut svg, &mut defs, &mut id_counter);
+            }
         }
     }
 
@@ -1595,7 +1643,15 @@ fn render_object_to_svg(obj: &Object, svg: &mut String, defs: &mut String, count
     } else {
         String::new()
     };
-    let effect_attr = format!("{opacity_str}{filter_attr}");
+    // Blend modes travel as CSS mix-blend-mode so resvg-based raster
+    // export honours them. (Canvas egui rendering has no blend-mode
+    // support and still shows Normal.)
+    let blend_str = obj
+        .blend_mode
+        .as_svg_str()
+        .map(|m| format!(" mix-blend-mode=\"{m}\""))
+        .unwrap_or_default();
+    let effect_attr = format!("{opacity_str}{filter_attr}{blend_str}");
 
     // Handle fill: solid, linear, or radial gradient
     let fill_attr = if let Some(ref fill) = obj.fill {
@@ -1687,33 +1743,76 @@ fn render_object_to_svg(obj: &Object, svg: &mut String, defs: &mut String, count
             }
         }
         ObjectType::Path(path) => {
-            let d = path_data_to_d(path, &obj.transform);
-            let fill = &fill_attr;
-            let stroke = obj
-                .stroke
+            // Variable-width profile: bake the stroke into a filled ribbon
+            // so export matches the canvas.
+            let ribbon = obj
+                .width_profile
                 .as_ref()
-                .or(path.stroke.as_ref())
-                .map(|s| {
-                    let dash_str = s
-                        .dash_pattern
-                        .as_ref()
-                        .map(|dp| {
-                            format!(
-                                " stroke-dasharray=\"{}\"",
-                                dp.iter()
-                                    .map(|n| n.to_string())
-                                    .collect::<Vec<_>>()
-                                    .join(" ")
-                            )
-                        })
-                        .unwrap_or_default();
-                    format!(
-                        " stroke=\"{}\" stroke-width=\"{}\"{dash_str}",
-                        color_to_svg_str(&s.color),
-                        s.width
-                    )
-                })
-                .unwrap_or_default();
+                .zip(obj.stroke.as_ref().or(path.stroke.as_ref()))
+                .filter(|(_, s)| s.width > 0.0)
+                .map(|(prof, s)| {
+                    let mut combined = crate::core::path::PathData::new();
+                    for sp in path.to_subpaths(16) {
+                        if sp.len() >= 2 {
+                            let band = crate::core::offset::variable_width_outline(
+                                &sp,
+                                prof,
+                                s.width,
+                                path.closed,
+                            );
+                            if band.len() >= 3 {
+                                let mut sub =
+                                    crate::core::path::PathData::from_polygon_points(
+                                        &band, true,
+                                    );
+                                combined.elements.append(&mut sub.elements);
+                            }
+                        }
+                    }
+                    combined.fill = Some(crate::core::path::FillStyle::solid(s.color));
+                    combined.stroke = None;
+                    combined
+                });
+            let d = match &ribbon {
+                Some(rp) => path_data_to_d(rp, &obj.transform),
+                None => path_data_to_d(path, &obj.transform),
+            };
+            let fill = match &ribbon {
+                Some(rp) => rp
+                    .fill
+                    .as_ref()
+                    .map(|f| format!(" fill=\"{}\"", color_to_svg_str(&f.color)))
+                    .unwrap_or_default(),
+                None => fill_attr.clone(),
+            };
+            let stroke = match &ribbon {
+                Some(_) => String::new(),
+                None => obj
+                    .stroke
+                    .as_ref()
+                    .or(path.stroke.as_ref())
+                    .map(|s| {
+                        let dash_str = s
+                            .dash_pattern
+                            .as_ref()
+                            .map(|dp| {
+                                format!(
+                                    " stroke-dasharray=\"{}\"",
+                                    dp.iter()
+                                        .map(|n| n.to_string())
+                                        .collect::<Vec<_>>()
+                                        .join(" ")
+                                )
+                            })
+                            .unwrap_or_default();
+                        format!(
+                            " stroke=\"{}\" stroke-width=\"{}\"{dash_str}",
+                            color_to_svg_str(&s.color),
+                            s.width
+                        )
+                    })
+                    .unwrap_or_default(),
+            };
 
             svg.push_str(&format!(
                 "  <path{id_attr} d=\"{d}\"{fill}{stroke}{effect_attr} />\n"
@@ -1980,7 +2079,94 @@ fn render_object_to_svg(obj: &Object, svg: &mut String, defs: &mut String, count
                 "  <path{id_attr} d=\"{d}\"{fill}{stroke}{effect_attr} />\n"
             ));
         }
+        ObjectType::Image {
+            width,
+            height,
+            png_bytes,
+        } => {
+            // Embedded data URI so the SVG stays self-contained.
+            let b64 = base64_encode(png_bytes);
+            if transform_has_linear_part(&obj.transform) {
+                let transform_attr = svg_transform_attr(&obj.transform);
+                svg.push_str(&format!(
+                    "  <image{id_attr} x=\"0\" y=\"0\" width=\"{width}\" height=\"{height}\" preserveAspectRatio=\"none\" href=\"data:image/png;base64,{b64}\"{transform_attr}{effect_attr} />\n",
+                ));
+            } else {
+                svg.push_str(&format!(
+                    "  <image{id_attr} x=\"{}\" y=\"{}\" width=\"{width}\" height=\"{height}\" preserveAspectRatio=\"none\" href=\"data:image/png;base64,{b64}\"{effect_attr} />\n",
+                    obj.transform.x, obj.transform.y
+                ));
+            }
+        }
     }
+}
+
+const B64_ALPHABET: &[u8; 64] =
+    b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+fn base64_encode(bytes: &[u8]) -> String {
+    let mut out = String::with_capacity((bytes.len() + 2) / 3 * 4);
+    for chunk in bytes.chunks(3) {
+        let b0 = chunk[0] as u32;
+        let b1 = *chunk.get(1).unwrap_or(&0) as u32;
+        let b2 = *chunk.get(2).unwrap_or(&0) as u32;
+        let n = (b0 << 16) | (b1 << 8) | b2;
+        out.push(B64_ALPHABET[((n >> 18) & 63) as usize] as char);
+        out.push(B64_ALPHABET[((n >> 12) & 63) as usize] as char);
+        out.push(if chunk.len() > 1 {
+            B64_ALPHABET[((n >> 6) & 63) as usize] as char
+        } else {
+            '='
+        });
+        out.push(if chunk.len() > 2 {
+            B64_ALPHABET[(n & 63) as usize] as char
+        } else {
+            '='
+        });
+    }
+    out
+}
+
+fn base64_value(c: u8) -> Option<u32> {
+    match c {
+        b'A'..=b'Z' => Some((c - b'A') as u32),
+        b'a'..=b'z' => Some((c - b'a') as u32 + 26),
+        b'0'..=b'9' => Some((c - b'0') as u32 + 52),
+        b'+' => Some(62),
+        b'/' => Some(63),
+        _ => None,
+    }
+}
+
+fn base64_decode(s: &str) -> Option<Vec<u8>> {
+    let clean: Vec<u8> = s.bytes().filter(|b| !b.is_ascii_whitespace()).collect();
+    if clean.len() % 4 != 0 {
+        return None;
+    }
+    let mut out = Vec::with_capacity(clean.len() / 4 * 3);
+    for chunk in clean.chunks(4) {
+        let mut n = 0u32;
+        let mut pad = 0;
+        for &c in chunk.iter() {
+            if c == b'=' {
+                pad += 1;
+                n <<= 6;
+            } else {
+                n = (n << 6) | base64_value(c)?;
+            }
+        }
+        if pad > 2 {
+            return None;
+        }
+        out.push((n >> 16) as u8);
+        if pad < 2 {
+            out.push((n >> 8) as u8);
+        }
+        if pad < 1 {
+            out.push(n as u8);
+        }
+    }
+    Some(out)
 }
 
 fn color_to_svg_str(c: &[f32; 4]) -> String {

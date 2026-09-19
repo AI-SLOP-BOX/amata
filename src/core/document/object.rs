@@ -1,4 +1,5 @@
 use super::super::effects::{DropShadow, GlowEffect};
+use super::WidthProfile;
 use crate::core::path::{AnchorPoint, FillStyle, PathData, StrokeStyle};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -43,6 +44,27 @@ impl BlendMode {
             Self::Saturation => "Saturation",
             Self::Color => "Color",
             Self::Luminosity => "Luminosity",
+        }
+    }
+
+    pub fn as_svg_str(&self) -> Option<&'static str> {
+        match self {
+            Self::Normal => None,
+            Self::Multiply => Some("multiply"),
+            Self::Screen => Some("screen"),
+            Self::Overlay => Some("overlay"),
+            Self::Darken => Some("darken"),
+            Self::Lighten => Some("lighten"),
+            Self::ColorDodge => Some("color-dodge"),
+            Self::ColorBurn => Some("color-burn"),
+            Self::HardLight => Some("hard-light"),
+            Self::SoftLight => Some("soft-light"),
+            Self::Difference => Some("difference"),
+            Self::Exclusion => Some("exclusion"),
+            Self::Hue => Some("hue"),
+            Self::Saturation => Some("saturation"),
+            Self::Color => Some("color"),
+            Self::Luminosity => Some("luminosity"),
         }
     }
 
@@ -199,6 +221,13 @@ pub enum ObjectType {
         width: Option<f64>,
         height: Option<f64>,
     },
+    /// Placed raster image (PNG bytes, embedded). Local origin at top-left,
+    /// `width`/`height` in document units; positioned by `transform`.
+    Image {
+        width: f64,
+        height: f64,
+        png_bytes: Vec<u8>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -312,6 +341,8 @@ pub struct Object {
     pub glow: Option<GlowEffect>,
     pub opacity: f32,
     pub blend_mode: BlendMode,
+    #[serde(default)]
+    pub width_profile: Option<WidthProfile>,
     pub visible: bool,
     pub locked: bool,
 }
@@ -330,6 +361,7 @@ impl Object {
             shadow: None,
             glow: None,
             opacity: 1.0,
+            width_profile: None,
             blend_mode: BlendMode::Normal,
             visible: true,
             locked: false,
@@ -355,6 +387,7 @@ impl Object {
             shadow: None,
             glow: None,
             opacity: 1.0,
+            width_profile: None,
             blend_mode: BlendMode::Normal,
             visible: true,
             locked: false,
@@ -376,6 +409,7 @@ impl Object {
             shadow: None,
             glow: None,
             opacity: 1.0,
+            width_profile: None,
             blend_mode: BlendMode::Normal,
             visible: true,
             locked: false,
@@ -408,6 +442,7 @@ impl Object {
             shadow: None,
             glow: None,
             opacity: 1.0,
+            width_profile: None,
             blend_mode: BlendMode::Normal,
             visible: true,
             locked: false,
@@ -429,6 +464,7 @@ impl Object {
             shadow: None,
             glow: None,
             opacity: 1.0,
+            width_profile: None,
             blend_mode: BlendMode::Normal,
             visible: true,
             locked: false,
@@ -453,6 +489,7 @@ impl Object {
             shadow: None,
             glow: None,
             opacity: 1.0,
+            width_profile: None,
             blend_mode: BlendMode::Normal,
             visible: true,
             locked: false,
@@ -489,6 +526,7 @@ impl Object {
             shadow: None,
             glow: None,
             opacity: 1.0,
+            width_profile: None,
             blend_mode: BlendMode::Normal,
             visible: true,
             locked: false,
@@ -506,6 +544,7 @@ impl Object {
             shadow: None,
             glow: None,
             opacity: 1.0,
+            width_profile: None,
             blend_mode: BlendMode::Normal,
             visible: true,
             locked: false,
@@ -538,6 +577,40 @@ impl Object {
             shadow: None,
             glow: None,
             opacity: 1.0,
+            width_profile: None,
+            blend_mode: BlendMode::Normal,
+            visible: true,
+            locked: false,
+        }
+    }
+
+    pub fn new_image(
+        name: &str,
+        x: f64,
+        y: f64,
+        width: f64,
+        height: f64,
+        png_bytes: Vec<u8>,
+    ) -> Self {
+        Self {
+            id: Uuid::new_v4().to_string(),
+            name: name.to_string(),
+            object_type: ObjectType::Image {
+                width,
+                height,
+                png_bytes,
+            },
+            transform: Transform {
+                x,
+                y,
+                ..Default::default()
+            },
+            fill: None,
+            stroke: None,
+            shadow: None,
+            glow: None,
+            opacity: 1.0,
+            width_profile: None,
             blend_mode: BlendMode::Normal,
             visible: true,
             locked: false,
@@ -649,6 +722,9 @@ impl Object {
                 let h = height.unwrap_or(100.0);
                 PathData::from_rect(0.0, 0.0, w, h, 0.0)
             }
+            ObjectType::Image { width, height, .. } => {
+                PathData::from_rect(0.0, 0.0, *width, *height, 0.0)
+            }
         }
     }
 
@@ -716,6 +792,9 @@ impl Object {
                 let w = width.unwrap_or(100.0);
                 let h = height.unwrap_or(100.0);
                 lx >= 0.0 && lx <= w && ly >= 0.0 && ly <= h
+            }
+            ObjectType::Image { width, height, .. } => {
+                lx >= 0.0 && lx <= *width && ly >= 0.0 && ly <= *height
             }
         }
     }

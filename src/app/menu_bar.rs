@@ -106,6 +106,39 @@ impl IrasuApp {
                         }
                         ui.close_menu();
                     }
+                    if ui.button("画像を配置... (Place Image)").clicked() {
+                        if let Some(path) = rfd::FileDialog::new()
+                            .add_filter("Images", &["png", "jpg", "jpeg", "webp", "gif", "bmp"])
+                            .pick_file()
+                        {
+                            let name = path
+                                .file_name()
+                                .and_then(|s| s.to_str())
+                                .unwrap_or("Image")
+                                .to_string();
+                            match std::fs::read(&path) {
+                                Err(e) => self.state.notify_error(format!(
+                                    "画像の読み込みに失敗しました: {e}"
+                                )),
+                                Ok(bytes) => {
+                                    // View-centre world coordinates.
+                                    let zoom = self.state.zoom as f64;
+                                    let (cx, cy) = (
+                                        -self.state.pan_x as f64 / zoom,
+                                        -self.state.pan_y as f64 / zoom,
+                                    );
+                                    self.canvas.place_image_bytes(
+                                        &mut self.state,
+                                        &bytes,
+                                        &name,
+                                        cx,
+                                        cy,
+                                    );
+                                }
+                            }
+                        }
+                        ui.close_menu();
+                    }
                     if ui.button("Save (Cmd+S)").clicked() {
                         if let Some(ref mut watcher) = self.file_watcher {
                             match crate::cli::handlers::common::save_any_document(

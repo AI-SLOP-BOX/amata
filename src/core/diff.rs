@@ -581,6 +581,7 @@ fn object_type_name(obj: &Object) -> &'static str {
         ObjectType::Star { .. } => "Star",
         ObjectType::Polygon { .. } => "Polygon",
         ObjectType::Use { .. } => "UseInstance",
+        ObjectType::Image { .. } => "Image",
     }
 }
 
@@ -787,6 +788,33 @@ fn compare_objects(a: &Object, b: &Object) -> Vec<FieldDiff> {
                     field: "instance-size".to_string(),
                     old_value: format!("{:?}x{:?}", w_a, h_a),
                     new_value: format!("{:?}x{:?}", w_b, h_b),
+                });
+            }
+        }
+        (
+            ObjectType::Image {
+                width: w_a,
+                height: h_a,
+                png_bytes: b_a,
+            },
+            ObjectType::Image {
+                width: w_b,
+                height: h_b,
+                png_bytes: b_b,
+            },
+        ) => {
+            if (w_a - w_b).abs() > 1e-6 || (h_a - h_b).abs() > 1e-6 {
+                changes.push(FieldDiff {
+                    field: "image-size".to_string(),
+                    old_value: format!("{w_a:.1}x{h_a:.1}"),
+                    new_value: format!("{w_b:.1}x{h_b:.1}"),
+                });
+            }
+            if b_a.len() != b_b.len() {
+                changes.push(FieldDiff {
+                    field: "image-content".to_string(),
+                    old_value: format!("{} bytes", b_a.len()),
+                    new_value: format!("{} bytes", b_b.len()),
                 });
             }
         }

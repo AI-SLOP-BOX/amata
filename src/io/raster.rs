@@ -30,6 +30,41 @@ pub fn export_png(doc: &Document, scale: f32, transparent: bool) -> Result<Vec<u
         .map_err(|e| format!("Failed to encode PNG: {}", e))
 }
 
+/// Decode user-supplied raster bytes (PNG/JPEG) into a placeable image:
+/// returns document-unit size plus re-encoded PNG bytes. Images are capped
+/// at 2048px per side so a photo cannot blow up project files or textures.
+pub fn decode_placed_image(bytes: &[u8]) -> Result<(f64, f64, Vec<u8>), String> {
+    const MAX_DIM: u32 = 2048;
+    if bytes.len() > 64 * 1024 * 1024 {
+        return Err("Image file too large (64MB limit)".to_string());
+    }
+    let img = image::load_from_memory(bytes)
+        .map_err(|e| format!("Could not decode image: {e}"))?;
+    let (w, h) = (img.width(), img.height());
+    if w == 0 || h == 0 {
+        return Err("Image has zero size".to_string());
+    }
+    let scale = (MAX_DIM as f32 / w.max(h) as f32).min(1.0);
+    let img = if scale < 1.0 {
+        img.resize(
+            ((w as f32 * scale).round().max(1.0)) as u32,
+            ((h as f32 * scale).round().max(1.0)) as u32,
+            image::imageops::FilterType::Triangle,
+        )
+    } else {
+        img
+    };
+    let (w, h) = (img.width(), img.height());
+    let mut png = Vec::new();
+    img.to_rgba8()
+        .write_to(
+            &mut std::io::Cursor::new(&mut png),
+            image::ImageFormat::Png,
+        )
+        .map_err(|e| format!("Failed to encode PNG: {e}"))?;
+    Ok((w as f64, h as f64, png))
+}
+
 /// Export the vector document to JPEG byte buffer at given scale factor.
 pub fn export_jpeg(doc: &Document, scale: f32) -> Result<Vec<u8>, String> {
     let png_bytes = export_png(doc, scale, false)?;

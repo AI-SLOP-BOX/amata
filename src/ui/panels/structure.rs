@@ -33,6 +33,8 @@ impl LayerPanel {
         let mut to_toggle_lock: Option<usize> = None;
         let mut to_toggle_obj_vis: Option<String> = None;
         let mut to_toggle_obj_lock: Option<String> = None;
+        let mut to_set_layer_opacity: Option<(String, f32, bool)> = None;
+        let mut to_commit_layer = false;
 
         for (i, layer) in state.document.layers.iter().enumerate() {
             let is_active = i == active_idx;
@@ -95,6 +97,34 @@ impl LayerPanel {
             });
 
             if is_active {
+                // Per-layer opacity with drag-coalesced undo. Previously the
+                // model field existed but had no UI and was ignored by
+                // canvas and vector export alike. Applied after the loop:
+                // the layer iterator borrows the document, so &mut state
+                // calls must be deferred like the other to_* actions.
+                let layer_id = layer.id.clone();
+                let mut lop = layer.opacity;
+                ui.indent("layer_opacity", |ui| {
+                    ui.horizontal(|ui| {
+                        ui.label(
+                            egui::RichText::new("不透明度")
+                                .size(10.0)
+                                .color(egui::Color32::from_rgb(150, 150, 150)),
+                        );
+                        let op_resp = ui.add(
+                            egui::Slider::new(&mut lop, 0.0..=1.0)
+                                .show_value(true)
+                                .custom_formatter(|n, _| format!("{:.0}%", n * 100.0)),
+                        );
+                        if op_resp.changed() {
+                            to_set_layer_opacity =
+                                Some((layer_id, lop, op_resp.dragged()));
+                        }
+                        if op_resp.drag_stopped() {
+                            to_commit_layer = true;
+                        }
+                    });
+                });
                 ui.indent("objects", |ui| {
                     for (j, obj) in layer.objects.iter().enumerate() {
                         let is_selected = state.selected_ids.contains(&obj.id);
@@ -109,6 +139,7 @@ impl LayerPanel {
                             ObjectType::Group(_) => "🗂",
                             ObjectType::ClippingMask { .. } => "🎭",
                             ObjectType::Use { .. } => "❖",
+                            ObjectType::Image { .. } => "🖼",
                         };
                         let obj_text = format!("{icon} {}", obj.name);
 
@@ -333,6 +364,19 @@ impl LayerPanel {
                 }),
                 &mut state.document,
             );
+        }
+
+        if let Some((lid, v, dragged)) = to_set_layer_opacity {
+            state.ensure_layer_snapshot(&lid);
+            if let Some(l) = state.document.layers.iter_mut().find(|l| l.id == lid) {
+                l.opacity = v;
+            }
+            if !dragged {
+                state.commit_layer_edits("Edit Layer");
+            }
+        }
+        if to_commit_layer {
+            state.commit_layer_edits("Edit Layer");
         }
 
         if to_remove_layer {

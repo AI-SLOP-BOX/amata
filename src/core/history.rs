@@ -470,6 +470,32 @@ impl Command for ReorderObjectsCommand {
     }
 }
 
+/// Whole-layer edit (currently opacity). Layers live outside objects,
+/// so they get their own command type with the same coalescing pattern.
+pub struct LayerCommand {
+    pub layer_id: String,
+    pub old_layer: super::document::Layer,
+    pub new_layer: super::document::Layer,
+}
+
+impl Command for LayerCommand {
+    fn execute(&self, doc: &mut Document) {
+        if let Some(layer) = doc.layers.iter_mut().find(|l| l.id == self.layer_id) {
+            *layer = self.new_layer.clone();
+        }
+    }
+
+    fn undo(&self, doc: &mut Document) {
+        if let Some(layer) = doc.layers.iter_mut().find(|l| l.id == self.layer_id) {
+            *layer = self.old_layer.clone();
+        }
+    }
+
+    fn name(&self) -> &str {
+        "Edit Layer"
+    }
+}
+
 pub struct BatchCommand {
     pub name: String,
     pub commands: Vec<Box<dyn Command>>,

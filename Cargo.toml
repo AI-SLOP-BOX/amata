@@ -41,3 +41,6 @@ resvg = { version = "0.48", default-features = false, features = ["raster-images
 fontdb = { version = "0.24", features = ["fs", "memmap"] }
 ttf-parser = "0.25"
 
+[dev-dependencies]
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+

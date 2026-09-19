@@ -1,5 +1,5 @@
-use super::document::{Document, Object, Transform};
-use super::history::{BatchCommand, Command, ObjectCommand, TransformCommand, UndoManager};
+use super::document::{Document, Layer, Object, Transform};
+use super::history::{BatchCommand, Command, LayerCommand, ObjectCommand, TransformCommand, UndoManager};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -143,8 +143,6 @@ pub struct AppState {
     pub show_timeline: bool,
     // Symbols
     pub symbols: Vec<crate::core::document::Symbol>,
-    // Width profiles
-    pub width_profiles: std::collections::HashMap<String, crate::core::document::WidthProfile>,
     // Guides
     pub guides: Vec<Guide>,
     // Export
@@ -189,6 +187,8 @@ pub struct AppState {
     pub pending_transforms: Vec<(String, Transform)>,
     // Same mechanism for whole-object panel edits (opacity, stroke, fill…).
     pub pending_objects: Vec<(String, Object)>,
+    // Same for whole-layer edits (opacity).
+    pub pending_layers: Vec<(String, Layer)>,
 }
 
 #[derive(Debug, Clone)]
@@ -308,7 +308,6 @@ impl Default for AppState {
                     ),
                 ),
             ],
-            width_profiles: std::collections::HashMap::new(),
             guides: Vec::new(),
             export_format: "SVG".into(),
             export_width: 1920.0,
@@ -337,6 +336,7 @@ impl Default for AppState {
             timeline_was_playing: false,
             pending_transforms: Vec::new(),
             pending_objects: Vec::new(),
+            pending_layers: Vec::new(),
         }
     }
 }
@@ -534,6 +534,41 @@ impl AppState {
                         },
                     )
                         as Box<dyn Command>);
+                }
+            }
+        }
+        if cmds.len() == 1 {
+            let cmd = cmds.pop().unwrap();
+            self.undo_manager.execute(cmd, &mut self.document);
+        } else if !cmds.is_empty() {
+            self.undo_manager.execute(
+                Box::new(BatchCommand::new(label, cmds)),
+                &mut self.document,
+            );
+        }
+    }
+
+    /// Snapshot a layer before a panel edit (see object variant).
+    pub fn ensure_layer_snapshot(&mut self, id: &str) {
+        if !self.pending_layers.iter().any(|(lid, _)| lid == id) {
+            if let Some(l) = self.document.layers.iter().find(|l| l.id == id) {
+                self.pending_layers.push((id.to_string(), l.clone()));
+            }
+        }
+    }
+
+    /// Record pending layer gestures as one undo step (or a batch).
+    pub fn commit_layer_edits(&mut self, label: &str) {
+        let pending = std::mem::take(&mut self.pending_layers);
+        let mut cmds: Vec<Box<dyn Command>> = Vec::new();
+        for (id, old) in pending {
+            if let Some(layer) = self.document.layers.iter().find(|l| l.id == id) {
+                if layer != &old {
+                    cmds.push(Box::new(LayerCommand {
+                        layer_id: id,
+                        old_layer: old,
+                        new_layer: layer.clone(),
+                    }) as Box<dyn Command>);
                 }
             }
         }

@@ -784,6 +784,7 @@ fn test_adversarial_stress_50k_objects() {
             glow: None,
             opacity: 1.0,
             blend_mode: irasu_illustrator::core::document::BlendMode::Normal,
+            width_profile: None,
             visible: true,
             locked: false,
         };

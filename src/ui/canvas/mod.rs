@@ -6,6 +6,7 @@ pub mod rendering;
 
 pub use rendering::sample_gradient_stops;
 
+use crate::core::document::{Object, ObjectType};
 use crate::core::path::AnchorPoint;
 use crate::core::state::{AppState, HandleCorner, Tool};
 use crate::gpu::GpuRenderer;
@@ -79,6 +80,7 @@ pub struct CanvasWidget {
     drag: Option<DragState>,
     node_edit_state: NodeEditState,
     pub gpu_renderer: Option<GpuRenderer>,
+    image_textures: std::collections::HashMap<String, egui::TextureHandle>,
 }
 
 struct NodeEditState {
@@ -114,6 +116,133 @@ impl CanvasWidget {
             drag: None,
             node_edit_state: NodeEditState::new(),
             gpu_renderer: None,
+            image_textures: std::collections::HashMap::new(),
+        }
+    }
+
+    /// Decode a placed-image object into an egui texture.
+    fn decode_image_texture(ctx: &egui::Context, obj: &Object) -> Option<egui::TextureHandle> {
+        let png_bytes = match &obj.object_type {
+            ObjectType::Image { png_bytes, .. } => png_bytes,
+            _ => return None,
+        };
+        let img = image::load_from_memory(png_bytes).ok()?.to_rgba8();
+        let (w, h) = (img.width() as usize, img.height() as usize);
+        if w == 0 || h == 0 || w * h > 16_777_216 {
+            return None;
+        }
+        let pixels = img
+            .pixels()
+            .map(|p| egui::Color32::from_rgba_unmultiplied(p[0], p[1], p[2], p[3]))
+            .collect();
+        Some(ctx.load_texture(
+            &obj.id,
+            egui::ColorImage {
+                size: [w, h],
+                pixels,
+            },
+            egui::TextureOptions::LINEAR,
+        ))
+    }
+
+    fn ensure_image_textures(&mut self, ctx: &egui::Context, state: &AppState) {
+        use std::collections::HashSet;
+        let mut live: HashSet<String> = HashSet::new();
+        // Top-level images plus group children.
+        let mut stack: Vec<&crate::core::document::Object> = state
+            .document
+            .layers
+            .iter()
+            .flat_map(|l| l.objects.iter())
+            .collect();
+        while let Some(obj) = stack.pop() {
+            match &obj.object_type {
+                crate::core::document::ObjectType::Image { .. } => {
+                    live.insert(obj.id.clone());
+                    if !self.image_textures.contains_key(&obj.id) {
+                        if let Some(tex) = Self::decode_image_texture(ctx, obj) {
+                            self.image_textures.insert(obj.id.clone(), tex);
+                        }
+                    }
+                }
+                crate::core::document::ObjectType::Group(children)
+                | crate::core::document::ObjectType::ClippingMask { children } => {
+                    stack.extend(children.iter());
+                }
+                _ => {}
+            }
+        }
+        self.image_textures.retain(|id, _| live.contains(id));
+    }
+
+    /// Place raster bytes on the canvas centred at world `(cx, cy)`.
+    pub fn place_image_bytes(
+        &mut self,
+        state: &mut AppState,
+        bytes: &[u8],
+        name: &str,
+        cx: f64,
+        cy: f64,
+    ) {
+        match crate::io::raster::decode_placed_image(bytes) {
+            Err(e) => state.notify_error(format!("画像の配置に失敗しました: {e}")),
+            Ok((w, h, png)) => {
+                let obj = Object::new_image(name, cx - w / 2.0, cy - h / 2.0, w, h, png);
+                let id = obj.id.clone();
+                let cmd = Box::new(crate::core::history::AddObjectCommand::new(obj));
+                state.undo_manager.execute(cmd, &mut state.document);
+                state.selected_ids = vec![id];
+                state.notify_success("画像を配置しました");
+            }
+        }
+    }
+
+    fn place_dropped_images(
+        &mut self,
+        state: &mut AppState,
+        _origin: Pos2,
+        dropped: &[egui::DroppedFile],
+    ) {
+        // View-centre world coordinates for the drop target.
+        let zoom = state.zoom as f64;
+        let (cx, cy) = (
+            -state.pan_x as f64 / zoom,
+            -state.pan_y as f64 / zoom,
+        );
+        for f in dropped {
+            let ext = f
+                .path
+                .as_ref()
+                .and_then(|p| p.extension())
+                .and_then(|s| s.to_str())
+                .unwrap_or("")
+                .to_lowercase();
+            let is_raster = matches!(ext.as_str(), "png" | "jpg" | "jpeg" | "webp" | "gif" | "bmp")
+                || f.bytes.is_some() && ext.is_empty();
+            if !is_raster {
+                continue;
+            }
+            let name = f
+                .path
+                .as_ref()
+                .and_then(|p| p.file_name())
+                .and_then(|s| s.to_str())
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| {
+                    if f.name.is_empty() {
+                        "Image".to_string()
+                    } else {
+                        f.name.clone()
+                    }
+                });
+            let bytes: Option<Vec<u8>> = f
+                .path
+                .as_ref()
+                .and_then(|p| std::fs::read(p).ok())
+                .or_else(|| f.bytes.as_ref().map(|b| b.to_vec()));
+            if let Some(bytes) = bytes {
+                self.place_image_bytes(state, &bytes, &name, cx, cy);
+            }
         }
     }
 
@@ -192,6 +321,17 @@ impl CanvasWidget {
             Color32::from_rgb(170, 170, 170),
         );
 
+        // Decode placed images ahead of drawing (texture cache).
+        self.ensure_image_textures(ui.ctx(), state);
+
+        // Handle files dropped onto the canvas: raster images are placed,
+        // documents are ignored here (use File > Open).
+        let dropped: Vec<egui::DroppedFile> =
+            ui.ctx().input(|i| i.raw.dropped_files.clone());
+        if !dropped.is_empty() {
+            self.place_dropped_images(state, origin, &dropped);
+        }
+
         // Render Objects (CPU fallback via egui painter).
         // Viewport culling above a size threshold: egui already clips
         // rasterization, but shape construction/tessellation dominates, so
@@ -204,7 +344,7 @@ impl CanvasWidget {
             ((rect.max.x - origin.x) / state.zoom) as f64 + 50.0,
             ((rect.max.y - origin.y) / state.zoom) as f64 + 50.0,
         );
-        for (_, obj) in state.document.all_objects() {
+        for (layer_idx, obj) in state.document.all_objects() {
             if !obj.visible {
                 continue;
             }
@@ -215,18 +355,33 @@ impl CanvasWidget {
                     }
                 }
             }
+            let layer_op = state
+                .document
+                .layers
+                .get(layer_idx)
+                .map(|l| l.opacity)
+                .unwrap_or(1.0);
             self.draw_object(
                 &painter,
                 obj,
                 origin,
                 state,
                 &crate::ui::canvas::rendering::IDENTITY_AFFINE,
+                layer_op,
             );
         }
 
         // Isolation overlay: dim everything, then redraw the isolated
         // group on top so its children stay fully editable.
         if let Some(group) = state.isolated_group() {
+            let gid = group.id.clone();
+            let layer_op = state
+                .document
+                .layers
+                .iter()
+                .find(|l| l.objects.iter().any(|o| o.id == gid))
+                .map(|l| l.opacity)
+                .unwrap_or(1.0);
             painter.rect_filled(artboard, 0.0_f32, Color32::from_black_alpha(110));
             self.draw_object(
                 &painter,
@@ -234,6 +389,7 @@ impl CanvasWidget {
                 origin,
                 state,
                 &crate::ui::canvas::rendering::IDENTITY_AFFINE,
+                layer_op,
             );
         }
 

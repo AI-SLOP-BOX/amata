@@ -461,52 +461,72 @@ impl WidthToolPanel {
         }
 
         let id = state.selected_ids[0].clone();
-        let mut width_profile = crate::core::document::WidthProfile::default();
-        let mut has_stroke = false;
-
-        for (_, obj) in state.document.all_objects() {
-            if obj.id == id && obj.stroke.is_some() {
-                has_stroke = true;
-                width_profile = state.width_profiles.get(&id).cloned().unwrap_or_default();
-                break;
-            }
-        }
-
-        if !has_stroke {
+        // Profiles live on the object now (persisted + undoable), not in a
+        // throwaway session map.
+        let mut width_profile = state
+            .document
+            .find_object(&id)
+            .and_then(|o| {
+                if o.stroke.is_some() {
+                    Some(
+                        o.width_profile
+                            .clone()
+                            .unwrap_or_default(),
+                    )
+                } else {
+                    None
+                }
+            });
+        let Some(ref mut profile) = width_profile else {
             ui.label(RichText::new("Object has no stroke").weak());
             return;
-        }
+        };
 
         ui.label("Add width points along the stroke path:");
         ui.add_space(4.0);
 
+        // Any widget interaction snapshots once; drags commit on stop so a
+        // single gesture is a single undo step.
+        let mut prof_changed = false;
+        let mut prof_dragging = false;
+        let mut prof_stopped = false;
         let mut to_remove = None;
-        let point_count = width_profile.points.len();
+        let point_count = profile.points.len();
         for i in 0..point_count {
-            let mut pos = width_profile.points[i].position;
-            let mut width = width_profile.points[i].width;
+            let mut pos = profile.points[i].position;
+            let mut width = profile.points[i].width;
             ui.horizontal(|ui| {
                 ui.label(format!("{:.0}%", pos * 100.0));
-                if ui
-                    .add(
-                        egui::Slider::new(&mut pos, 0.0..=1.0)
-                            .show_value(false)
-                            .step_by(0.01),
-                    )
-                    .changed()
-                {
-                    width_profile.points[i].position = pos;
+                let pos_resp = ui.add(
+                    egui::Slider::new(&mut pos, 0.0..=1.0)
+                        .show_value(false)
+                        .step_by(0.01),
+                );
+                if pos_resp.changed() {
+                    profile.points[i].position = pos;
+                    prof_changed = true;
                 }
-                if ui
-                    .add(
-                        egui::DragValue::new(&mut width)
-                            .speed(0.1)
-                            .range(0.01..=10.0)
-                            .suffix("x"),
-                    )
-                    .changed()
-                {
-                    width_profile.points[i].width = width;
+                if pos_resp.dragged() {
+                    prof_dragging = true;
+                }
+                if pos_resp.drag_stopped() {
+                    prof_stopped = true;
+                }
+                let w_resp = ui.add(
+                    egui::DragValue::new(&mut width)
+                        .speed(0.1)
+                        .range(0.01..=10.0)
+                        .suffix("x"),
+                );
+                if w_resp.changed() {
+                    profile.points[i].width = width;
+                    prof_changed = true;
+                }
+                if w_resp.dragged() {
+                    prof_dragging = true;
+                }
+                if w_resp.drag_stopped() {
+                    prof_stopped = true;
                 }
                 if point_count > 2 && ui.small_button("✕").clicked() {
                     to_remove = Some(i);
@@ -515,34 +535,42 @@ impl WidthToolPanel {
         }
 
         if let Some(idx) = to_remove {
-            width_profile.points.remove(idx);
+            profile.points.remove(idx);
+            prof_changed = true;
         }
 
         if ui.button("+ Add Width Point").clicked() {
-            let last_pos = width_profile
-                .points
-                .last()
-                .map(|p| p.position)
-                .unwrap_or(0.5);
-            width_profile
-                .points
-                .push(crate::core::document::WidthPoint {
-                    position: (last_pos + 0.5).min(1.0),
-                    width: 1.0,
-                    side: crate::core::document::WidthSide::Both,
-                });
-            width_profile.points.sort_by(|a, b| {
+            let last_pos = profile.points.last().map(|p| p.position).unwrap_or(0.5);
+            profile.points.push(crate::core::document::WidthPoint {
+                position: (last_pos + 0.5).min(1.0),
+                width: 1.0,
+                side: crate::core::document::WidthSide::Both,
+            });
+            profile.points.sort_by(|a, b| {
                 // total_cmp never panics on NaN positions.
                 a.position.total_cmp(&b.position)
             });
+            prof_changed = true;
         }
 
         // Reset profile
         if ui.button("Reset Profile").clicked() {
-            width_profile = crate::core::document::WidthProfile::default();
+            *profile = crate::core::document::WidthProfile::default();
+            prof_changed = true;
         }
 
-        state.width_profiles.insert(id, width_profile);
+        if prof_changed {
+            state.ensure_object_snapshot(&id);
+            if let Some(o) = state.document.find_object_mut(&id) {
+                o.width_profile = Some(profile.clone());
+            }
+            if !prof_dragging {
+                state.commit_object_edits("Edit Width Profile");
+            }
+        }
+        if prof_stopped {
+            state.commit_object_edits("Edit Width Profile");
+        }
     }
 }
 
