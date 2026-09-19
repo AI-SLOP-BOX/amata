@@ -132,11 +132,10 @@ impl IrasuApp {
                             self.state.active_artboard_idx = next;
                         }
                     }
-                    if ui.small_button("▶|").on_hover_text("最後のアートボード").clicked() {
-                        if ab_count > 0 {
+                    if ui.small_button("▶|").on_hover_text("最後のアートボード").clicked()
+                        && ab_count > 0 {
                             self.state.active_artboard_idx = ab_count - 1;
                         }
-                    }
 
                     ui.separator();
 

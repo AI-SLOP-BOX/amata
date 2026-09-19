@@ -1,6 +1,5 @@
 use super::document::{Document, Layer, Object, Transform};
 use super::history::{BatchCommand, Command, LayerCommand, ObjectCommand, TransformCommand, UndoManager};
-use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Tool {
@@ -621,7 +620,7 @@ impl AppState {
             .filter(|id| {
                 self.document
                     .find_object(id)
-                    .map(|o| keep(o))
+                    .map(&mut keep)
                     .unwrap_or(false)
             })
             .cloned()

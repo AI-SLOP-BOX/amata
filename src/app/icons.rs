@@ -424,10 +424,10 @@ pub fn icon_properties(p: &Painter, rect: Rect, color: Color32) {
     let r = pad(rect, 0.12);
     let stroke = Stroke::new(1.3_f32, color);
     let thumb_xs: [f32; 3] = [0.65, 0.35, 0.55];
-    for i in 0..3usize {
+    for (i, &thumb_xs_i) in thumb_xs.iter().enumerate() {
         let y = r.min.y + r.height() * (0.20 + 0.30 * i as f32);
         p.line_segment([Pos2::new(r.min.x, y), Pos2::new(r.max.x, y)], stroke);
-        let thumb_x = r.min.x + r.width() * thumb_xs[i];
+        let thumb_x = r.min.x + r.width() * thumb_xs_i;
         p.circle_filled(Pos2::new(thumb_x, y), 3.0, color);
     }
 }

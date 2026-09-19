@@ -113,7 +113,7 @@ impl BezierSegment {
         )
     }
 
-    pub fn to_kurbo(self) -> kurbo::CubicBez {
+    pub fn to_kurbo(&self) -> kurbo::CubicBez {
         kurbo::CubicBez::new(
             self.start.to_kurbo(),
             self.control1.to_kurbo(),

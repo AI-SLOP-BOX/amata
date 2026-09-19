@@ -31,7 +31,7 @@ fn test_shape_builder_decomposition() {
     // Extract one fragment
     let frag_obj = fragment_to_object(&frags[0], &r1);
     assert!(!frag_obj.name.is_empty());
-    assert_eq!(frag_obj.visible, true);
+    assert!(frag_obj.visible);
 }
 
 #[test]
@@ -43,7 +43,7 @@ fn test_shape_builder_merge() {
     let frag_refs: Vec<_> = frags.iter().collect();
     let merged = merge_fragments(&frag_refs, &r1);
 
-    assert_eq!(merged.visible, true);
+    assert!(merged.visible);
     assert!(merged.name.contains("Merged"));
 }
 

@@ -205,32 +205,29 @@ impl CanvasWidget {
                 }
                 if let Some(stroke) = stroke_info {
                     // Variable-width profile: stroke becomes a filled ribbon
-                    // honouring per-position multipliers.
-                    let ribbon_profile = obj.width_profile.as_ref().filter(|_| {
-                        obj.stroke
-                            .as_ref()
-                            .map(|s| s.width > 0.0)
-                            .unwrap_or(false)
-                    });
+                    // honouring per-position multipliers.  Uses the raw
+                    // StrokeStyle (document units), not the zoomed egui stroke.
+                    let ribbon_profile = obj
+                        .width_profile
+                        .as_ref()
+                        .zip(obj.stroke.as_ref())
+                        .filter(|(_, s)| s.width > 0.0);
                     for sp in &subpaths {
                         if sp.len() >= 2 {
-                            if let Some(prof) = ribbon_profile {
-                                let base_w = obj
-                                    .stroke
-                                    .as_ref()
-                                    .map(|s| s.width)
-                                    .unwrap_or(1.0);
-                                let ribbon =
-                                    crate::core::offset::variable_width_outline(
-                                        sp, prof, base_w, path.closed,
-                                    );
+                            if let Some((prof, stroke_style)) = ribbon_profile {
+                                let ribbon = crate::core::offset::variable_width_outline(
+                                    sp,
+                                    prof,
+                                    stroke_style.width,
+                                    path.closed,
+                                );
                                 if ribbon.len() >= 3 {
                                     let screen_pts: Vec<Pos2> = ribbon
                                         .iter()
                                         .map(|p| to_screen(p.x, p.y))
                                         .collect();
                                     // Ribbon carries stroke color as fill.
-                                    let c = obj.stroke.as_ref().unwrap().color;
+                                    let c = stroke_style.color;
                                     let rc = Color32::from_rgba_unmultiplied(
                                         (c[0] * 255.0) as u8,
                                         (c[1] * 255.0) as u8,
@@ -556,6 +553,7 @@ impl CanvasWidget {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn draw_linear_gradient(
         &self,
         painter: &egui::Painter,
@@ -688,6 +686,7 @@ impl CanvasWidget {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn draw_radial_gradient(
         &self,
         painter: &egui::Painter,
@@ -805,6 +804,7 @@ impl CanvasWidget {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn draw_pattern_fill(
         &self,
         painter: &egui::Painter,
@@ -908,112 +908,6 @@ pub fn sample_gradient_stops(stops: &[crate::core::path::GradientStop], t: f32) 
         .last()
         .map(|s| s.color)
         .unwrap_or([0.0, 0.0, 0.0, 1.0])
-}
-
-#[cfg(test)]
-mod gradient_clip_tests {
-    use super::*;
-    use egui::Pos2;
-
-    fn poly_area(poly: &[Pos2]) -> f32 {
-        if poly.len() < 3 {
-            return 0.0;
-        }
-        let mut a = 0.0;
-        for i in 0..poly.len() {
-            let p = poly[i];
-            let q = poly[(i + 1) % poly.len()];
-            a += p.x * q.y - q.x * p.y;
-        }
-        (a * 0.5).abs()
-    }
-
-    fn square() -> Vec<Pos2> {
-        vec![
-            Pos2::new(0.0, 0.0),
-            Pos2::new(10.0, 0.0),
-            Pos2::new(10.0, 10.0),
-            Pos2::new(0.0, 10.0),
-        ]
-    }
-
-    #[test]
-    fn test_s_band_horizontal_split() {
-        let sq = square();
-        let left = clip_polygon_to_s_band(&sq, 0.0, 0.0, 1.0, 0.0, 0.0, 5.0);
-        let right = clip_polygon_to_s_band(&sq, 0.0, 0.0, 1.0, 0.0, 5.0, 10.0);
-        assert!((poly_area(&left) - 50.0).abs() < 1.0, "left half");
-        assert!((poly_area(&right) - 50.0).abs() < 1.0, "right half");
-    }
-
-    #[test]
-    fn test_s_band_diagonal_preserves_area() {
-        let sq = square();
-        let inv = std::f32::consts::FRAC_1_SQRT_2;
-        let mut total = 0.0;
-        let n = 8;
-        for i in 0..n {
-            let piece = clip_polygon_to_s_band(
-                &sq,
-                0.0,
-                0.0,
-                inv,
-                inv,
-                i as f32 * 20.0 / n as f32,
-                (i + 1) as f32 * 20.0 / n as f32,
-            );
-            total += poly_area(&piece);
-        }
-        // Diagonal span of a 10x10 square is ~14.14; bands cover it fully.
-        assert!((total - 100.0).abs() < 2.0, "total {total}");
-    }
-
-    #[test]
-    fn test_ellipse_band_full_range_keeps_shape() {
-        let sq = square();
-        let full = clip_poly_to_ellipse_band(&sq, 5.0, 5.0, 5.0, 5.0, 0.0, 10.0);
-        assert!(poly_area(&full) > 90.0, "full band keeps silhouette");
-        // A small central band touches no edge of the square: correctly
-        // empty from edge-walking, with the focal point inside the shape —
-        // exactly the condition that triggers the disc fallback.
-        let core = clip_poly_to_ellipse_band(&sq, 5.0, 5.0, 5.0, 5.0, 0.0, 0.5);
-        assert!(core.len() < 3, "interior band has no edge piece");
-        assert!(pos_in_polygon(5.0, 5.0, &sq));
-        // A mid band crossing edges yields a real piece inside the bbox.
-        let mid = clip_poly_to_ellipse_band(&sq, 5.0, 5.0, 5.0, 5.0, 0.9, 1.1);
-        assert!(poly_area(&mid) > 1.0, "edge band keeps a piece");
-    }
-
-    #[test]
-    fn test_ellipse_band_stays_inside_silhouette() {
-        // Star-ish concave polygon: clipped pieces must not leak outside.
-        let poly = vec![
-            Pos2::new(0.0, 0.0),
-            Pos2::new(10.0, 0.0),
-            Pos2::new(10.0, 10.0),
-            Pos2::new(5.0, 4.0),
-            Pos2::new(0.0, 10.0),
-        ];
-        for i in 0..8 {
-            let piece = clip_poly_to_ellipse_band(
-                &poly, 5.0, 5.0, 6.0, 6.0, i as f32 * 0.25, (i + 1) as f32 * 0.25,
-            );
-            for p in &piece {
-                // Inside bbox (silhouette test at vertex level).
-                assert!(p.x >= -0.01 && p.x <= 10.01 && p.y >= -0.01 && p.y <= 10.01);
-            }
-        }
-    }
-
-    #[test]
-    fn test_band_dither_bounded_and_stable() {
-        for k in [0, 1, 7, 96, 1000] {
-            let d = band_dither(k);
-            assert!(d >= -1.0 && d <= 1.0);
-            assert_eq!(d, band_dither(k));
-        }
-        assert_ne!(band_dither(3), band_dither(4));
-    }
 }
 
 fn fill_type_color(fill: &FillStyle, opacity: f32) -> Option<Color32> {
@@ -1168,6 +1062,7 @@ fn ellipse_norm_dist(px: f32, py: f32, cx: f32, cy: f32, rx: f32, ry: f32) -> f3
 
 /// Edge parameters `s in [0, 1]` where segment A->B crosses the ellipse of
 /// normalized radius `r` around center. Solves the quadratic in `s`.
+#[allow(clippy::too_many_arguments)]
 fn edge_ellipse_crossings(
     ax: f32,
     ay: f32,
@@ -1275,4 +1170,110 @@ fn clip_poly_to_ellipse_band(
         }
     }
     out
+}
+
+#[cfg(test)]
+mod gradient_clip_tests {
+    use super::*;
+    use egui::Pos2;
+
+    fn poly_area(poly: &[Pos2]) -> f32 {
+        if poly.len() < 3 {
+            return 0.0;
+        }
+        let mut a = 0.0;
+        for i in 0..poly.len() {
+            let p = poly[i];
+            let q = poly[(i + 1) % poly.len()];
+            a += p.x * q.y - q.x * p.y;
+        }
+        (a * 0.5).abs()
+    }
+
+    fn square() -> Vec<Pos2> {
+        vec![
+            Pos2::new(0.0, 0.0),
+            Pos2::new(10.0, 0.0),
+            Pos2::new(10.0, 10.0),
+            Pos2::new(0.0, 10.0),
+        ]
+    }
+
+    #[test]
+    fn test_s_band_horizontal_split() {
+        let sq = square();
+        let left = clip_polygon_to_s_band(&sq, 0.0, 0.0, 1.0, 0.0, 0.0, 5.0);
+        let right = clip_polygon_to_s_band(&sq, 0.0, 0.0, 1.0, 0.0, 5.0, 10.0);
+        assert!((poly_area(&left) - 50.0).abs() < 1.0, "left half");
+        assert!((poly_area(&right) - 50.0).abs() < 1.0, "right half");
+    }
+
+    #[test]
+    fn test_s_band_diagonal_preserves_area() {
+        let sq = square();
+        let inv = std::f32::consts::FRAC_1_SQRT_2;
+        let mut total = 0.0;
+        let n = 8;
+        for i in 0..n {
+            let piece = clip_polygon_to_s_band(
+                &sq,
+                0.0,
+                0.0,
+                inv,
+                inv,
+                i as f32 * 20.0 / n as f32,
+                (i + 1) as f32 * 20.0 / n as f32,
+            );
+            total += poly_area(&piece);
+        }
+        // Diagonal span of a 10x10 square is ~14.14; bands cover it fully.
+        assert!((total - 100.0).abs() < 2.0, "total {total}");
+    }
+
+    #[test]
+    fn test_ellipse_band_full_range_keeps_shape() {
+        let sq = square();
+        let full = clip_poly_to_ellipse_band(&sq, 5.0, 5.0, 5.0, 5.0, 0.0, 10.0);
+        assert!(poly_area(&full) > 90.0, "full band keeps silhouette");
+        // A small central band touches no edge of the square: correctly
+        // empty from edge-walking, with the focal point inside the shape —
+        // exactly the condition that triggers the disc fallback.
+        let core = clip_poly_to_ellipse_band(&sq, 5.0, 5.0, 5.0, 5.0, 0.0, 0.5);
+        assert!(core.len() < 3, "interior band has no edge piece");
+        assert!(pos_in_polygon(5.0, 5.0, &sq));
+        // A mid band crossing edges yields a real piece inside the bbox.
+        let mid = clip_poly_to_ellipse_band(&sq, 5.0, 5.0, 5.0, 5.0, 0.9, 1.1);
+        assert!(poly_area(&mid) > 1.0, "edge band keeps a piece");
+    }
+
+    #[test]
+    fn test_ellipse_band_stays_inside_silhouette() {
+        // Star-ish concave polygon: clipped pieces must not leak outside.
+        let poly = vec![
+            Pos2::new(0.0, 0.0),
+            Pos2::new(10.0, 0.0),
+            Pos2::new(10.0, 10.0),
+            Pos2::new(5.0, 4.0),
+            Pos2::new(0.0, 10.0),
+        ];
+        for i in 0..8 {
+            let piece = clip_poly_to_ellipse_band(
+                &poly, 5.0, 5.0, 6.0, 6.0, i as f32 * 0.25, (i + 1) as f32 * 0.25,
+            );
+            for p in &piece {
+                // Inside bbox (silhouette test at vertex level).
+                assert!(p.x >= -0.01 && p.x <= 10.01 && p.y >= -0.01 && p.y <= 10.01);
+            }
+        }
+    }
+
+    #[test]
+    fn test_band_dither_bounded_and_stable() {
+        for k in [0, 1, 7, 96, 1000] {
+            let d = band_dither(k);
+            assert!((-1.0..=1.0).contains(&d));
+            assert_eq!(d, band_dither(k));
+        }
+        assert_ne!(band_dither(3), band_dither(4));
+    }
 }

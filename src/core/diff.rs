@@ -287,7 +287,9 @@ pub fn compute_semantic_diff(doc_a: &Document, doc_b: &Document) -> SemanticDiff
         }
     }
 
-    let mut matched_pairs: Vec<((usize, &str, &Object), (usize, &str, &Object))> = Vec::new();
+    /// (index, id, object) pairs matched between the two documents.
+    type MatchedPair<'a> = ((usize, &'a str, &'a Object), (usize, &'a str, &'a Object));
+    let mut matched_pairs: Vec<MatchedPair<'_>> = Vec::new();
     let mut added_objs: Vec<&Object> = Vec::new();
     let mut removed_objs: Vec<&Object> = Vec::new();
 
@@ -415,7 +417,7 @@ pub fn compute_semantic_diff(doc_a: &Document, doc_b: &Document) -> SemanticDiff
                     _ => 0.0,
                 };
                 let score = dist + dim_score;
-                if best_match.as_ref().map_or(true, |(_, d)| score < *d) {
+                if best_match.as_ref().is_none_or(|(_, d)| score < *d) {
                     best_match = Some((idx, score));
                 }
             }

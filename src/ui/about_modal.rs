@@ -1,15 +1,11 @@
 use crate::app::icons::icon_amata_logo;
 use eframe::egui::{self, Color32, RichText, Stroke, Vec2};
 
+#[derive(Default)]
 pub struct AboutModal {
     pub is_open: bool,
 }
 
-impl Default for AboutModal {
-    fn default() -> Self {
-        Self { is_open: false }
-    }
-}
 
 impl AboutModal {
     pub fn show(&mut self, ctx: &egui::Context) {

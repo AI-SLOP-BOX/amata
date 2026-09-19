@@ -1,3 +1,4 @@
+#![allow(clippy::field_reassign_with_default)]
 use irasu_illustrator::core::boolean::{apply_polygon_boolean, execute_pathfinder, BooleanOp};
 use irasu_illustrator::core::document::{Document, Object, ObjectType};
 use irasu_illustrator::core::geometry::{

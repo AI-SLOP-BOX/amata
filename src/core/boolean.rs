@@ -411,14 +411,18 @@ fn gh_link(
             });
         }
     }
-    // Link twins by coordinates.
+    // Link twins by coordinates.  Indexed iteration keeps the mutable
+    // updates to `s_list`/`c_list` straightforward (an iterator borrow
+    // would conflict with the sibling-list writes below).
+    #[allow(clippy::needless_range_loop)]
     for si in 0..s_list.len() {
         if !s_list[si].is_x || s_list[si].other != usize::MAX {
             continue;
         }
+        let p = s_list[si].p;
         if let Some(ci) = c_list
             .iter()
-            .position(|n| n.is_x && n.other == usize::MAX && n.p.distance(s_list[si].p) < 1e-4)
+            .position(|n| n.is_x && n.other == usize::MAX && n.p.distance(p) < 1e-4)
         {
             s_list[si].other = ci;
             c_list[ci].other = si;
@@ -507,12 +511,12 @@ fn gh_boolean(subject: &[AnchorPoint], clip: &[AnchorPoint], op: GhOp) -> Vec<Ve
     if !proper {
         if op == GhOp::Intersect && !sub_in_clip && !clip_in_sub {
             if is_convex(clip) {
-                let r = dedup_ring(sutherland_clip(&subject, &clip));
+                let r = dedup_ring(sutherland_clip(subject, clip));
                 if r.len() >= 3 {
                     return vec![r];
                 }
             } else if is_convex(subject) {
-                let r = dedup_ring(sutherland_clip(&clip, &subject));
+                let r = dedup_ring(sutherland_clip(clip, subject));
                 if r.len() >= 3 {
                     return vec![r];
                 }
@@ -688,7 +692,7 @@ fn gh_boolean(subject: &[AnchorPoint], clip: &[AnchorPoint], op: GhOp) -> Vec<Ve
         return match op {
             GhOp::Intersect => {
                 if is_convex(clip) {
-                    let r = dedup_ring(sutherland_clip(&subject, &clip));
+                    let r = dedup_ring(sutherland_clip(subject, clip));
                     if r.len() >= 3 {
                         return vec![r];
                     }

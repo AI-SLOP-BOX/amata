@@ -315,6 +315,74 @@ impl TextPanel {
                 state.commit_object_edits("Edit Object");
             }
         });
+
+        ui.add_space(6.0);
+
+        // 7. Text Layout (Line Height / Wrap / Max Width)
+        ui.label(RichText::new("レイアウト").strong().size(11.0));
+
+        // Line Height
+        ui.horizontal(|ui| {
+            ui.label("行間:");
+            let mut lh = current_style
+                .line_height
+                .unwrap_or(1.2_f64);
+            let lh_resp = ui.add(
+                egui::DragValue::new(&mut lh)
+                    .speed(0.1)
+                    .range(0.5..=5.0)
+                    .suffix("em"),
+            );
+            if lh_resp.changed() {
+                state.object_edit(&id, &lh_resp, |o| {
+                    if let ObjectType::Text { style, .. } = &mut o.object_type {
+                        style.line_height = if (lh - 1.2).abs() < 0.001 {
+                            None
+                        } else {
+                            Some(lh)
+                        };
+                    }
+                });
+            }
+            if lh_resp.drag_stopped() {
+                state.commit_object_edits("Edit Object");
+            }
+        });
+
+        // Word Wrap + Max Width
+        let wrap_on = current_style.word_wrap;
+        if ui
+            .selectable_label(wrap_on, "折り返し (W)")
+            .clicked()
+        {
+            state.ensure_object_snapshot(&id);
+            if let Some(o) = state.document.find_object_mut(&id) {
+                if let ObjectType::Text { style, .. } = &mut o.object_type {
+                    style.word_wrap = !style.word_wrap;
+                }
+            }
+            state.commit_object_edits("Toggle Wrap");
+        }
+
+        if current_style.word_wrap {
+            let mut mw = current_style.max_width.unwrap_or(0.0);
+            let mw_resp = ui.add(
+                egui::DragValue::new(&mut mw)
+                    .speed(5.0)
+                    .range(10.0..=2000.0)
+                    .suffix("px"),
+            );
+            if mw_resp.changed() {
+                state.object_edit(&id, &mw_resp, |o| {
+                    if let ObjectType::Text { style, .. } = &mut o.object_type {
+                        style.max_width = if mw <= 0.0 { None } else { Some(mw) };
+                    }
+                });
+            }
+            if mw_resp.drag_stopped() {
+                state.commit_object_edits("Edit Object");
+            }
+        }
     }
 }
 

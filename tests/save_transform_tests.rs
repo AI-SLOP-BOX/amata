@@ -1,3 +1,4 @@
+#![allow(clippy::field_reassign_with_default)]
 use irasu_illustrator::cli::handlers::common::save_any_document;
 use irasu_illustrator::core::document::{Document, Object};
 use irasu_illustrator::io::svg::{export_svg, parse_svg_document};

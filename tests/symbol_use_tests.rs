@@ -1,3 +1,4 @@
+#![allow(clippy::field_reassign_with_default)]
 use irasu_illustrator::core::document::{Document, Object, ObjectType, Symbol};
 use irasu_illustrator::core::path::{FillStyle, FillType, GradientStop, LinearGradient};
 use irasu_illustrator::io::svg::{export_svg, parse_svg_document};

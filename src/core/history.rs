@@ -1,8 +1,8 @@
 use super::document::{Document, Layer, Transform};
 
 pub trait Command {
-    fn execute(&self, doc: &mut Document);
-    fn undo(&self, doc: &mut Document);
+    fn execute(&mut self, doc: &mut Document);
+    fn undo(&mut self, doc: &mut Document);
     fn name(&self) -> &str;
 }
 
@@ -20,7 +20,7 @@ impl std::ops::Deref for UndoStep {
 }
 
 pub struct UndoManager {
-    undo_stack: Vec<UndoStep>,
+    undo_stack: std::collections::VecDeque<UndoStep>,
     redo_stack: Vec<UndoStep>,
     max_steps: usize,
     state_counter: u64,
@@ -37,7 +37,7 @@ impl Default for UndoManager {
 impl UndoManager {
     pub fn new() -> Self {
         Self {
-            undo_stack: Vec::new(),
+            undo_stack: std::collections::VecDeque::new(),
             redo_stack: Vec::new(),
             max_steps: 100,
             state_counter: 0,
@@ -61,7 +61,7 @@ impl UndoManager {
         self.saved_state_id = None;
     }
 
-    pub fn execute(&mut self, cmd: Box<dyn Command>, doc: &mut Document) {
+    pub fn execute(&mut self, mut cmd: Box<dyn Command>, doc: &mut Document) {
         cmd.execute(doc);
         self.state_counter += 1;
         let step = UndoStep {
@@ -70,35 +70,30 @@ impl UndoManager {
             state_id_after: self.state_counter,
         };
         self.current_state_id = self.state_counter;
-        self.undo_stack.push(step);
+        self.undo_stack.push_back(step);
         self.redo_stack.clear();
         if self.undo_stack.len() > self.max_steps {
-            self.undo_stack.remove(0);
+            // O(1) front eviction (Vec::remove(0) shifted every element).
+            self.undo_stack.pop_front();
         }
     }
 
     pub fn undo(&mut self, doc: &mut Document) -> Option<String> {
-        if let Some(step) = self.undo_stack.pop() {
-            let name = step.cmd.name().to_string();
-            step.cmd.undo(doc);
-            self.current_state_id = step.state_id_before;
-            self.redo_stack.push(step);
-            Some(name)
-        } else {
-            None
-        }
+        let mut step = self.undo_stack.pop_back()?;
+        let name = step.cmd.name().to_string();
+        step.cmd.undo(doc);
+        self.current_state_id = step.state_id_before;
+        self.redo_stack.push(step);
+        Some(name)
     }
 
     pub fn redo(&mut self, doc: &mut Document) -> Option<String> {
-        if let Some(step) = self.redo_stack.pop() {
-            let name = step.cmd.name().to_string();
-            step.cmd.execute(doc);
-            self.current_state_id = step.state_id_after;
-            self.undo_stack.push(step);
-            Some(name)
-        } else {
-            None
-        }
+        let mut step = self.redo_stack.pop()?;
+        let name = step.cmd.name().to_string();
+        step.cmd.execute(doc);
+        self.current_state_id = step.state_id_after;
+        self.undo_stack.push_back(step);
+        Some(name)
     }
 
     pub fn can_undo(&self) -> bool {
@@ -118,7 +113,7 @@ impl UndoManager {
     }
 
     pub fn undo_name(&self) -> Option<&str> {
-        self.undo_stack.last().map(|c| c.cmd.name())
+        self.undo_stack.back().map(|c| c.cmd.name())
     }
 
     pub fn redo_name(&self) -> Option<&str> {
@@ -133,7 +128,7 @@ impl UndoManager {
         self.saved_state_id = Some(self.current_state_id);
     }
 
-    pub fn undo_stack(&self) -> &[UndoStep] {
+    pub fn undo_stack(&self) -> &std::collections::VecDeque<UndoStep> {
         &self.undo_stack
     }
 
@@ -160,13 +155,13 @@ impl AddObjectCommand {
 }
 
 impl Command for AddObjectCommand {
-    fn execute(&self, doc: &mut Document) {
+    fn execute(&mut self, doc: &mut Document) {
         if let Some(obj) = &self.object {
             doc.add_object(obj.clone());
         }
     }
 
-    fn undo(&self, doc: &mut Document) {
+    fn undo(&mut self, doc: &mut Document) {
         doc.remove_object(&self.object_id);
     }
 
@@ -219,13 +214,13 @@ impl RemoveObjectCommand {
 }
 
 impl Command for RemoveObjectCommand {
-    fn execute(&self, doc: &mut Document) {
+    fn execute(&mut self, doc: &mut Document) {
         if let Some(obj) = &self.object {
             doc.remove_object(&obj.id);
         }
     }
 
-    fn undo(&self, doc: &mut Document) {
+    fn undo(&mut self, doc: &mut Document) {
         if let Some(obj) = &self.object {
             if let Some(ref pid) = self.parent {
                 if let Some(parent) = doc.find_object_mut(pid) {
@@ -261,14 +256,14 @@ pub struct MoveObjectCommand {
 }
 
 impl Command for MoveObjectCommand {
-    fn execute(&self, doc: &mut Document) {
+    fn execute(&mut self, doc: &mut Document) {
         if let Some(obj) = doc.find_object_mut(&self.object_id) {
             obj.transform.x = self.new_x;
             obj.transform.y = self.new_y;
         }
     }
 
-    fn undo(&self, doc: &mut Document) {
+    fn undo(&mut self, doc: &mut Document) {
         if let Some(obj) = doc.find_object_mut(&self.object_id) {
             obj.transform.x = self.old_x;
             obj.transform.y = self.old_y;
@@ -289,13 +284,13 @@ pub struct TransformCommand {
 }
 
 impl Command for TransformCommand {
-    fn execute(&self, doc: &mut Document) {
+    fn execute(&mut self, doc: &mut Document) {
         if let Some(obj) = doc.find_object_mut(&self.object_id) {
             obj.transform = self.new_t.clone();
         }
     }
 
-    fn undo(&self, doc: &mut Document) {
+    fn undo(&mut self, doc: &mut Document) {
         if let Some(obj) = doc.find_object_mut(&self.object_id) {
             obj.transform = self.old_t.clone();
         }
@@ -316,15 +311,18 @@ pub struct ObjectCommand {
 }
 
 impl Command for ObjectCommand {
-    fn execute(&self, doc: &mut Document) {
+    /// Swap the stored snapshot with the live object instead of cloning.
+    /// Because undo/redo alternate swaps, `old_obj`/`new_obj` always hold the
+    /// state not currently in the document — zero allocation per step.
+    fn execute(&mut self, doc: &mut Document) {
         if let Some(obj) = doc.find_object_mut(&self.object_id) {
-            *obj = self.new_obj.clone();
+            std::mem::swap(obj, &mut self.new_obj);
         }
     }
 
-    fn undo(&self, doc: &mut Document) {
+    fn undo(&mut self, doc: &mut Document) {
         if let Some(obj) = doc.find_object_mut(&self.object_id) {
-            *obj = self.old_obj.clone();
+            std::mem::swap(obj, &mut self.old_obj);
         }
     }
 
@@ -346,7 +344,7 @@ pub struct AddLayerCommand {
 }
 
 impl Command for AddLayerCommand {
-    fn execute(&self, doc: &mut Document) {
+    fn execute(&mut self, doc: &mut Document) {
         let pos = self.index.min(doc.layers.len());
         // Avoid duplicating on redo-after-undo races: replace if present.
         if let Some(existing) = doc.layers.iter().position(|l| l.id == self.layer.id) {
@@ -357,7 +355,7 @@ impl Command for AddLayerCommand {
         clamp_active(doc, pos);
     }
 
-    fn undo(&self, doc: &mut Document) {
+    fn undo(&mut self, doc: &mut Document) {
         if let Some(pos) = doc.layers.iter().position(|l| l.id == self.layer.id) {
             doc.layers.remove(pos);
         }
@@ -376,14 +374,14 @@ pub struct RemoveLayerCommand {
 }
 
 impl Command for RemoveLayerCommand {
-    fn execute(&self, doc: &mut Document) {
+    fn execute(&mut self, doc: &mut Document) {
         if let Some(pos) = doc.layers.iter().position(|l| l.id == self.layer.id) {
             doc.layers.remove(pos);
         }
         clamp_active(doc, doc.active_layer_idx);
     }
 
-    fn undo(&self, doc: &mut Document) {
+    fn undo(&mut self, doc: &mut Document) {
         let pos = self.index.min(doc.layers.len());
         if !doc.layers.iter().any(|l| l.id == self.layer.id) {
             doc.layers.insert(pos, self.layer.clone());
@@ -396,6 +394,7 @@ impl Command for RemoveLayerCommand {
     }
 }
 
+#[allow(clippy::ptr_arg)]
 fn apply_id_order<T, F>(items: &mut Vec<T>, order: &[String], id_of: F)
 where
     F: Fn(&T) -> &str,
@@ -508,7 +507,7 @@ impl ReplaceObjectsCommand {
 }
 
 impl Command for ReplaceObjectsCommand {
-    fn execute(&self, doc: &mut Document) {
+    fn execute(&mut self, doc: &mut Document) {
         for item in &self.removed {
             doc.remove_object(&item.object.id);
         }
@@ -517,7 +516,7 @@ impl Command for ReplaceObjectsCommand {
         }
     }
 
-    fn undo(&self, doc: &mut Document) {
+    fn undo(&mut self, doc: &mut Document) {
         for object in &self.added {
             doc.remove_object(&object.id);
         }
@@ -555,11 +554,11 @@ pub struct ReorderLayersCommand {
 }
 
 impl Command for ReorderLayersCommand {
-    fn execute(&self, doc: &mut Document) {
+    fn execute(&mut self, doc: &mut Document) {
         apply_id_order(&mut doc.layers, &self.new_order, |l| &l.id);
     }
 
-    fn undo(&self, doc: &mut Document) {
+    fn undo(&mut self, doc: &mut Document) {
         apply_id_order(&mut doc.layers, &self.old_order, |l| &l.id);
     }
 
@@ -579,7 +578,7 @@ pub struct ReorderObjectCommand {
 }
 
 impl Command for ReorderObjectCommand {
-    fn execute(&self, doc: &mut Document) {
+    fn execute(&mut self, doc: &mut Document) {
         let Some(layer) = doc.layers.get_mut(self.layer_idx) else {
             return;
         };
@@ -591,7 +590,7 @@ impl Command for ReorderObjectCommand {
         layer.objects.insert(target, object);
     }
 
-    fn undo(&self, doc: &mut Document) {
+    fn undo(&mut self, doc: &mut Document) {
         let Some(layer) = doc.layers.get_mut(self.layer_idx) else {
             return;
         };
@@ -617,13 +616,13 @@ pub struct LayerCommand {
 }
 
 impl Command for LayerCommand {
-    fn execute(&self, doc: &mut Document) {
+    fn execute(&mut self, doc: &mut Document) {
         if let Some(layer) = doc.layers.iter_mut().find(|l| l.id == self.layer_id) {
             *layer = self.new_layer.clone();
         }
     }
 
-    fn undo(&self, doc: &mut Document) {
+    fn undo(&mut self, doc: &mut Document) {
         if let Some(layer) = doc.layers.iter_mut().find(|l| l.id == self.layer_id) {
             *layer = self.old_layer.clone();
         }
@@ -649,14 +648,14 @@ impl BatchCommand {
 }
 
 impl Command for BatchCommand {
-    fn execute(&self, doc: &mut Document) {
-        for cmd in &self.commands {
+    fn execute(&mut self, doc: &mut Document) {
+        for cmd in &mut self.commands {
             cmd.execute(doc);
         }
     }
 
-    fn undo(&self, doc: &mut Document) {
-        for cmd in self.commands.iter().rev() {
+    fn undo(&mut self, doc: &mut Document) {
+        for cmd in self.commands.iter_mut().rev() {
             cmd.undo(doc);
         }
     }
@@ -687,7 +686,7 @@ impl ModifyPathCommand {
 }
 
 impl Command for ModifyPathCommand {
-    fn execute(&self, doc: &mut Document) {
+    fn execute(&mut self, doc: &mut Document) {
         if let Some(obj) = doc.find_object_mut(&self.object_id) {
             if let crate::core::document::ObjectType::Path(ref mut p) = obj.object_type {
                 p.elements = self.new_elements.clone();
@@ -695,7 +694,7 @@ impl Command for ModifyPathCommand {
         }
     }
 
-    fn undo(&self, doc: &mut Document) {
+    fn undo(&mut self, doc: &mut Document) {
         if let Some(obj) = doc.find_object_mut(&self.object_id) {
             if let crate::core::document::ObjectType::Path(ref mut p) = obj.object_type {
                 p.elements = self.old_elements.clone();
@@ -735,7 +734,7 @@ impl ModifyTextCommand {
 }
 
 impl Command for ModifyTextCommand {
-    fn execute(&self, doc: &mut Document) {
+    fn execute(&mut self, doc: &mut Document) {
         if let Some(obj) = doc.find_object_mut(&self.object_id) {
             obj.object_type = crate::core::document::ObjectType::Text {
                 text: self.new_text.clone(),
@@ -745,7 +744,7 @@ impl Command for ModifyTextCommand {
         }
     }
 
-    fn undo(&self, doc: &mut Document) {
+    fn undo(&mut self, doc: &mut Document) {
         if let Some(obj) = doc.find_object_mut(&self.object_id) {
             obj.object_type = crate::core::document::ObjectType::Text {
                 text: self.old_text.clone(),

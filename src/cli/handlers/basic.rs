@@ -1,10 +1,10 @@
 use super::common::{load_any_document, save_any_document, save_any_document_scaled};
 use crate::cli::types::*;
-use std::path::PathBuf;
+use std::path::Path;
 
 pub fn handle_convert(
-    input: &PathBuf,
-    output: &PathBuf,
+    input: &Path,
+    output: &Path,
     scale: f32,
 ) -> Result<bool, Box<dyn std::error::Error>> {
     println!(
@@ -18,8 +18,8 @@ pub fn handle_convert(
 }
 
 pub fn handle_export_vfx(
-    input: &PathBuf,
-    output: &PathBuf,
+    input: &Path,
+    output: &Path,
     fps: f64,
     duration: f64,
 ) -> Result<bool, Box<dyn std::error::Error>> {
@@ -40,8 +40,8 @@ pub fn handle_export_vfx(
 }
 
 pub fn handle_export_3d(
-    input: &PathBuf,
-    output: &PathBuf,
+    input: &Path,
+    output: &Path,
     depth: f64,
     bevel: f64,
 ) -> Result<bool, Box<dyn std::error::Error>> {
@@ -57,8 +57,8 @@ pub fn handle_export_3d(
 }
 
 pub fn handle_export_pdf(
-    input: &PathBuf,
-    output: &PathBuf,
+    input: &Path,
+    output: &Path,
 ) -> Result<bool, Box<dyn std::error::Error>> {
     println!("📄 Exporting '{:?}' to Pure Vector PDF...", input);
     let doc = load_any_document(input)?;
@@ -69,10 +69,10 @@ pub fn handle_export_pdf(
 }
 
 pub fn handle_morph(
-    input1: &PathBuf,
-    input2: &PathBuf,
+    input1: &Path,
+    input2: &Path,
     t: f64,
-    output: &PathBuf,
+    output: &Path,
 ) -> Result<bool, Box<dyn std::error::Error>> {
     println!(
         "🧬 Morphing '{:?}' and '{:?}' at t = {} -> '{:?}'...",
@@ -112,9 +112,9 @@ pub fn handle_morph(
 }
 
 pub fn handle_offset(
-    input: &PathBuf,
+    input: &Path,
     delta: f64,
-    output: &PathBuf,
+    output: &Path,
 ) -> Result<bool, Box<dyn std::error::Error>> {
     println!(
         "📐 Offsetting path in '{:?}' by {}px -> '{:?}'...",
@@ -142,9 +142,9 @@ pub fn handle_offset(
 }
 
 pub fn handle_outline_stroke(
-    input: &PathBuf,
+    input: &Path,
     width: f64,
-    output: &PathBuf,
+    output: &Path,
 ) -> Result<bool, Box<dyn std::error::Error>> {
     println!(
         "🖋 Outlining strokes in '{:?}' (width: {}px) -> '{:?}'...",
@@ -172,8 +172,8 @@ pub fn handle_outline_stroke(
 }
 
 pub fn handle_motion_path(
-    input: &PathBuf,
-    output: &PathBuf,
+    input: &Path,
+    output: &Path,
     samples: usize,
     duration: f64,
     fps: f64,
@@ -209,9 +209,9 @@ pub fn handle_motion_path(
 }
 
 pub fn handle_trace(
-    input: &PathBuf,
+    input: &Path,
     threshold: u8,
-    output: &PathBuf,
+    output: &Path,
 ) -> Result<bool, Box<dyn std::error::Error>> {
     println!(
         "🖼️ Auto-tracing image '{:?}' (threshold: {}) -> '{:?}'...",
@@ -237,8 +237,8 @@ pub fn handle_trace(
 }
 
 pub fn handle_animate(
-    input: &PathBuf,
-    output: &PathBuf,
+    input: &Path,
+    output: &Path,
     fps: f64,
     duration: f64,
 ) -> Result<bool, Box<dyn std::error::Error>> {
@@ -256,7 +256,7 @@ pub fn handle_animate(
 
 pub fn handle_formula(
     curve_type: CliCurveType,
-    output: &PathBuf,
+    output: &Path,
 ) -> Result<bool, Box<dyn std::error::Error>> {
     println!(
         "🌀 Generating mathematical curve ({:?}) -> '{:?}'...",
@@ -293,9 +293,9 @@ pub fn handle_formula(
 }
 
 pub fn handle_vfx_trail(
-    input: &PathBuf,
+    input: &Path,
     count: usize,
-    output: &PathBuf,
+    output: &Path,
 ) -> Result<bool, Box<dyn std::error::Error>> {
     println!(
         "⚡ Generating {} VFX particle trails from '{:?}'...",
@@ -320,11 +320,11 @@ pub fn handle_vfx_trail(
 }
 
 pub fn handle_halftone(
-    input: &PathBuf,
+    input: &Path,
     spacing: f64,
     radius: f64,
     pattern: CliHalftonePattern,
-    output: &PathBuf,
+    output: &Path,
 ) -> Result<bool, Box<dyn std::error::Error>> {
     println!(
         "🏁 Generating halftone dots from '{:?}' (spacing: {}, radius: {})...",
@@ -357,9 +357,9 @@ pub fn handle_halftone(
 }
 
 pub fn handle_simplify(
-    input: &PathBuf,
+    input: &Path,
     tolerance: f64,
-    output: &PathBuf,
+    output: &Path,
 ) -> Result<bool, Box<dyn std::error::Error>> {
     println!(
         "🪄 Simplifying paths in '{:?}' (tolerance: {})...",
@@ -387,9 +387,9 @@ pub fn handle_simplify(
 }
 
 pub fn handle_isometric(
-    input: &PathBuf,
+    input: &Path,
     plane: CliIsoPlane,
-    output: &PathBuf,
+    output: &Path,
 ) -> Result<bool, Box<dyn std::error::Error>> {
     println!("📐 Projecting '{:?}' to Isometric {:?}...", input, plane);
     let doc = load_any_document(input)?;

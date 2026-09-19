@@ -59,9 +59,7 @@ fn load_documents_for_diff(
         if p.exists() {
             p
         } else {
-            return Err(format!(
-                "Could not identify target file. Please specify with --file"
-            ));
+            return Err("Could not identify target file. Please specify with --file".to_string());
         }
     } else {
         return Err("Missing target file or revision to compare against.".to_string());

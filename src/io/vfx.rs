@@ -205,7 +205,7 @@ pub fn object_to_motion_path_keyframes(
     }
 
     let samples = num_samples.clamp(2, 100_000);
-    let total_frames = (duration_sec * fps).max(1.0).min(1_000_000.0) as usize;
+    let total_frames = (duration_sec * fps).clamp(1.0, 1_000_000.0) as usize;
     let mut keyframes = Vec::with_capacity(samples);
 
     // Calculate total path perimeter length

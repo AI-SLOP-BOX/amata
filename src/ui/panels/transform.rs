@@ -372,14 +372,27 @@ fn align_bottom(state: &mut AppState, sel: &[String]) {
 }
 
 fn distribute_h(state: &mut AppState, sel: &[String]) {
-    let mut items: Vec<(String, f64, f64)> = Vec::new();
-    for id in sel {
-        if let Some((_, obj)) = state.document.all_objects().find(|(_, o)| &o.id == id) {
+    // Single pass over the document: id -> (min_x, width, transform.x, transform.y).
+    let mut by_id: std::collections::HashMap<&str, (f64, f64, f64, f64)> =
+        std::collections::HashMap::with_capacity(sel.len());
+    for (_, obj) in state.document.all_objects() {
+        if sel.iter().any(|id| id == &obj.id) {
             if let Some((bb_min, bb_max)) = obj.bounding_box() {
-                items.push((id.clone(), bb_min.x, bb_max.x - bb_min.x));
+                by_id.insert(
+                    obj.id.as_str(),
+                    (bb_min.x, bb_max.x - bb_min.x, obj.transform.x, obj.transform.y),
+                );
             }
         }
     }
+    let mut items: Vec<(String, f64, f64, f64, f64)> = sel
+        .iter()
+        .filter_map(|id| {
+            by_id
+                .get(id.as_str())
+                .map(|&(min_x, w, tx, ty)| (id.clone(), min_x, w, tx, ty))
+        })
+        .collect();
     if items.len() < 3 {
         return;
     }
@@ -393,26 +406,36 @@ fn distribute_h(state: &mut AppState, sel: &[String]) {
 
     let mut current_pos = first_min;
     let mut moves = Vec::new();
-    for (id, orig_min, w) in &items {
+    for (id, orig_min, w, ox, oy) in &items {
         let delta = current_pos - orig_min;
-        if let Some((_, obj)) = state.document.all_objects().find(|(_, o)| &o.id == id) {
-            let (ox, oy) = (obj.transform.x, obj.transform.y);
-            moves.push((id.clone(), ox, oy, ox + delta, oy));
-        }
+        moves.push((id.clone(), *ox, *oy, ox + delta, *oy));
         current_pos += w + gap;
     }
     execute_moves(state, "Distribute H", moves);
 }
 
 fn distribute_v(state: &mut AppState, sel: &[String]) {
-    let mut items: Vec<(String, f64, f64)> = Vec::new();
-    for id in sel {
-        if let Some((_, obj)) = state.document.all_objects().find(|(_, o)| &o.id == id) {
+    // Single pass over the document: id -> (min_y, height, transform.x, transform.y).
+    let mut by_id: std::collections::HashMap<&str, (f64, f64, f64, f64)> =
+        std::collections::HashMap::with_capacity(sel.len());
+    for (_, obj) in state.document.all_objects() {
+        if sel.iter().any(|id| id == &obj.id) {
             if let Some((bb_min, bb_max)) = obj.bounding_box() {
-                items.push((id.clone(), bb_min.y, bb_max.y - bb_min.y));
+                by_id.insert(
+                    obj.id.as_str(),
+                    (bb_min.y, bb_max.y - bb_min.y, obj.transform.x, obj.transform.y),
+                );
             }
         }
     }
+    let mut items: Vec<(String, f64, f64, f64, f64)> = sel
+        .iter()
+        .filter_map(|id| {
+            by_id
+                .get(id.as_str())
+                .map(|&(min_y, h, tx, ty)| (id.clone(), min_y, h, tx, ty))
+        })
+        .collect();
     if items.len() < 3 {
         return;
     }
@@ -426,12 +449,9 @@ fn distribute_v(state: &mut AppState, sel: &[String]) {
 
     let mut current_pos = first_min;
     let mut moves = Vec::new();
-    for (id, orig_min, h) in &items {
+    for (id, orig_min, h, ox, oy) in &items {
         let delta = current_pos - orig_min;
-        if let Some((_, obj)) = state.document.all_objects().find(|(_, o)| &o.id == id) {
-            let (ox, oy) = (obj.transform.x, obj.transform.y);
-            moves.push((id.clone(), ox, oy, ox, oy + delta));
-        }
+        moves.push((id.clone(), *ox, *oy, *ox, oy + delta));
         current_pos += h + gap;
     }
     execute_moves(state, "Distribute V", moves);

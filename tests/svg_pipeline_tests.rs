@@ -1,3 +1,4 @@
+#![allow(clippy::field_reassign_with_default)]
 use irasu_illustrator::cli::handlers::svg_pipeline::{
     handle_inspect, handle_optimize, handle_render, handle_validate,
 };

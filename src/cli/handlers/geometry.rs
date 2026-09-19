@@ -1,12 +1,12 @@
 use super::common::{load_any_document, save_any_document};
 use crate::cli::types::*;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 pub fn handle_revolve(
-    input: &PathBuf,
+    input: &Path,
     angle: f64,
     segments: usize,
-    output: &PathBuf,
+    output: &Path,
 ) -> Result<bool, Box<dyn std::error::Error>> {
     println!(
         "🏺 Revolving '{:?}' in 3D (angle: {} deg, segs: {})...",
@@ -30,9 +30,9 @@ pub fn handle_revolve(
 }
 
 pub fn handle_envelope(
-    art: &PathBuf,
-    envelope: &PathBuf,
-    output: &PathBuf,
+    art: &Path,
+    envelope: &Path,
+    output: &Path,
 ) -> Result<bool, Box<dyn std::error::Error>> {
     println!(
         "🚩 Molding '{:?}' into Envelope frame '{:?}'...",
@@ -64,7 +64,7 @@ pub fn handle_envelope(
     Ok(false)
 }
 
-pub fn handle_polar(input: &PathBuf, output: &PathBuf) -> Result<bool, Box<dyn std::error::Error>> {
+pub fn handle_polar(input: &Path, output: &Path) -> Result<bool, Box<dyn std::error::Error>> {
     println!("🌐 Transforming '{:?}' to Polar Coordinates...", input);
     let doc = load_any_document(input)?;
     let cx = doc.width * 0.5;
@@ -90,7 +90,7 @@ pub fn handle_polar(input: &PathBuf, output: &PathBuf) -> Result<bool, Box<dyn s
     Ok(false)
 }
 
-pub fn handle_slice(input: &PathBuf, output: &PathBuf) -> Result<bool, Box<dyn std::error::Error>> {
+pub fn handle_slice(input: &Path, output: &Path) -> Result<bool, Box<dyn std::error::Error>> {
     println!("✂ Slicing '{:?}' in half...", input);
     let doc = load_any_document(input)?;
     let mut out_doc = crate::core::document::Document {
@@ -119,8 +119,8 @@ pub fn handle_slice(input: &PathBuf, output: &PathBuf) -> Result<bool, Box<dyn s
 }
 
 pub fn handle_outline(
-    input: &PathBuf,
-    output: &PathBuf,
+    input: &Path,
+    output: &Path,
 ) -> Result<bool, Box<dyn std::error::Error>> {
     println!("🔤 Creating Outlines from text in '{:?}'...", input);
     let doc = load_any_document(input)?;
@@ -142,11 +142,11 @@ pub fn handle_outline(
 }
 
 pub fn handle_text_path(
-    path: &PathBuf,
+    path: &Path,
     text: &str,
     font_size: f64,
     offset: f64,
-    output: &PathBuf,
+    output: &Path,
 ) -> Result<bool, Box<dyn std::error::Error>> {
     println!("〰 Placing text '{}' along path '{:?}'...", text, path);
     let pdoc = load_any_document(path)?;
@@ -171,15 +171,16 @@ pub fn handle_text_path(
     Ok(false)
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn handle_effect(
-    input: &PathBuf,
+    input: &Path,
     shadow: bool,
     shadow_x: f64,
     shadow_y: f64,
     shadow_blur: f64,
     glow: bool,
     glow_radius: f64,
-    output: &PathBuf,
+    output: &Path,
 ) -> Result<bool, Box<dyn std::error::Error>> {
     println!("✨ Applying vector appearance effects to '{:?}'...", input);
     let doc = load_any_document(input)?;
@@ -214,8 +215,8 @@ pub fn handle_effect(
 }
 
 pub fn handle_shape_build(
-    input: &PathBuf,
-    output: &PathBuf,
+    input: &Path,
+    output: &Path,
 ) -> Result<bool, Box<dyn std::error::Error>> {
     println!(
         "⯐ Decomposing overlapping shapes into fragments from '{:?}'...",
@@ -253,8 +254,8 @@ pub fn handle_shape_build(
 }
 
 pub fn handle_compound(
-    input: &PathBuf,
-    output: &PathBuf,
+    input: &Path,
+    output: &Path,
     release: bool,
 ) -> Result<bool, Box<dyn std::error::Error>> {
     println!(
@@ -299,10 +300,10 @@ pub fn handle_compound(
 }
 
 pub fn handle_boolean(
-    input1: &PathBuf,
-    input2: &PathBuf,
+    input1: &Path,
+    input2: &Path,
     op: CliBooleanOp,
-    output: &PathBuf,
+    output: &Path,
 ) -> Result<bool, Box<dyn std::error::Error>> {
     println!(
         "✂ Running Pathfinder ({:?}) on '{:?}' and '{:?}'...",
@@ -341,7 +342,7 @@ pub fn handle_boolean(
     Ok(false)
 }
 
-pub fn handle_info(input: &PathBuf) -> Result<bool, Box<dyn std::error::Error>> {
+pub fn handle_info(input: &Path) -> Result<bool, Box<dyn std::error::Error>> {
     let doc = load_any_document(input)?;
     println!("📊 === IRASU Illustrator Document Info ===");
     println!("  Name: {}", doc.name);
@@ -381,7 +382,7 @@ pub fn handle_info(input: &PathBuf) -> Result<bool, Box<dyn std::error::Error>> 
 }
 
 pub fn handle_script(
-    script: &PathBuf,
+    script: &Path,
     output: Option<PathBuf>,
     input: Option<PathBuf>,
 ) -> Result<bool, Box<dyn std::error::Error>> {

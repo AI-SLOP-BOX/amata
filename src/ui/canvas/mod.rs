@@ -259,8 +259,8 @@ impl CanvasWidget {
         &mut self,
         ui: &mut Ui,
         state: &mut AppState,
-        device: Option<Arc<wgpu::Device>>,
-        queue: Option<Arc<wgpu::Queue>>,
+        _device: Option<Arc<wgpu::Device>>,
+        _queue: Option<Arc<wgpu::Queue>>,
     ) {
         let (response, painter) = ui.allocate_painter(
             Vec2::new(ui.available_width(), ui.available_height()),
@@ -286,7 +286,7 @@ impl CanvasWidget {
         // Artboard(s): draw all artboards owned by the document.
         // The active artboard (or the only one) gets a header label.
         let artboards = state.document.effective_artboards();
-        for (ab_idx, ab) in artboards.iter().enumerate() {
+        for ab in artboards.iter() {
             let ab_rect = Rect::from_min_size(
                 Pos2::new(
                     origin.x + ab.x as f32 * state.zoom,
@@ -439,172 +439,9 @@ impl CanvasWidget {
             );
         }
 
-        // GPU-Accelerated Rendering Pass (effects: glow, blur, shadow)
-        if let (Some(device), Some(queue)) = (device, queue) {
-            self.ensure_gpu_renderer(device.clone(), queue.clone());
-
-            if let Some(ref _gpu) = self.gpu_renderer {
-                // Collect objects with GPU-renderable effects
-                let mut has_gpu_effects = false;
-                for (_, obj) in state.document.all_objects() {
-                    if !obj.visible {
-                        continue;
-                    }
-                    if obj.shadow.is_some() || obj.glow.is_some() {
-                        has_gpu_effects = true;
-                        break;
-                    }
-                }
-
-                if has_gpu_effects {
-                    let screen_rect = ui.ctx().input(|i| i.screen_rect);
-                    let width = screen_rect.width() as u32;
-                    let height = screen_rect.height() as u32;
-
-                    // Create render target texture for GPU effects
-                    let output_texture = device.create_texture(&wgpu::TextureDescriptor {
-                        label: Some("GPU Effects Texture"),
-                        size: wgpu::Extent3d {
-                            width,
-                            height,
-                            depth_or_array_layers: 1,
-                        },
-                        mip_level_count: 1,
-                        sample_count: 1,
-                        dimension: wgpu::TextureDimension::D2,
-                        format: wgpu::TextureFormat::Rgba16Float,
-                        usage: wgpu::TextureUsages::RENDER_ATTACHMENT
-                            | wgpu::TextureUsages::TEXTURE_BINDING,
-                        view_formats: &[],
-                    });
-                    let output_view =
-                        output_texture.create_view(&wgpu::TextureViewDescriptor::default());
-
-                    let mut encoder =
-                        device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                            label: Some("GPU Effects Encoder"),
-                        });
-
-                    // Render objects with GPU effects to texture
-                    {
-                        let mut render_pass =
-                            encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                                label: Some("GPU Effects Pass"),
-                                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                                    view: &output_view,
-                                    resolve_target: None,
-                                    ops: wgpu::Operations {
-                                        load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
-                                        store: wgpu::StoreOp::Store,
-                                    },
-                                })],
-                                depth_stencil_attachment: None,
-                                timestamp_writes: None,
-                                occlusion_query_set: None,
-                            });
-
-                        let mut gpu = GpuRenderer::new(device.clone(), queue.clone());
-                        gpu.begin_frame();
-
-                        // Collect geometry with effects
-                        for (_, obj) in state.document.all_objects() {
-                            if !obj.visible {
-                                continue;
-                            }
-
-                            let _fill_rgba = obj
-                                .fill
-                                .as_ref()
-                                .map(|f| {
-                                    let c = f.color;
-                                    [c[0], c[1], c[2], c[3] * obj.opacity]
-                                })
-                                .unwrap_or([0.0, 0.0, 0.0, 0.0]);
-
-                            let _opacity = obj.opacity;
-
-                            // Shadow: render offset geometry in shadow color
-                            if let Some(ref sh) = obj.shadow {
-                                let sh_color = [
-                                    sh.color[0],
-                                    sh.color[1],
-                                    sh.color[2],
-                                    sh.color[3] * sh.opacity * obj.opacity,
-                                ];
-                                let poly = obj.to_path_data().to_polygon(16);
-                                let sh_pts: Vec<(f32, f32)> = poly
-                                    .iter()
-                                    .map(|p| {
-                                        let (wx, wy) = obj
-                                            .transform
-                                            .transform_point(p.x + sh.offset_x, p.y + sh.offset_y);
-                                        (
-                                            origin.x + wx as f32 * state.zoom,
-                                            origin.y + wy as f32 * state.zoom,
-                                        )
-                                    })
-                                    .collect();
-                                gpu.push_convex_polygon(&sh_pts, sh_color);
-                            }
-
-                            // Glow: render with additive blending
-                            if let Some(ref gl) = obj.glow {
-                                let gl_color = [
-                                    gl.color[0],
-                                    gl.color[1],
-                                    gl.color[2],
-                                    gl.color[3] * gl.intensity * obj.opacity,
-                                ];
-                                let poly = obj.to_path_data().to_polygon(16);
-                                let screen_pts: Vec<(f32, f32)> = poly
-                                    .iter()
-                                    .map(|p| {
-                                        let (wx, wy) = obj.transform.transform_point(p.x, p.y);
-                                        (
-                                            origin.x + wx as f32 * state.zoom,
-                                            origin.y + wy as f32 * state.zoom,
-                                        )
-                                    })
-                                    .collect();
-                                // Render glow at larger scale
-                                let cx: f32 = screen_pts.iter().map(|p| p.0).sum::<f32>()
-                                    / screen_pts.len() as f32;
-                                let cy: f32 = screen_pts.iter().map(|p| p.1).sum::<f32>()
-                                    / screen_pts.len() as f32;
-                                let glow_pts: Vec<(f32, f32)> = screen_pts
-                                    .iter()
-                                    .map(|p| {
-                                        let dx = p.0 - cx;
-                                        let dy = p.1 - cy;
-                                        let r = gl.radius as f32;
-                                        (p.0 + dx * r * 0.1, p.1 + dy * r * 0.1)
-                                    })
-                                    .collect();
-                                gpu.push_convex_polygon(&glow_pts, gl_color);
-                            }
-                        }
-
-                        let resolution = [width as f32, height as f32];
-                        gpu.render(
-                            &mut render_pass,
-                            resolution,
-                            state.zoom,
-                            [state.pan_x, state.pan_y],
-                            0.0,
-                            0.0,
-                            0.0,
-                            0.0,
-                            [0.0, 0.0],
-                            0.0,
-                            0.0,
-                            1.0,
-                        );
-                    }
-
-                    queue.submit(std::iter::once(encoder.finish()));
-                }
-            }
-        }
+        // GPU-Accelerated Rendering Pass removed: output texture was
+        // never composited back onto the canvas (submit only).
+        // Effects are rendered via CPU approximation in draw_object().
 
         // Smart Guides
         if state.show_smart_guides {

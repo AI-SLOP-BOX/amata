@@ -23,12 +23,14 @@ pub fn handle_render(
     let svg_content = if ext == "svg" {
         std::fs::read_to_string(input)?
     } else {
-        let doc = crate::io::project::load_project(&input.to_path_buf())?;
+        let doc = crate::io::project::load_project(input)?;
         crate::io::svg::export_svg(&doc)
     };
 
-    let mut opt = resvg::usvg::Options::default();
-    opt.fontdb = std::sync::Arc::new(crate::core::font::FontRegistry::global().database().clone());
+    let opt = resvg::usvg::Options {
+        fontdb: std::sync::Arc::new(crate::core::font::FontRegistry::global().database().clone()),
+        ..Default::default()
+    };
 
     let rtree = resvg::usvg::Tree::from_str(&svg_content, &opt)
         .map_err(|e| format!("Failed to parse SVG for rendering: {e}"))?;
@@ -157,7 +159,7 @@ pub fn handle_inspect(input: &Path, json_output: bool) -> Result<bool, Box<dyn s
     let svg_content = if ext == "svg" {
         std::fs::read_to_string(input)?
     } else {
-        let doc = crate::io::project::load_project(&input.to_path_buf())?;
+        let doc = crate::io::project::load_project(input)?;
         crate::io::svg::export_svg(&doc)
     };
 
@@ -280,8 +282,8 @@ pub fn handle_inspect(input: &Path, json_output: bool) -> Result<bool, Box<dyn s
         }
     }
 
-    if doc_width == 0.0 || doc_height == 0.0 {
-        if !view_box.is_empty() {
+    if (doc_width == 0.0 || doc_height == 0.0)
+        && !view_box.is_empty() {
             let parts: Vec<f64> = view_box
                 .split(|c: char| c.is_whitespace() || c == ',')
                 .filter_map(|s| s.parse().ok())
@@ -291,7 +293,6 @@ pub fn handle_inspect(input: &Path, json_output: bool) -> Result<bool, Box<dyn s
                 doc_height = parts[3];
             }
         }
-    }
 
     if json_output {
         let info = json!({
@@ -398,8 +399,10 @@ pub fn handle_validate(input: &Path, strict: bool) -> Result<bool, Box<dyn std::
     }
 
     // 2. Validate with usvg (robust XML & SVG grammar parser)
-    let mut opt = resvg::usvg::Options::default();
-    opt.fontdb = std::sync::Arc::new(crate::core::font::FontRegistry::global().database().clone());
+    let opt = resvg::usvg::Options {
+        fontdb: std::sync::Arc::new(crate::core::font::FontRegistry::global().database().clone()),
+        ..Default::default()
+    };
 
     match resvg::usvg::Tree::from_str(&svg_content, &opt) {
         Ok(tree) => {

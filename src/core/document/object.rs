@@ -382,10 +382,8 @@ pub fn compute_wrapped_lines(text: &str, style: &TextStyle, max_width: f64) -> V
             result.push(String::new());
             continue;
         }
-        let mut current_line = String::new();
         let mut current_w = 0.0f64;
         let mut last_space_idx = None;
-        let mut last_space_w = 0.0f64;
         for (i, ch) in paragraph.chars().enumerate() {
             let w = char_w;
             let is_cjk = ('\u{4E00}'..='\u{9FFF}').contains(&ch)
@@ -394,7 +392,6 @@ pub fn compute_wrapped_lines(text: &str, style: &TextStyle, max_width: f64) -> V
             let is_break = ch == ' ' || is_cjk;
             if is_break {
                 last_space_idx = Some(i);
-                last_space_w = current_w + w;
             }
             if current_w + w > max_width && current_w > 0.0 {
                 // Break at last space if we have one

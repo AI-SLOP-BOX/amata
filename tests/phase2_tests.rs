@@ -1,3 +1,4 @@
+#![allow(clippy::field_reassign_with_default)]
 use irasu_illustrator::cli::{run_cli, Cli, Commands};
 use irasu_illustrator::core::document::{Document, Object};
 use irasu_illustrator::core::mesh3d::{extrude_polygon_3d, triangulate_polygon};

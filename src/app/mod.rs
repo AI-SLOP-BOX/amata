@@ -90,11 +90,13 @@ impl IrasuApp {
             );
             return;
         }
-        let mut doc = crate::core::document::Document::default();
-        doc.name = req.name;
-        doc.width = req.width;
-        doc.height = req.height;
-        doc.color_mode = req.color_mode;
+        let mut doc = crate::core::document::Document {
+            name: req.name,
+            width: req.width,
+            height: req.height,
+            color_mode: req.color_mode,
+            ..Default::default()
+        };
         // Create initial artboards based on the requested count.  The
         // implicit single-artboard case (artboards empty) is preserved
         // when only one is requested so that old files behave identically.

@@ -57,16 +57,13 @@ impl Artboard {
 /// how SVG export communicates color space (CMYK values are exported as
 /// ICC-based `<color-profile>` elements).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Default)]
 pub enum ColorMode {
+    #[default]
     Rgb,
     Cmyk,
 }
 
-impl Default for ColorMode {
-    fn default() -> Self {
-        Self::Rgb
-    }
-}
 
 impl std::fmt::Display for ColorMode {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -376,14 +373,27 @@ impl Document {
     }
 }
 
+/// Maximum recursion depth when descending into Group / ClippingMask
+/// children.  Guards against pathological (or corrupted) documents where a
+/// group transitively contains itself, which would otherwise recurse until
+/// stack overflow.
+const MAX_NESTING_DEPTH: usize = 128;
+
 fn find_in_objects<'a>(objs: &'a [Object], id: &str) -> Option<&'a Object> {
+    find_in_objects_depth(objs, id, 0)
+}
+
+fn find_in_objects_depth<'a>(objs: &'a [Object], id: &str, depth: usize) -> Option<&'a Object> {
+    if depth > MAX_NESTING_DEPTH {
+        return None;
+    }
     for o in objs {
         if o.id == id {
             return Some(o);
         }
         match &o.object_type {
             ObjectType::Group(children) | ObjectType::ClippingMask { children } => {
-                if let Some(found) = find_in_objects(children, id) {
+                if let Some(found) = find_in_objects_depth(children, id, depth + 1) {
                     return Some(found);
                 }
             }
@@ -394,13 +404,24 @@ fn find_in_objects<'a>(objs: &'a [Object], id: &str) -> Option<&'a Object> {
 }
 
 fn parent_in_objects(objs: &[Object], id: &str) -> Option<(String, usize)> {
+    parent_in_objects_depth(objs, id, 0)
+}
+
+fn parent_in_objects_depth(
+    objs: &[Object],
+    id: &str,
+    depth: usize,
+) -> Option<(String, usize)> {
+    if depth > MAX_NESTING_DEPTH {
+        return None;
+    }
     for o in objs {
         match &o.object_type {
             ObjectType::Group(children) | ObjectType::ClippingMask { children } => {
                 if let Some(pos) = children.iter().position(|c| c.id == id) {
                     return Some((o.id.clone(), pos));
                 }
-                if let Some(found) = parent_in_objects(children, id) {
+                if let Some(found) = parent_in_objects_depth(children, id, depth + 1) {
                     return Some(found);
                 }
             }
@@ -411,13 +432,24 @@ fn parent_in_objects(objs: &[Object], id: &str) -> Option<(String, usize)> {
 }
 
 fn find_in_objects_mut<'a>(objs: &'a mut [Object], id: &str) -> Option<&'a mut Object> {
+    find_in_objects_mut_depth(objs, id, 0)
+}
+
+fn find_in_objects_mut_depth<'a>(
+    objs: &'a mut [Object],
+    id: &str,
+    depth: usize,
+) -> Option<&'a mut Object> {
+    if depth > MAX_NESTING_DEPTH {
+        return None;
+    }
     for o in objs.iter_mut() {
         if o.id == id {
             return Some(o);
         }
         match &mut o.object_type {
             ObjectType::Group(children) | ObjectType::ClippingMask { children } => {
-                if let Some(found) = find_in_objects_mut(children, id) {
+                if let Some(found) = find_in_objects_mut_depth(children, id, depth + 1) {
                     return Some(found);
                 }
             }
@@ -427,6 +459,7 @@ fn find_in_objects_mut<'a>(objs: &'a mut [Object], id: &str) -> Option<&'a mut O
     None
 }
 
+#[allow(clippy::ptr_arg)]
 fn remove_from_objects(objs: &mut Vec<Object>, id: &str) -> Option<Object> {
     for o in objs.iter_mut() {
         match &mut o.object_type {
@@ -507,5 +540,40 @@ impl Default for WidthProfile {
                 },
             ],
         }
+    }
+}
+
+#[cfg(test)]
+mod nesting_guard_tests {
+    use super::*;
+
+    fn deep_chain(depth: usize) -> Object {
+        let mut obj = Object::new_rect("leaf", 0.0, 0.0, 10.0, 10.0, 0.0);
+        for i in 0..depth {
+            obj = Object::new_group(&format!("g{i}"), vec![obj]);
+        }
+        obj
+    }
+
+    #[test]
+    fn deep_nesting_lookup_does_not_overflow() {
+        let mut doc = Document::default();
+        // Far beyond MAX_NESTING_DEPTH: must return gracefully, not overflow.
+        doc.add_object(deep_chain(2000));
+        assert!(doc.find_object("missing").is_none());
+    }
+
+    #[test]
+    fn normal_nesting_lookup_still_works() {
+        let mut doc = Document::default();
+        let inner = Object::new_rect("inner", 0.0, 0.0, 10.0, 10.0, 0.0);
+        let inner_id = inner.id.clone();
+        let g2 = Object::new_group("g2", vec![inner.clone()]);
+        let g2_id = g2.id.clone();
+        doc.add_object(Object::new_group("g", vec![g2]));
+        assert!(doc.find_object(&inner_id).is_some());
+        assert!(doc.find_object_mut(&inner_id).is_some());
+        let parent = doc.parent_of(&inner_id).and_then(|(p, _, _)| p);
+        assert_eq!(parent.as_deref(), Some(g2_id.as_str()));
     }
 }

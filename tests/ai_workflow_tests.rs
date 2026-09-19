@@ -1,3 +1,4 @@
+#![allow(clippy::field_reassign_with_default)]
 use irasu_illustrator::core::diff::compute_semantic_diff;
 use irasu_illustrator::core::document::{Document, Object, ObjectType};
 use irasu_illustrator::core::watcher::FileWatcher;

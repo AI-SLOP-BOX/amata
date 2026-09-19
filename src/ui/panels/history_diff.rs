@@ -25,6 +25,7 @@ pub fn parse_stored_doc(file_path: &Path, content: &str) -> Option<Document> {
     }
 }
 
+#[derive(Default)]
 pub struct VersionHistoryPanel {
     pub current_file: Option<PathBuf>,
     pub commits: Vec<GitCommitEntry>,
@@ -38,24 +39,10 @@ pub struct VersionHistoryPanel {
     preview_backup: Option<Document>,
 }
 
-impl Default for VersionHistoryPanel {
-    fn default() -> Self {
-        Self {
-            current_file: None,
-            commits: Vec::new(),
-            selected_commit_idx: None,
-            active_diff: None,
-            is_comparing: false,
-            checkpoint_input: String::new(),
-            is_advanced_mode: false,
-            preview_backup: None,
-        }
-    }
-}
 
 impl VersionHistoryPanel {
-    pub fn refresh_history(&mut self, file_path: &PathBuf) {
-        self.current_file = Some(file_path.clone());
+    pub fn refresh_history(&mut self, file_path: &Path) {
+        self.current_file = Some(file_path.to_path_buf());
         if git::is_git_repository(file_path) {
             if let Ok(entries) = git::get_file_commit_history(file_path, 30) {
                 self.commits = entries;
@@ -184,8 +171,8 @@ impl VersionHistoryPanel {
         if self.commits.is_empty() {
             ui.label(RichText::new("このファイルにはまだ履歴がありません").weak());
             if let Some(p) = self.current_file.clone() {
-                if !git::is_git_repository(&p) {
-                    if ui
+                if !git::is_git_repository(&p)
+                    && ui
                         .button("履歴管理を開始 (Gitリポジトリを初期化)")
                         .clicked()
                     {
@@ -212,7 +199,6 @@ impl VersionHistoryPanel {
                             }
                         }
                     }
-                }
             }
             return;
         }
@@ -419,11 +405,9 @@ impl VersionHistoryPanel {
                                             &id_display,
                                         )
                                         .clicked()
-                                    {
-                                        if !obj.id.is_empty() {
+                                        && !obj.id.is_empty() {
                                             state.selected_ids = vec![obj.id.clone()];
                                         }
-                                    }
                                     ui.label(
                                         RichText::new(format!("({})", obj.object_type))
                                             .weak()

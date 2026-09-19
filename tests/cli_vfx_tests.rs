@@ -1,3 +1,4 @@
+#![allow(clippy::field_reassign_with_default)]
 use irasu_illustrator::cli::{run_cli, Cli, CliBooleanOp, Commands};
 use irasu_illustrator::core::document::{Document, Object};
 use irasu_illustrator::core::path::{FillStyle, PathData, StrokeStyle};

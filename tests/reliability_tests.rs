@@ -1,3 +1,4 @@
+#![allow(clippy::field_reassign_with_default)]
 use irasu_illustrator::cli::handlers::common::save_any_document_scaled;
 use irasu_illustrator::core::document::{Document, Object};
 use irasu_illustrator::core::path::AnchorPoint;
@@ -1157,7 +1158,7 @@ fn test_text_block_size_word_wrap() {
         max_width: Some(50.0),
         ..Default::default()
     };
-    let (w, h) = text_block_size_with_style("word1 word2 word3 word4", &style);
+    let (_w, h) = text_block_size_with_style("word1 word2 word3 word4", &style);
     assert!(h > 16.0, "wrapped text should be taller than single line, got {h}");
 }
 

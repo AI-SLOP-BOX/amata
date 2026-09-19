@@ -1,7 +1,7 @@
-use std::path::PathBuf;
+use std::path::Path;
 
 pub fn load_any_document(
-    path: &PathBuf,
+    path: &Path,
 ) -> Result<crate::core::document::Document, Box<dyn std::error::Error>> {
     let ext = path
         .extension()
@@ -18,14 +18,14 @@ pub fn load_any_document(
 
 pub fn save_any_document(
     doc: &crate::core::document::Document,
-    path: &PathBuf,
+    path: &Path,
 ) -> Result<(), Box<dyn std::error::Error>> {
     save_any_document_scaled(doc, path, 1.0)
 }
 
 pub fn save_any_document_scaled(
     doc: &crate::core::document::Document,
-    path: &PathBuf,
+    path: &Path,
     scale: f32,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let ext = path

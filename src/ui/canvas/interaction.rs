@@ -301,8 +301,8 @@ impl CanvasWidget {
             if let Some(obj) = state.document.find_object(obj_id) {
                 let path_data = obj.to_path_data();
                 let elements = &path_data.elements;
-                if let Some(elem) = elements.get(idx) {
-                    if let PathElement::CurveTo(seg) = elem {
+                if let Some(PathElement::CurveTo(seg)) = elements.get(idx) {
+                    {
                         let (c2_wx, c2_wy) = obj
                             .transform
                             .transform_point(seg.control2.x, seg.control2.y);
@@ -364,7 +364,7 @@ impl CanvasWidget {
         wy: f64,
     ) {
         if let Some(ref obj_id) = self.node_edit_state.selected_object_id.clone() {
-            if let Some(obj) = state.document.find_object_mut(&obj_id) {
+            if let Some(obj) = state.document.find_object_mut(obj_id) {
                     if !matches!(obj.object_type, ObjectType::Path(_)) {
                         let p = obj.to_path_data();
                         obj.object_type = ObjectType::Path(p);

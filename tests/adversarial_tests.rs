@@ -592,8 +592,8 @@ fn test_adversarial_git_restore_with_unrelated_dirty_files() {
 
 struct MockEditCommand(&'static str);
 impl HistoryCommand for MockEditCommand {
-    fn execute(&self, _doc: &mut Document) {}
-    fn undo(&self, _doc: &mut Document) {}
+    fn execute(&mut self, _doc: &mut Document) {}
+    fn undo(&mut self, _doc: &mut Document) {}
     fn name(&self) -> &str {
         self.0
     }

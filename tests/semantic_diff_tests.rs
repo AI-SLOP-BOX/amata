@@ -1,3 +1,4 @@
+#![allow(clippy::field_reassign_with_default)]
 use irasu_illustrator::core::diff::{compute_semantic_diff, ObjectDiffStatus};
 use irasu_illustrator::core::document::{Document, Object, Symbol};
 use irasu_illustrator::core::path::{FillStyle, FillType, GradientStop, LinearGradient, PathData};

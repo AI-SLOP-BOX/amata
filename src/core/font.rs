@@ -14,6 +14,12 @@ pub struct FontRegistry {
 
 static GLOBAL_REGISTRY: OnceLock<FontRegistry> = OnceLock::new();
 
+impl Default for FontRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl FontRegistry {
     /// Initialize registry with system fonts and bundled assets/fonts
     pub fn new() -> Self {
@@ -40,7 +46,7 @@ impl FontRegistry {
                 }
             }
         }
-        families.sort_by(|a, b| a.to_lowercase().cmp(&b.to_lowercase()));
+        families.sort_by_key(|a| a.to_lowercase());
 
         Self {
             db,

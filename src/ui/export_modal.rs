@@ -607,7 +607,7 @@ impl ExportModal {
                         ExportFormatTab::Svg => {
                             if let Some(path) = rfd::FileDialog::new()
                                 .add_filter("SVG", &["svg"])
-                                .set_file_name(&format!("{}.svg", self.file_name))
+                                .set_file_name(format!("{}.svg", self.file_name))
                                 .save_file()
                             {
                                 let svg = crate::io::svg::export_svg(&state.document);
@@ -624,7 +624,7 @@ impl ExportModal {
                         ExportFormatTab::Pdf => {
                             if let Some(path) = rfd::FileDialog::new()
                                 .add_filter("PDF", &["pdf"])
-                                .set_file_name(&format!("{}.pdf", self.file_name))
+                                .set_file_name(format!("{}.pdf", self.file_name))
                                 .save_file()
                             {
                                 let pdf_bytes = crate::io::pdf::export_pdf(&state.document);
@@ -641,7 +641,7 @@ impl ExportModal {
                         ExportFormatTab::Png => {
                             if let Some(path) = rfd::FileDialog::new()
                                 .add_filter("PNG", &["png"])
-                                .set_file_name(&format!("{}.png", self.file_name))
+                                .set_file_name(format!("{}.png", self.file_name))
                                 .save_file()
                             {
                                 let scale = match self.scale_factor.as_str() {
@@ -673,7 +673,7 @@ impl ExportModal {
                         ExportFormatTab::Jpeg => {
                             if let Some(path) = rfd::FileDialog::new()
                                 .add_filter("JPEG", &["jpg", "jpeg"])
-                                .set_file_name(&format!("{}.jpg", self.file_name))
+                                .set_file_name(format!("{}.jpg", self.file_name))
                                 .save_file()
                             {
                                 let scale = match self.scale_factor.as_str() {
