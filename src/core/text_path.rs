@@ -295,6 +295,10 @@ impl ttf_parser::OutlineBuilder for PathOutlineBuilder {
     }
 }
 
+/// Faux italic/oblique shear factor: tan(12°). Matches the SVG export
+/// `skewX(-12)` so outlined logos and exported text slant identically.
+pub const FAUX_ITALIC_SHEAR: f64 = 0.2126;
+
 /// Convert a text string into an outlined vector PathData with proper kerning and size,
 /// using the requested TextStyle and real font glyph outlines via ttf-parser.
 pub fn text_to_outline_path_with_style(
@@ -304,6 +308,12 @@ pub fn text_to_outline_path_with_style(
     let font_size = style.font_size;
     let letter_spacing = style.letter_spacing;
     let registry = super::font::FontRegistry::global();
+    // Faux italic only when no real italic/oblique face exists; otherwise
+    // the resolved face already slants and shearing would double it.
+    let faux_italic = !matches!(
+        style.font_style,
+        crate::core::document::FontStyle::Normal
+    ) && registry.needs_synthetic_style(&style.font_family, style.font_weight, style.font_style);
 
     // Attempt to extract real glyph outlines from the resolved font face
     let extracted = registry.query_face_data(
@@ -317,14 +327,32 @@ pub fn text_to_outline_path_with_style(
                     let scale = font_size / units_per_em;
                     let mut combined = PathData::new();
                     let mut current_x = 0.0;
+                    // `kern` (old-style TrueType kerning) table, when present.
+                    let kern_table = face.tables().kern.clone();
+                    let mut prev_glyph: Option<ttf_parser::GlyphId> = None;
 
                     for ch in text.chars() {
                         if ch == ' ' {
                             current_x += (font_size * 0.3) + letter_spacing;
+                            prev_glyph = None;
                             continue;
                         }
 
                         if let Some(glyph_id) = face.glyph_index(ch) {
+                            // Pairwise kerning against the previous glyph
+                            // (first horizontal subtable hit wins).
+                            if let (Some(prev), Some(kern)) = (prev_glyph, &kern_table) {
+                                for sub in kern.subtables {
+                                    if !sub.horizontal {
+                                        continue;
+                                    }
+                                    if let Some(k) = sub.glyphs_kerning(prev, glyph_id) {
+                                        current_x += k as f64 * scale;
+                                        break;
+                                    }
+                                }
+                            }
+                            prev_glyph = Some(glyph_id);
                             let mut builder = PathOutlineBuilder {
                                 path: PathData::new(),
                                 scale,
@@ -342,6 +370,7 @@ pub fn text_to_outline_path_with_style(
                             current_x += adv + letter_spacing;
                         } else {
                             // Fallback to mock glyph if glyph missing in face
+                            prev_glyph = None;
                             let char_width = font_size * 0.6;
                             let mut glyph = get_glyph_outline_path(ch);
                             let matrix = [char_width, 0.0, 0.0, font_size, current_x, -font_size];
@@ -349,6 +378,11 @@ pub fn text_to_outline_path_with_style(
                             combined.elements.extend(glyph.elements);
                             current_x += char_width * 1.1 + letter_spacing;
                         }
+                    }
+                    if faux_italic {
+                        // Shear around the baseline origin: tops lean right.
+                        // Builder output is y-down, so x' = x − k·y.
+                        combined.transform(&[1.0, 0.0, -FAUX_ITALIC_SHEAR, 1.0, 0.0, 0.0]);
                     }
                     return Some(combined);
                 }
@@ -377,6 +411,10 @@ pub fn text_to_outline_path_with_style(
         glyph.transform(&matrix);
         combined.elements.extend(glyph.elements);
         current_x += char_width * 1.1 + letter_spacing;
+    }
+
+    if faux_italic {
+        combined.transform(&[1.0, 0.0, -FAUX_ITALIC_SHEAR, 1.0, 0.0, 0.0]);
     }
 
     combined

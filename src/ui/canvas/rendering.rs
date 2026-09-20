@@ -480,9 +480,24 @@ impl CanvasWidget {
                 };
                 let lines: Vec<&str> = lines.iter().map(|s| s.as_str()).collect();
                 let mut widest: f32 = 0.0;
+                // Faux-italic block shear: egui draws glyphs axis-aligned,
+                // so single lines can't slant (a real oblique needs glyph
+                // outlines — see text_path / SVG skewX export). Shifting
+                // successive baselines still signals italic for multiline
+                // text and matches the export slant direction.
+                let italic = !matches!(
+                    style.font_style,
+                    crate::core::document::FontStyle::Normal
+                );
                 for (li, line) in lines.iter().enumerate() {
+                    let shear_dx = if italic {
+                        -(crate::core::text_path::FAUX_ITALIC_SHEAR as f32)
+                            * (li as f32 * line_height)
+                    } else {
+                        0.0
+                    };
                     let line_pos =
-                        egui::pos2(pos.x, pos.y + li as f32 * line_height);
+                        egui::pos2(pos.x + shear_dx, pos.y + li as f32 * line_height);
                     if style.letter_spacing != 0.0 {
                         let letter_space_screen =
                             (style.letter_spacing * state.zoom as f64) as f32;

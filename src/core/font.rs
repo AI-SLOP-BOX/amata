@@ -176,4 +176,67 @@ impl FontRegistry {
 
         None
     }
+
+    /// True when no installed face matches the requested style, i.e. the
+    /// style must be *synthesized* (faux italic/oblique) instead of taken
+    /// from a real face. fontdb always returns the closest face, so a query
+    /// for Italic can silently resolve to an upright face — this detects
+    /// exactly that case by comparing the matched face's real style.
+    ///
+    /// Semantics per candidate kind: a concrete installed family answers
+    /// for itself; a missing family forces faux (deterministic across
+    /// viewers, whose own fallbacks may or may not have italics); generic
+    /// aliases (`sans-serif`, …) resolve through the local sans fallback.
+    pub fn needs_synthetic_style(&self, family: &str, weight: u16, style: FontStyle) -> bool {
+        let wanted = match style {
+            FontStyle::Normal => return false,
+            FontStyle::Italic => fontdb::Style::Italic,
+            FontStyle::Oblique => fontdb::Style::Oblique,
+        };
+        let weight_val = fontdb::Weight(weight);
+        // CSS font matching accepts italic and oblique interchangeably: any
+        // slanted face satisfies either request (and must NOT be sheared on
+        // top, or it would double-slant).
+        let is_slanted =
+            |s: fontdb::Style| matches!(s, fontdb::Style::Italic | fontdb::Style::Oblique);
+        let check = |families: &[Family]| -> Option<bool> {
+            let id = self.db.query(&Query {
+                families,
+                weight: weight_val,
+                style: wanted,
+                stretch: fontdb::Stretch::Normal,
+            })?;
+            Some(self.db.face(id).map(|face| !is_slanted(face.style)).unwrap_or(true))
+        };
+        fn is_generic(name: &str) -> bool {
+            name.eq_ignore_ascii_case("sans-serif")
+                || name.eq_ignore_ascii_case("serif")
+                || name.eq_ignore_ascii_case("monospace")
+                || name.eq_ignore_ascii_case("cursive")
+                || name.eq_ignore_ascii_case("fantasy")
+                || name.eq_ignore_ascii_case("system-ui")
+        }
+        let mut saw_generic = false;
+        for candidate in family.split(',') {
+            let name = candidate.trim().trim_matches('\'').trim_matches('"');
+            if name.is_empty() {
+                continue;
+            }
+            if is_generic(name) {
+                saw_generic = true;
+                continue;
+            }
+            if !self.is_family_available(name) {
+                continue;
+            }
+            // Installed concrete family: restrict the query to it so the
+            // answer is about this family, not the sans fallback.
+            return check(&[Family::Name(name)]).unwrap_or(true);
+        }
+        if saw_generic {
+            return check(&[Family::SansSerif]).unwrap_or(true);
+        }
+        // No resolvable family at all: synthesize deterministically.
+        true
+    }
 }

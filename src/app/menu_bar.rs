@@ -657,6 +657,7 @@ impl IrasuApp {
                     ui.checkbox(&mut self.state.show_grid, "Show Grid");
                     ui.checkbox(&mut self.state.snap_to_grid, "Snap to Grid");
                     ui.checkbox(&mut self.state.snap_to_objects, "Snap to Objects");
+                    ui.checkbox(&mut self.state.snap_to_pixels, "Snap to Pixels");
                     ui.checkbox(&mut self.state.show_rulers, "Show Rulers");
                     ui.checkbox(&mut self.state.show_smart_guides, "Smart Guides");
                     ui.checkbox(&mut self.state.show_timeline, "Show Timeline");

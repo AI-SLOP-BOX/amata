@@ -363,66 +363,137 @@ pub fn text_block_size_with_style(text: &str, style: &TextStyle) -> (f64, f64) {
         text.split('\n').map(String::from).collect()
     };
     let line_h = style.effective_line_height();
-    // Width estimate: use character count × (font_size × 0.6) as a
-    // rough per-glyph advance.  This is still monospace-biased but
-    // better than nothing; the canvas rendering uses egui's real layout.
+    // Width estimate: sum of per-glyph advances (fullwidth-aware) plus
+    // letter-spacing, so measurement agrees with wrapping.
     let width = lines
         .iter()
-        .map(|l| l.chars().count() as f64 * style.font_size * 0.6)
+        .map(|l| {
+            l.chars()
+                .map(|ch| char_advance_estimate(ch) * style.font_size + style.letter_spacing)
+                .sum::<f64>()
+        })
         .fold(0.0_f64, f64::max);
     let height = line_h + line_h * (lines.len().saturating_sub(1) as f64);
     (width, height)
 }
 
-/// Compute soft-wrapped lines by breaking at the last space before
-/// `max_width` is exceeded.  CJK characters are treated as break
-/// opportunities.  Hard breaks (`\n`) always start a new line.
+/// Rough per-glyph advance estimate as a fraction of `font_size`.
+///
+/// Fullwidth characters (hiragana, katakana, CJK ideographs, hangul,
+/// fullwidth forms) advance 1em; halfwidth kana and Latin advance 0.6em.
+/// Shared by wrapping and block measurement so both agree.
+pub fn char_advance_estimate(ch: char) -> f64 {
+    if is_fullwidth(ch) {
+        1.0
+    } else {
+        0.6
+    }
+}
+
+fn is_fullwidth(ch: char) -> bool {
+    matches!(ch,
+        '\u{3000}'..='\u{303F}'   // CJK symbols & punctuation (、。〰…)
+        | '\u{3040}'..='\u{309F}' // Hiragana
+        | '\u{30A0}'..='\u{30FF}' // Katakana
+        | '\u{3200}'..='\u{33FF}' // Enclosed CJK & compatibility
+        | '\u{3400}'..='\u{4DBF}' // CJK Ext A
+        | '\u{4E00}'..='\u{9FFF}' // CJK Unified
+        | '\u{AC00}'..='\u{D7AF}' // Hangul Syllables
+        | '\u{1100}'..='\u{11FF}' // Hangul Jamo
+        | '\u{F900}'..='\u{FAFF}' // CJK Compat Ideographs
+        | '\u{FF00}'..='\u{FF60}' // Fullwidth forms…
+        | '\u{FFE0}'..='\u{FFE6}' // …and fullwidth symbols
+    )
+}
+
+/// Characters that must not start a line (行頭禁則: closing brackets,
+/// punctuation, prolongation mark, small kana…).
+fn kinsoku_cannot_start_line(ch: char) -> bool {
+    matches!(ch,
+        '、' | '。' | '，' | '．' | '！' | '？' | '!' | '?' | '：' | '；'
+        | '）' | '〕' | '］' | '｝' | '〉' | '》' | '」' | '』' | '】' | '\'' | '"' | '’' | '”'
+        | '…' | '‥' | '・' | 'ー' | '〜' | '～'
+        | 'ぁ' | 'ぃ' | 'ぅ' | 'ぇ' | 'ぉ' | 'っ' | 'ゃ' | 'ゅ' | 'ょ' | 'ゎ'
+        | 'ァ' | 'ィ' | 'ゥ' | 'ェ' | 'ォ' | 'ッ' | 'ャ' | 'ュ' | 'ョ'
+    )
+}
+
+/// Characters that must not end a line (行末禁則: opening brackets).
+fn kinsoku_cannot_end_line(ch: char) -> bool {
+    matches!(ch,
+        '「' | '『' | '（' | '〔' | '［' | '｛' | '〈' | '《' | '【' | '(' | '[' | '{' | '<'
+    )
+}
+
+/// Compute soft-wrapped lines by filling up to `max_width` and breaking at
+/// the last allowed opportunity. Breaks happen at spaces and after CJK
+/// characters, subject to Japanese kinsoku rules: a line never starts with
+/// a closing mark and never ends with an opening mark (the offending
+/// character is pushed to / kept on the adjacent line). Hard breaks (`\n`)
+/// always start a new line. Widths use [`char_advance_estimate`] plus
+/// `letter_spacing`, so wrapping agrees with block measurement.
 pub fn compute_wrapped_lines(text: &str, style: &TextStyle, max_width: f64) -> Vec<String> {
-    let char_w = style.font_size * 0.6; // rough per-char advance
+    let unit = |ch: char| char_advance_estimate(ch) * style.font_size + style.letter_spacing;
     let mut result = Vec::new();
     for paragraph in text.split('\n') {
-        if paragraph.is_empty() {
+        let chars: Vec<char> = paragraph.chars().collect();
+        if chars.is_empty() {
             result.push(String::new());
             continue;
         }
-        let mut current_w = 0.0f64;
-        let mut last_space_idx = None;
-        for (i, ch) in paragraph.chars().enumerate() {
-            let w = char_w;
-            let is_cjk = ('\u{4E00}'..='\u{9FFF}').contains(&ch)
-                || ('\u{3400}'..='\u{4DBF}').contains(&ch)
-                || ('\u{F900}'..='\u{FAFF}').contains(&ch);
-            let is_break = ch == ' ' || is_cjk;
-            if is_break {
-                last_space_idx = Some(i);
-            }
-            if current_w + w > max_width && current_w > 0.0 {
-                // Break at last space if we have one
-                if let Some(si) = last_space_idx {
-                    let kept: String = paragraph.chars().take(si).collect();
-                    result.push(kept);
-                    let rest: String = paragraph.chars().skip(si + 1).collect();
-                    // Continue wrapping the remainder
-                    if !rest.is_empty() {
-                        let sub = compute_wrapped_lines(&rest, style, max_width);
-                        result.extend(sub);
-                    }
-                    return result;
-                } else {
-                    // No break opportunity: force break at current position
-                    let kept: String = paragraph.chars().take(i).collect();
-                    result.push(kept);
-                    let rest: String = paragraph.chars().skip(i).collect();
-                    if !rest.is_empty() {
-                        let sub = compute_wrapped_lines(&rest, style, max_width);
-                        result.extend(sub);
-                    }
-                    return result;
+        let mut line_start = 0usize;
+        let mut i = 0usize;
+        // Byte/char width of the current line for quick slicing.
+        let mut line_w = 0.0f64;
+        // Last index (exclusive end of line) where a break is allowed.
+        let mut last_break: Option<usize> = None;
+        while i < chars.len() {
+            let ch = chars[i];
+            let w = unit(ch);
+            // Would this char overflow the line?
+            if line_w + w > max_width && i > line_start {
+                // Prefer the last allowed break; otherwise force-break
+                // before this char.
+                let mut end = last_break.unwrap_or(i);
+                // Kinsoku: never end a line with an opening bracket — move
+                // it (and anything after it on this line) to the next line.
+                while end > line_start + 1 && kinsoku_cannot_end_line(chars[end - 1]) {
+                    end -= 1;
                 }
+                // Kinsoku: never start a line with a closing mark — keep it
+                // on this line even if it overflows (squeeze emulation,
+                // like real Japanese typesetters).
+                while end < chars.len() && kinsoku_cannot_start_line(chars[end]) {
+                    end += 1;
+                }
+                // Degenerate width (nothing fits): emit one char to guarantee
+                // progress.
+                if end <= line_start {
+                    end = (line_start + 1).min(chars.len());
+                }
+                result.push(chars[line_start..end].iter().collect());
+                // Skip a single leading space on the new line (Western
+                // word-wrap convention); CJK needs no such trimming.
+                line_start = end;
+                if line_start < chars.len() && chars[line_start] == ' ' {
+                    line_start += 1;
+                }
+                i = line_start;
+                line_w = 0.0;
+                last_break = None;
+                continue;
             }
-            current_w += w;
+            line_w += w;
+            // A break is allowed *after* this char when the next char may
+            // legally start a line and this char may legally end one.
+            let next_ok = i + 1 >= chars.len()
+                || !kinsoku_cannot_start_line(chars[i + 1]);
+            if (ch == ' ' || is_fullwidth(ch)) && !kinsoku_cannot_end_line(ch) && next_ok {
+                last_break = Some(i + 1);
+            }
+            i += 1;
         }
-        result.push(paragraph.to_string());
+        result.push(chars[line_start..].iter().collect());
     }
     result
 }

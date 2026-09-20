@@ -135,6 +135,9 @@ pub struct AppState {
     pub snap_to_objects: bool,
     pub snap_to_guides: bool,
     pub snap_to_points: bool,
+    /// Round the final snapped position to integer document units (crisp
+    /// 1px strokes for logos / pixel-aligned UI work).
+    pub snap_to_pixels: bool,
     pub show_rulers: bool,
     pub show_smart_guides: bool,
     pub fill_color: [f32; 4],
@@ -247,6 +250,7 @@ impl Default for AppState {
             snap_to_objects: true,
             snap_to_guides: true,
             snap_to_points: true,
+            snap_to_pixels: false,
             show_rulers: true,
             show_smart_guides: true,
             fill_color: [0.2, 0.5, 0.8, 1.0],
@@ -731,6 +735,11 @@ impl AppState {
                 sx = osx;
                 sy = osy;
             }
+        }
+
+        if self.snap_to_pixels {
+            sx = sx.round();
+            sy = sy.round();
         }
 
         (sx, sy)

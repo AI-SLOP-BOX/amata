@@ -1,6 +1,7 @@
 pub mod object;
 pub use object::{
     BlendMode, FontStyle, Object, ObjectType, TextAnchor, TextStyle, Transform,
+    char_advance_estimate, compute_wrapped_lines,
 };
 
 /// Canvas guide (moved here from AppState so guides persist with the

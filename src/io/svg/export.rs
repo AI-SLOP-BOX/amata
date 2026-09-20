@@ -637,6 +637,12 @@ fn render_object_to_svg(
             if style.font_weight != 400 {
                 extra_attrs.push_str(&format!(" font-weight=\"{}\"", style.font_weight));
             }
+            // NOTE: no faux-oblique skew here on purpose. Viewers that lack
+            // a slanted face synthesize `font-style: italic` themselves, so
+            // an extra skew would double-slant there (and break the
+            // import round-trip). Deterministic obliques come from the
+            // outline path (`text_path` shears when no slanted face
+            // exists) — the logo workflow.
             if style.font_style != FontStyle::Normal {
                 extra_attrs.push_str(&format!(
                     " font-style=\"{}\"",

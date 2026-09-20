@@ -95,6 +95,7 @@ impl SmartGuidesPanel {
         ui.checkbox(&mut state.snap_to_objects, "Objects");
         ui.checkbox(&mut state.snap_to_guides, "Guides");
         ui.checkbox(&mut state.snap_to_points, "Anchor Points");
+        ui.checkbox(&mut state.snap_to_pixels, "Pixels (integer units)");
 
         ui.add_space(4.0);
         ui.separator();
