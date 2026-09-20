@@ -1,8 +1,8 @@
 use super::CanvasWidget;
-use crate::core::document::{BlendMode, Object, ObjectType};
+use crate::core::document::{BlendMode, Object, ObjectType, TextAnchor, TextStyle};
 use crate::core::path::{
-    FillStyle, FillType, ImageFill, ImageTileMode, LinearGradient, PathData, PatternFill,
-    RadialGradient,
+    AnchorPoint, FillStyle, FillType, ImageFill, ImageTileMode, LinearGradient, PathData,
+    PatternFill, RadialGradient,
 };
 use crate::core::state::AppState;
 use egui::{Color32, FontId, Pos2, Rect, Stroke, Vec2};
@@ -60,6 +60,54 @@ fn affine_apply(m: &[f64; 6], x: f64, y: f64) -> (f64, f64) {
 }
 
 pub const IDENTITY_AFFINE: [f64; 6] = [1.0, 0.0, 0.0, 1.0, 0.0, 0.0];
+
+/// One cached text line: local-space triangles plus the local advance width
+/// used for middle/end anchoring.
+pub(super) struct CachedTextLine {
+    pub tris: Vec<[AnchorPoint; 3]>,
+    pub width: f64,
+}
+
+/// Cache key for a text object's baked outlines. Any shaping input change
+/// (text, face, size, spacing, wrap) re-bakes; transforms do not (they
+/// apply per-frame to the cached local triangles).
+pub fn text_shape_key(text: &str, style: &TextStyle) -> u64 {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+    let mut h = DefaultHasher::new();
+    text.hash(&mut h);
+    style.font_family.hash(&mut h);
+    style.font_size.to_bits().hash(&mut h);
+    style.font_weight.hash(&mut h);
+    (match style.font_style {
+        crate::core::document::FontStyle::Normal => 0u8,
+        crate::core::document::FontStyle::Italic => 1u8,
+        crate::core::document::FontStyle::Oblique => 2u8,
+    })
+    .hash(&mut h);
+    style.letter_spacing.to_bits().hash(&mut h);
+    style
+        .line_height
+        .map(f64::to_bits)
+        .hash(&mut h);
+    style.max_width.map(f64::to_bits).hash(&mut h);
+    style.word_wrap.hash(&mut h);
+    h.finish()
+}
+
+/// Split a text object into drawable lines, mirroring the legacy egui path
+/// and the SVG exporter so all three agree.
+pub(super) fn text_draw_lines(text: &str, style: &TextStyle) -> Vec<String> {
+    if style.word_wrap {
+        if let Some(max_w) = style.max_width {
+            crate::core::document::compute_wrapped_lines(text, style, max_w)
+        } else {
+            text.split('\n').map(String::from).collect()
+        }
+    } else {
+        text.split('\n').map(String::from).collect()
+    }
+}
 
 impl CanvasWidget {
     pub(super) fn draw_object(
@@ -443,6 +491,20 @@ impl CanvasWidget {
                 font_size,
                 style,
             } => {
+                // Real typeface first (cached outline triangles); missing
+                // fonts fall through to the legacy egui-font path below.
+                if self.draw_real_text(
+                    painter,
+                    obj,
+                    text,
+                    style,
+                    fill_color,
+                    &to_screen,
+                    state,
+                ) {
+                    self.draw_fill_overlay(painter, obj, opacity, origin, state, parent);
+                    return;
+                }
                 let pos = to_screen(0.0, 0.0);
                 let scaled_size = (font_size * state.zoom as f64) as f32;
 
@@ -605,6 +667,22 @@ impl CanvasWidget {
             }
         }
 
+        self.draw_fill_overlay(painter, obj, opacity, origin, state, parent);
+    }
+
+    /// Gradient / pattern / image fills paint on top of the base fill
+    /// (extracted so early-returning arms, e.g. real text, keep the exact
+    /// same compositing as the fall-through path).
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn draw_fill_overlay(
+        &self,
+        painter: &egui::Painter,
+        obj: &Object,
+        opacity: f32,
+        origin: Pos2,
+        state: &AppState,
+        parent: &[f64; 6],
+    ) {
         if let Some(ref fill) = obj.fill {
             match &fill.fill_type {
                 FillType::Linear(grad) => {
@@ -1094,6 +1172,73 @@ impl CanvasWidget {
         if !mesh.indices.is_empty() {
             painter.add(mesh);
         }
+    }
+
+    /// Draw text with the document's real typeface via cached outline
+    /// triangles (kerning, letter-spacing and faux-italic included).
+    /// Returns false when no cache entry holds real outlines (missing font),
+    /// in which case the caller falls back to the legacy egui-font path.
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn draw_real_text(
+        &self,
+        painter: &egui::Painter,
+        obj: &Object,
+        text: &str,
+        style: &TextStyle,
+        fill: Option<Color32>,
+        to_screen: &dyn Fn(f64, f64) -> Pos2,
+        state: &AppState,
+    ) -> bool {
+        let Some((_, lines)) = self.text_meshes.get(&obj.id) else {
+            return false;
+        };
+        let Some(clines) = lines else {
+            return false;
+        };
+        // `fill` already carries opacity (same as the legacy path).
+        let color = fill.unwrap_or(Color32::BLACK);
+        let line_h = style.effective_line_height();
+        let bold = style.font_weight >= 650;
+        // Match the legacy faux-bold weight (screen-space doubling).
+        let scaled_size = (style.font_size * state.zoom as f64) as f32;
+        let bold_dx = (scaled_size * 0.035).clamp(0.5, 1.5);
+        for (li, cl) in clines.iter().enumerate() {
+            if cl.tris.is_empty() {
+                continue;
+            }
+            let base_y = li as f64 * line_h;
+            let x_off = match style.text_anchor {
+                TextAnchor::Start => 0.0,
+                TextAnchor::Middle => -cl.width / 2.0,
+                TextAnchor::End => -cl.width,
+            };
+            let mut mesh = egui::epaint::Mesh::default();
+            for tri in &cl.tris {
+                let base = mesh.vertices.len() as u32;
+                for p in tri {
+                    mesh.vertices.push(egui::epaint::Vertex {
+                        pos: to_screen(p.x + x_off, p.y + base_y),
+                        uv: Pos2::ZERO,
+                        color,
+                    });
+                }
+                mesh.indices.extend([base, base + 1, base + 2]);
+            }
+            if mesh.indices.is_empty() {
+                continue;
+            }
+            // Faux-bold: overprint shifted by a fraction of a pixel, same
+            // recipe as the legacy galley path.
+            if bold {
+                let mut emboldened = mesh.clone();
+                for v in &mut emboldened.vertices {
+                    v.pos.x += bold_dx;
+                }
+                painter.add(emboldened);
+            }
+            painter.add(mesh);
+        }
+        true
     }
 
     /// Red outline for image fills whose source is missing or undecodable
@@ -1733,5 +1878,91 @@ mod image_fill_clip_tests {
             Color32::WHITE,
         );
         assert_eq!(mesh.vertices.len(), 4);
+    }
+}
+
+#[cfg(test)]
+mod real_text_tests {
+    use super::*;
+
+    fn text_state(body: &str) -> (AppState, String) {
+        let mut state = AppState::default();
+        let obj = Object::new_text("T", body, 10.0, 20.0, 40.0);
+        let id = obj.id.clone();
+        state.document.add_object(obj);
+        (state, id)
+    }
+
+    #[test]
+    fn cache_bakes_real_outlines_and_invalidates_on_edit() {
+        let (mut state, id) = text_state("Ag");
+        let mut w = CanvasWidget::new();
+        w.ensure_text_meshes(&state);
+        let (k1, n_tris, width, min_lx) = {
+            let (k, lines) = w.text_meshes.get(&id).expect("text cached");
+            let clines = lines.as_ref().expect("bundled Inter resolves");
+            assert_eq!(clines.len(), 1);
+            assert!(!clines[0].tris.is_empty(), "glyphs triangulate");
+            assert!(clines[0].width > 0.0);
+            let min_lx = clines[0]
+                .tris
+                .iter()
+                .flat_map(|t| t.iter().map(|p| p.x))
+                .fold(f64::MAX, f64::min);
+            (*k, clines[0].tris.len(), clines[0].width, min_lx)
+        };
+        assert!(n_tris > 0 && width > 0.0);
+        // Triangles live in local space (origin-anchored): the object sits
+        // at x=10, so world ink would start at >= 10.
+        assert!(min_lx < 10.0, "local space: {min_lx}");
+
+        if let Some(o) = state.document.find_object_mut(&id) {
+            if let ObjectType::Text { text, .. } = &mut o.object_type {
+                *text = "AgA".to_string();
+            }
+        }
+        w.ensure_text_meshes(&state);
+        let k2 = w.text_meshes.get(&id).unwrap().0;
+        assert_ne!(k1, k2, "edit re-bakes");
+        w.ensure_text_meshes(&state);
+        assert_eq!(k2, w.text_meshes.get(&id).unwrap().0, "no-op keeps cache");
+    }
+
+    #[test]
+    fn cjk_in_latin_face_falls_back() {
+        // Bundled Inter has no kana: the whole object goes legacy (UI
+        // cascade Noto) instead of a ransom note of mock blocks.
+        let mut state = AppState::default();
+        let style = TextStyle::new("Inter", 40.0);
+        let obj = Object::new_text_with_style("T", "あ", 0.0, 0.0, style);
+        let id = obj.id.clone();
+        state.document.add_object(obj);
+        let mut w = CanvasWidget::new();
+        w.ensure_text_meshes(&state);
+        let (_, lines) = w.text_meshes.get(&id).expect("text cached");
+        assert!(lines.is_none(), "legacy egui path draws this one");
+    }
+
+    #[test]
+    fn removed_objects_leave_the_cache() {
+        let (mut state, id) = text_state("bye");
+        let mut w = CanvasWidget::new();
+        w.ensure_text_meshes(&state);
+        assert!(w.text_meshes.contains_key(&id));
+        state.document.layers[0].objects.clear();
+        w.ensure_text_meshes(&state);
+        assert!(!w.text_meshes.contains_key(&id));
+    }
+
+    #[test]
+    fn draw_lines_mirror_wrap_settings() {
+        let plain = TextStyle::new("Inter", 10.0);
+        assert_eq!(text_draw_lines("a\nb", &plain), vec!["a", "b"]);
+        let mut wrapped = TextStyle::new("Inter", 10.0);
+        wrapped.word_wrap = true;
+        wrapped.max_width = Some(5.0);
+        let lines = text_draw_lines("AAAA", &wrapped);
+        assert!(lines.len() > 1, "narrow width wraps: {lines:?}");
+        assert_eq!(lines.concat(), "AAAA");
     }
 }

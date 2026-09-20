@@ -301,10 +301,25 @@ pub const FAUX_ITALIC_SHEAR: f64 = 0.2126;
 
 /// Convert a text string into an outlined vector PathData with proper kerning and size,
 /// using the requested TextStyle and real font glyph outlines via ttf-parser.
+/// Falls back to mock block glyphs when no face resolves.
 pub fn text_to_outline_path_with_style(
     text: &str,
     style: &crate::core::document::TextStyle,
 ) -> PathData {
+    try_text_to_outline_path_with_style(text, style)
+        .unwrap_or_else(|| mock_text_outline(text, style))
+}
+
+/// Real-face outlines only: `None` when no font face resolves, or when the
+/// face lacks any glyph in the run (all-or-nothing, so the caller can fall
+/// back to a coherent renderer — e.g. CJK text in a Latin-only face falls
+/// back to the UI cascade's Noto instead of a ransom note of mock blocks).
+/// Single-line: the caller splits/wraps multi-line text itself so per-line
+/// bboxes stay available for anchoring.
+pub fn try_text_to_outline_path_with_style(
+    text: &str,
+    style: &crate::core::document::TextStyle,
+) -> Option<PathData> {
     let font_size = style.font_size;
     let letter_spacing = style.letter_spacing;
     let registry = super::font::FontRegistry::global();
@@ -316,7 +331,7 @@ pub fn text_to_outline_path_with_style(
     ) && registry.needs_synthetic_style(&style.font_family, style.font_weight, style.font_style);
 
     // Attempt to extract real glyph outlines from the resolved font face
-    let extracted = registry.query_face_data(
+    let extracted: Option<Option<PathData>> = registry.query_face_data(
         &style.font_family,
         style.font_weight,
         style.font_style,
@@ -369,14 +384,11 @@ pub fn text_to_outline_path_with_style(
                                 * scale;
                             current_x += adv + letter_spacing;
                         } else {
-                            // Fallback to mock glyph if glyph missing in face
-                            prev_glyph = None;
-                            let char_width = font_size * 0.6;
-                            let mut glyph = get_glyph_outline_path(ch);
-                            let matrix = [char_width, 0.0, 0.0, font_size, current_x, -font_size];
-                            glyph.transform(&matrix);
-                            combined.elements.extend(glyph.elements);
-                            current_x += char_width * 1.1 + letter_spacing;
+                            // Face lacks this glyph: fail the whole run so
+                            // the caller falls back coherently (mock blocks
+                            // stay in `mock_text_outline`, used by the
+                            // lenient wrapper below).
+                            return None;
                         }
                     }
                     if faux_italic {
@@ -392,9 +404,25 @@ pub fn text_to_outline_path_with_style(
     );
 
     if let Some(Some(path)) = extracted {
-        return path;
+        return Some(path);
     }
 
+    None
+}
+
+/// Mock block-glyph fallback used when no font face resolves (keeps
+/// *something* visible instead of dropping the text silently).
+fn mock_text_outline(text: &str, style: &crate::core::document::TextStyle) -> PathData {
+    let font_size = style.font_size;
+    let letter_spacing = style.letter_spacing;
+    let faux_italic = !matches!(
+        style.font_style,
+        crate::core::document::FontStyle::Normal
+    ) && super::font::FontRegistry::global().needs_synthetic_style(
+        &style.font_family,
+        style.font_weight,
+        style.font_style,
+    );
     // Fallback: mock glyph outline generator
     let mut combined = PathData::new();
     let char_width = font_size * 0.6;

@@ -10,6 +10,7 @@ pub use rendering::sample_gradient_stops;
 use crate::core::document::{Object, ObjectType};
 use crate::core::path::AnchorPoint;
 use crate::core::state::{AppState, HandleCorner, Tool};
+
 use crate::gpu::GpuRenderer;
 use crate::tools::pen::PenState;
 use crate::tools::pixel::PixelStroke;
@@ -85,6 +86,10 @@ pub struct CanvasWidget {
     pub gpu_renderer: Option<GpuRenderer>,
     image_textures: std::collections::HashMap<String, egui::TextureHandle>,
     pixel_textures: std::collections::HashMap<String, (egui::TextureHandle, u64)>,
+    /// Baked text outlines: object id → (shape key, per-line meshes).
+    /// `None` meshes mean "no real face" (legacy egui-font path draws).
+    text_meshes:
+        std::collections::HashMap<String, (u64, Option<Vec<rendering::CachedTextLine>>)>,
 }
 
 struct NodeEditState {
@@ -123,6 +128,7 @@ impl CanvasWidget {
             gpu_renderer: None,
             image_textures: std::collections::HashMap::new(),
             pixel_textures: std::collections::HashMap::new(),
+            text_meshes: std::collections::HashMap::new(),
         }
     }
 
@@ -235,6 +241,70 @@ impl CanvasWidget {
             }
         }
         self.pixel_textures.retain(|id, _| live.contains(id));
+    }
+
+    /// Bake text outlines into local-space triangle meshes (real typeface
+    /// on canvas, including kerning and faux-italic). Re-bakes only when
+    /// the shape key changes; per-frame drawing just transforms the cached
+    /// vertices. Objects without a resolvable face cache `None` and keep
+    /// the legacy egui-font path.
+    fn ensure_text_meshes(&mut self, state: &AppState) {
+        use std::collections::HashSet;
+        let mut live: HashSet<String> = HashSet::new();
+        let mut stack: Vec<&crate::core::document::Object> = state
+            .document
+            .layers
+            .iter()
+            .flat_map(|l| l.objects.iter())
+            .collect();
+        while let Some(obj) = stack.pop() {
+            match &obj.object_type {
+                crate::core::document::ObjectType::Text { text, style, .. } => {
+                    live.insert(obj.id.clone());
+                    let key = rendering::text_shape_key(text, style);
+                    let stale = self
+                        .text_meshes
+                        .get(&obj.id)
+                        .map(|(k, _)| *k != key)
+                        .unwrap_or(true);
+                    if !stale {
+                        continue;
+                    }
+                    let mut real = true;
+                    let mut lines = Vec::new();
+                    for line in rendering::text_draw_lines(text, style) {
+                        match crate::core::text_path::try_text_to_outline_path_with_style(
+                            &line, style,
+                        ) {
+                            Some(ol) => {
+                                let width = ol
+                                    .bounding_box()
+                                    .map(|(mn, mx)| mx.x - mn.x)
+                                    .unwrap_or(0.0);
+                                lines.push(rendering::CachedTextLine {
+                                    tris: ol.to_triangles(12),
+                                    width,
+                                });
+                            }
+                            None => {
+                                real = false;
+                                break;
+                            }
+                        }
+                    }
+                    self.text_meshes.insert(
+                        obj.id.clone(),
+                        (key, real.then_some(lines)),
+                    );
+                }
+                crate::core::document::ObjectType::Group(children)
+                | crate::core::document::ObjectType::ClippingMask { children } => {
+                    stack.extend(children.iter());
+                }
+                _ => {}
+            }
+        }
+        self.text_meshes.retain(|id, _| live.contains(id));
     }
 
     /// Place raster bytes on the canvas centred at world `(cx, cy)`.
@@ -432,6 +502,7 @@ impl CanvasWidget {
         // Decode placed images ahead of drawing (texture cache).
         self.ensure_image_textures(ui.ctx(), state);
         self.ensure_pixel_textures(ui.ctx(), state);
+        self.ensure_text_meshes(state);
 
         // Handle files dropped onto the canvas: raster images are placed,
         // documents are ignored here (use File > Open).
