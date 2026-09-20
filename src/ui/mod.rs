@@ -20,5 +20,5 @@ pub use onboarding_tour::OnboardingTour;
 pub use panels::*;
 pub use preferences_dialog::PreferencesDialog;
 #[allow(unused_imports)]
-pub use theme::{apply_adobe_theme, setup_custom_fonts};
+pub use theme::{apply_adobe_theme, build_ui_font_definitions, setup_custom_fonts, UiFontSet};
 pub use timeline_widget::TimelineWidget;

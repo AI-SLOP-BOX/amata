@@ -4,12 +4,32 @@ use eframe::egui::{
 };
 use std::sync::Arc;
 
-/// Setup refined high-legibility UI typography: Inter (Latin, Digits, Symbols) + LINE Seed JP (Japanese CJK)
-/// Prioritized cascade: Inter -> LINE Seed JP -> Noto Sans JP / Hiragino -> OS system fallbacks
-pub fn setup_custom_fonts(ctx: &egui::Context) {
-    let mut fonts = FontDefinitions::default();
+/// UI font bundle assembled without an egui context (testable).
+pub struct UiFontSet {
+    pub defs: FontDefinitions,
+    /// Name of the Latin font at the head of the cascade (`None` if missing).
+    pub latin: Option<String>,
+    /// Name of the CJK font at the head of the cascade (`None` if missing).
+    pub japanese: Option<String>,
+    /// Non-fatal problems (logged as warnings by the caller).
+    pub warnings: Vec<String>,
+}
 
-    // 1. Primary Latin & Number Font: Inter
+/// Build the UI font cascade: Inter (Latin) → Japanese CJK → egui defaults.
+///
+/// Every candidate is *verified* before use (parses as a font AND covers a
+/// probe glyph). This matters because the old code accepted `.ttc`
+/// collections, which egui/ab_glyph cannot parse — the file read succeeded
+/// but every Japanese glyph came out as tofu on machines without a lucky
+/// single-file CJK font. `.ttc` candidates are therefore skipped outright.
+///
+/// Priority: user/project files → bundled `assets/fonts` (guaranteed) →
+/// egui embedded defaults (last resort, likely tofu for CJK).
+pub fn build_ui_font_definitions() -> UiFontSet {
+    let mut fonts = FontDefinitions::default();
+    let mut warnings = Vec::new();
+
+    // 1. Latin: project file first, bundled Inter as the guarantee.
     let inter_candidates = [
         "assets/fonts/Inter.ttf",
         "/System/Library/Fonts/Supplemental/Inter.ttf",
@@ -17,83 +37,120 @@ pub fn setup_custom_fonts(ctx: &egui::Context) {
         "C:\\Windows\\Fonts\\Inter-Regular.ttf",
         "/usr/share/fonts/truetype/inter/Inter-Regular.ttf",
     ];
-
-    let mut inter_loaded = false;
-    for path in inter_candidates {
-        if let Ok(bytes) = std::fs::read(path) {
+    let mut inter_bytes: Option<Vec<u8>> =
+        inter_candidates.iter().find_map(|p| std::fs::read(p).ok());
+    if inter_bytes.is_none() {
+        inter_bytes = Some(include_bytes!("../../assets/fonts/Inter.ttf").to_vec());
+    }
+    let latin = match inter_bytes {
+        Some(bytes) if font_covers(&bytes, 'A') => {
             fonts
                 .font_data
                 .insert("inter".to_owned(), Arc::new(FontData::from_owned(bytes)));
-            inter_loaded = true;
-            log::info!("Loaded primary Latin UI font (Inter): {}", path);
-            break;
+            log::info!("UI Latin font: Inter");
+            Some("inter".to_owned())
         }
-    }
+        _ => {
+            warnings.push("Inter failed verification; Latin falls back to egui defaults".into());
+            None
+        }
+    };
 
-    // 2. Primary Japanese Font: LINE Seed JP (with fallback to Noto Sans JP / Hiragino Sans)
+    // 2. Japanese CJK: user fonts first (LINE Seed JP, Noto), bundled
+    // NotoSansJP-Regular as the guarantee. Single-file fonts only.
     let mut jp_candidates: Vec<std::path::PathBuf> = Vec::new();
-
-    // User font directory
     if let Ok(home) = std::env::var("HOME") {
         let home_p = std::path::PathBuf::from(home);
-        // Priority 1: LINE Seed JP
         jp_candidates.push(home_p.join("Library/Fonts/LINESeedJP_OTF_Rg.otf"));
-        jp_candidates.push(home_p.join("Library/Fonts/LINESeedJP_OTF_Bd.otf"));
         jp_candidates.push(home_p.join("Library/Fonts/LINESeedJP_TTF_Rg.ttf"));
         jp_candidates.push(home_p.join("Library/Fonts/LINESeedJP-Regular.otf"));
         jp_candidates.push(home_p.join(".local/share/fonts/LINESeedJP_OTF_Rg.otf"));
-        // Priority 2: Noto Sans JP
-        jp_candidates.push(home_p.join("Library/Fonts/NotoSansJP-Medium.ttf"));
         jp_candidates.push(home_p.join("Library/Fonts/NotoSansJP-Regular.ttf"));
+        jp_candidates.push(home_p.join("Library/Fonts/NotoSansJP-Regular.otf"));
+        jp_candidates.push(home_p.join(".local/share/fonts/NotoSansJP-Regular.ttf"));
+        jp_candidates.push(home_p.join(".fonts/NotoSansJP-Regular.ttf"));
     }
+    jp_candidates.push(std::path::PathBuf::from("assets/fonts/NotoSansJP-Regular.ttf"));
+    jp_candidates.push(std::path::PathBuf::from("/Library/Fonts/LINESeedJP_OTF_Rg.otf"));
+    jp_candidates.push(std::path::PathBuf::from("/usr/share/fonts/NotoSansJP-Regular.ttf"));
 
-    // System font directories
-    jp_candidates.push(std::path::PathBuf::from(
-        "/Library/Fonts/LINESeedJP_OTF_Rg.otf",
-    ));
-    jp_candidates.push(std::path::PathBuf::from(
-        "/Library/Fonts/LINESeedJP_TTF_Rg.ttf",
-    ));
-    jp_candidates.push(std::path::PathBuf::from(
-        "/System/Library/Fonts/Hiragino Sans GB.ttc",
-    ));
-    jp_candidates.push(std::path::PathBuf::from(
-        "/System/Library/Fonts/ヒラギノ角ゴシック W3.ttc",
-    ));
-    jp_candidates.push(std::path::PathBuf::from("/Library/Fonts/Arial Unicode.ttf"));
-    jp_candidates.push(std::path::PathBuf::from("C:\\Windows\\Fonts\\meiryo.ttc"));
-    jp_candidates.push(std::path::PathBuf::from("C:\\Windows\\Fonts\\msgothic.ttc"));
-
-    let mut jp_loaded = false;
-    for path in &jp_candidates {
-        if let Ok(bytes) = std::fs::read(path) {
+    let mut jp_bytes: Option<(Vec<u8>, String)> = jp_candidates.iter().find_map(|p| {
+        // Collections need a face index egui can't address reliably;
+        // skip instead of installing tofu.
+        if p.extension().and_then(|e| e.to_str()) == Some("ttc") {
+            return None;
+        }
+        let bytes = std::fs::read(p).ok()?;
+        if !font_covers(&bytes, 'あ') {
+            return None;
+        }
+        log::info!("UI Japanese font candidate: {}", p.display());
+        Some((bytes, p.display().to_string()))
+    });
+    if jp_bytes.is_none() {
+        let bytes = include_bytes!("../../assets/fonts/NotoSansJP-Regular.ttf").to_vec();
+        if font_covers(&bytes, 'あ') {
+            jp_bytes = Some((bytes, "bundled assets/fonts/NotoSansJP-Regular.ttf".into()));
+        }
+    }
+    let japanese = match jp_bytes {
+        Some((bytes, source)) => {
             fonts.font_data.insert(
                 "jp_ui_font".to_owned(),
                 Arc::new(FontData::from_owned(bytes)),
             );
-            jp_loaded = true;
-            log::info!("Loaded Japanese UI font: {}", path.display());
-            break;
+            log::info!("UI Japanese font: {source}");
+            Some("jp_ui_font".to_owned())
         }
-    }
+        None => {
+            warnings.push("No usable CJK font found; Japanese UI may show tofu".into());
+            None
+        }
+    };
 
-    // Assemble font cascade: Inter -> LINE Seed JP / CJK -> egui default fallbacks
+    // 3. Assemble the cascade, keeping egui's embedded fonts as last resort.
     if let Some(prop) = fonts.families.get_mut(&FontFamily::Proportional) {
-        if jp_loaded {
+        if japanese.is_some() {
             prop.insert(0, "jp_ui_font".to_owned());
         }
-        if inter_loaded {
+        if latin.is_some() {
             prop.insert(0, "inter".to_owned());
         }
     }
-
     if let Some(mono) = fonts.families.get_mut(&FontFamily::Monospace) {
-        if inter_loaded {
+        if japanese.is_some() {
+            mono.insert(0, "jp_ui_font".to_owned());
+        }
+        if latin.is_some() {
             mono.insert(0, "inter".to_owned());
         }
     }
 
-    ctx.set_fonts(fonts);
+    UiFontSet {
+        defs: fonts,
+        latin,
+        japanese,
+        warnings,
+    }
+}
+
+/// True when `bytes` parse as a single font containing `probe`.
+fn font_covers(bytes: &[u8], probe: char) -> bool {
+    match ttf_parser::Face::parse(bytes, 0) {
+        Ok(face) => face.glyph_index(probe).is_some(),
+        Err(_) => false,
+    }
+}
+
+/// Setup refined high-legibility UI typography: Inter (Latin) + Japanese CJK.
+/// Prioritized cascade: Inter → CJK → egui defaults. See
+/// [`build_ui_font_definitions`].
+pub fn setup_custom_fonts(ctx: &egui::Context) {
+    let set = build_ui_font_definitions();
+    for w in &set.warnings {
+        log::warn!("{w}");
+    }
+    ctx.set_fonts(set.defs);
 }
 
 /// Apply refined Creative Cloud Charcoal Theme — precisely matched to Illustrator CC reference.
@@ -199,4 +256,43 @@ pub fn apply_adobe_theme(ctx: &egui::Context) {
             FontId::new(10.5, FontFamily::Monospace),
         );
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn bundled_fonts_cover_their_scripts() {
+        let inter = include_bytes!("../../assets/fonts/Inter.ttf");
+        assert!(font_covers(inter, 'A'), "Inter must cover Latin");
+        assert!(!font_covers(inter, 'あ'), "Inter has no kana (fallback required)");
+        let noto = include_bytes!("../../assets/fonts/NotoSansJP-Regular.ttf");
+        assert!(font_covers(noto, 'A'), "Noto JP must cover Latin");
+        assert!(font_covers(noto, 'あ'), "Noto JP must cover hiragana");
+        assert!(font_covers(noto, '漢'), "Noto JP must cover ideographs");
+    }
+
+    #[test]
+    fn cascade_orders_latin_before_cjk_before_defaults() {
+        // Bundled fonts guarantee both slots regardless of machine fonts.
+        let set = build_ui_font_definitions();
+        assert_eq!(set.latin.as_deref(), Some("inter"));
+        assert_eq!(set.japanese.as_deref(), Some("jp_ui_font"));
+        let prop = &set.defs.families[&FontFamily::Proportional];
+        assert!(prop.len() >= 3, "cascade keeps egui defaults: {prop:?}");
+        assert_eq!(prop[0], "inter");
+        assert_eq!(prop[1], "jp_ui_font");
+        let mono = &set.defs.families[&FontFamily::Monospace];
+        assert!(mono.contains(&"jp_ui_font".to_owned()), "mono needs CJK too: {mono:?}");
+    }
+
+    #[test]
+    fn ttc_bytes_fail_verification() {
+        // A collection is not a font: verification must reject it so we
+        // never install tofu (regression guard for the old .ttc candidates).
+        let fake_ttc = b"ttcf\x00\x01\x00\x00\x00\x00\x00\x02garbage";
+        assert!(!font_covers(fake_ttc, 'あ'));
+        assert!(!font_covers(b"not a font", 'A'));
+    }
 }
