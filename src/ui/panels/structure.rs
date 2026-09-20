@@ -140,6 +140,7 @@ impl LayerPanel {
                             ObjectType::ClippingMask { .. } => "🎭",
                             ObjectType::Use { .. } => "❖",
                             ObjectType::Image { .. } => "🖼",
+                            ObjectType::PixelArt(_) => "👾",
                         };
                         let obj_text = format!("{icon} {}", obj.name);
 

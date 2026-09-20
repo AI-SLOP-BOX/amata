@@ -119,6 +119,7 @@ impl IrasuApp {
                             ("パスファインダー", ActiveTab::Pathfinder),
                             ("3D & VFX", ActiveTab::ThreeDAndVfx),
                             ("ジェネレーティブ幾何学", ActiveTab::Generative),
+                            ("ドット絵", ActiveTab::PixelArt),
                             ("アセット書き出し", ActiveTab::Export),
                             ("スマートガイド設定", ActiveTab::Guides),
                         ] {
@@ -275,6 +276,9 @@ impl IrasuApp {
                         ui.add_space(8.0);
                         ui.separator();
                         ShortcutsHelpPanel::show(ui, &mut self.state);
+                    }
+                    ActiveTab::PixelArt => {
+                        PixelPanel::show(ui, &mut self.state);
                     }
                 });
             });

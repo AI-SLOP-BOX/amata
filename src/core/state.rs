@@ -19,6 +19,9 @@ pub enum Tool {
     Eraser,
     ShapeBuilder,
     Zoom,
+    PixelPencil,
+    PixelEraser,
+    PixelBucket,
 }
 
 impl Tool {
@@ -40,6 +43,9 @@ impl Tool {
             Tool::Eraser => "Eraser",
             Tool::ShapeBuilder => "Shape Builder",
             Tool::Zoom => "Zoom",
+            Tool::PixelPencil => "Pixel Pencil",
+            Tool::PixelEraser => "Pixel Eraser",
+            Tool::PixelBucket => "Pixel Bucket",
         }
     }
 
@@ -61,6 +67,9 @@ impl Tool {
             Tool::Eraser => "⌫",
             Tool::ShapeBuilder => "⊕",
             Tool::Zoom => "⊕",
+            Tool::PixelPencil => "▦",
+            Tool::PixelEraser => "▧",
+            Tool::PixelBucket => "🪣",
         }
     }
 
@@ -82,6 +91,9 @@ impl Tool {
             Tool::Eraser => "E",
             Tool::ShapeBuilder => "M",
             Tool::Zoom => "Z",
+            Tool::PixelPencil => "X",
+            Tool::PixelEraser => "C",
+            Tool::PixelBucket => "K",
         }
     }
 }
@@ -185,6 +197,12 @@ pub struct AppState {
     pub timeline_was_playing: bool,
     // Pathfinder simplify tolerance (squared px area) remembered by UI.
     pub simplify_tolerance: f64,
+    // Pixel-art (dot絵) editing: selected palette index for the pencil /
+    // bucket, and whether the per-cell grid overlay is drawn.
+    pub pixel_palette_index: usize,
+    pub pixel_show_grid: bool,
+    /// Edge length for newly created square pixel canvases.
+    pub pixel_new_size: u32,
     // In-progress panel transform gesture: (object id, transform at gesture
     // start). Committed as one undo step when the gesture ends.
     pub pending_transforms: Vec<(String, Transform)>,
@@ -320,6 +338,9 @@ impl Default for AppState {
             isolated_group_id: None,
             timeline_was_playing: false,
             simplify_tolerance: 5.0,
+            pixel_palette_index: 0,
+            pixel_show_grid: true,
+            pixel_new_size: 32,
             pending_transforms: Vec::new(),
             pending_objects: Vec::new(),
             pending_layers: Vec::new(),

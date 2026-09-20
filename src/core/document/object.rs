@@ -249,6 +249,9 @@ pub enum ObjectType {
         height: f64,
         png_bytes: Vec<u8>,
     },
+    /// Pixel-art layer (dot絵): fixed grid of palette indices, 1 cell = 1
+    /// local unit. See [`crate::core::pixel::PixelArt`].
+    PixelArt(crate::core::pixel::PixelArt),
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -700,8 +703,7 @@ impl Object {
         width: f64,
         height: f64,
         png_bytes: Vec<u8>,
-    ) -> Self {
-        Self {
+    ) -> Self {        Self {
             id: Uuid::new_v4().to_string(),
             name: name.to_string(),
             object_type: ObjectType::Image {
@@ -727,7 +729,33 @@ impl Object {
         }
     }
 
-    /// Combine multiple objects into a single Compound Path (holes are created where subpaths overlap using EvenOdd rule)
+    pub fn new_pixel_art(
+        name: &str,
+        x: f64,
+        y: f64,
+        pixels: crate::core::pixel::PixelArt,
+    ) -> Self {
+        Self {
+            id: Uuid::new_v4().to_string(),
+            name: name.to_string(),
+            object_type: ObjectType::PixelArt(pixels),
+            transform: Transform {
+                x,
+                y,
+                ..Default::default()
+            },
+            fill: None,
+            stroke: None,
+            shadow: None,
+            glow: None,
+            appearance: AppearanceStack::default(),
+            opacity: 1.0,
+            width_profile: None,
+            blend_mode: BlendMode::Normal,
+            visible: true,
+            locked: false,
+        }
+    }
     pub fn make_compound_path(objects: &[Object]) -> Option<Self> {
         if objects.is_empty() {
             return None;
@@ -835,6 +863,9 @@ impl Object {
             ObjectType::Image { width, height, .. } => {
                 PathData::from_rect(0.0, 0.0, *width, *height, 0.0)
             }
+            ObjectType::PixelArt(p) => {
+                PathData::from_rect(0.0, 0.0, p.width as f64, p.height as f64, 0.0)
+            }
         }
     }
 
@@ -905,6 +936,9 @@ impl Object {
             }
             ObjectType::Image { width, height, .. } => {
                 lx >= 0.0 && lx <= *width && ly >= 0.0 && ly <= *height
+            }
+            ObjectType::PixelArt(p) => {
+                lx >= 0.0 && lx <= p.width as f64 && ly >= 0.0 && ly <= p.height as f64
             }
         }
     }

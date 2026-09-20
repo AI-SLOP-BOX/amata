@@ -604,6 +604,82 @@ pub fn icon_more_dots(p: &Painter, rect: Rect, color: Color32) {
 
 // ─── Render Helpers ──────────────────────────────────────────────────────────
 
+/// Pixel pencil: 2x2 dotted grid with one filled cell.
+pub fn icon_pixel_pencil(p: &Painter, rect: Rect, color: Color32) {
+    let r = pad(rect, 0.12);
+    let cell = r.width().min(r.height()) / 2.6;
+    let x0 = r.center().x - cell;
+    let y0 = r.center().y - cell;
+    for j in 0..2 {
+        for i in 0..2 {
+            let c = Rect::from_min_size(
+                Pos2::new(x0 + i as f32 * cell * 1.15, y0 + j as f32 * cell * 1.15),
+                Vec2::splat(cell),
+            );
+            if i == 1 && j == 0 {
+                p.rect_filled(c, CornerRadius::same(1), color);
+            } else {
+                p.rect_stroke(
+                    c,
+                    CornerRadius::same(1),
+                    Stroke::new(1.2_f32, color),
+                    egui::StrokeKind::Middle,
+                );
+            }
+        }
+    }
+}
+
+/// Pixel eraser: dotted grid with a diagonal strike.
+pub fn icon_pixel_eraser(p: &Painter, rect: Rect, color: Color32) {
+    let r = pad(rect, 0.12);
+    let cell = r.width().min(r.height()) / 2.6;
+    let x0 = r.center().x - cell;
+    let y0 = r.center().y - cell;
+    for j in 0..2 {
+        for i in 0..2 {
+            let c = Rect::from_min_size(
+                Pos2::new(x0 + i as f32 * cell * 1.15, y0 + j as f32 * cell * 1.15),
+                Vec2::splat(cell),
+            );
+            p.rect_stroke(
+                c,
+                CornerRadius::same(1),
+                Stroke::new(1.0_f32, color),
+                egui::StrokeKind::Middle,
+            );
+        }
+    }
+    p.line_segment(
+        [
+            Pos2::new(r.min.x + r.width() * 0.15, r.max.y - r.height() * 0.15),
+            Pos2::new(r.max.x - r.width() * 0.15, r.min.y + r.height() * 0.15),
+        ],
+        Stroke::new(2.0_f32, Color32::from_rgb(235, 120, 140)),
+    );
+}
+
+/// Pixel bucket: tilted square pouring one drop.
+pub fn icon_pixel_bucket(p: &Painter, rect: Rect, color: Color32) {
+    let r = pad(rect, 0.12);
+    let side = r.width().min(r.height()) * 0.52;
+    let c = Rect::from_center_size(
+        Pos2::new(r.center().x - side * 0.15, r.center().y - side * 0.1),
+        Vec2::splat(side),
+    );
+    p.rect_stroke(
+        c,
+        CornerRadius::same(1),
+        Stroke::new(1.6_f32, color),
+        egui::StrokeKind::Middle,
+    );
+    p.circle_filled(
+        Pos2::new(r.center().x + side * 0.55, r.center().y + side * 0.55),
+        2.6,
+        Color32::from_rgb(120, 180, 255),
+    );
+}
+
 /// Paint a tool's vector icon into the given rect.
 pub fn paint_tool_icon(p: &Painter, tool: crate::core::state::Tool, rect: Rect, color: Color32) {
     use crate::core::state::Tool;
@@ -624,6 +700,9 @@ pub fn paint_tool_icon(p: &Painter, tool: crate::core::state::Tool, rect: Rect, 
         Tool::Eraser => icon_eraser(p, rect, color),
         Tool::ShapeBuilder => icon_shape_builder(p, rect, color),
         Tool::Zoom => icon_zoom(p, rect, color),
+        Tool::PixelPencil => icon_pixel_pencil(p, rect, color),
+        Tool::PixelEraser => icon_pixel_eraser(p, rect, color),
+        Tool::PixelBucket => icon_pixel_bucket(p, rect, color),
     }
 }
 

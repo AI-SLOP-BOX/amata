@@ -1,6 +1,6 @@
 use crate::core::document::{Document, FontStyle, Object, ObjectType, TextAnchor, Transform};
 use crate::core::effects::color_adjust_matrix;
-use crate::core::path::{
+use image::ImageEncoder;use crate::core::path::{
     FillType, PathData, PathElement, StrokeStyle,
 };
 use super::util::*;
@@ -769,6 +769,39 @@ fn render_object_to_svg(
             svg.push_str(&format!(
                 "  <path{id_attr} d=\"{d}\"{fill}{stroke}{effect_attr} />\n"
             ));
+        }
+        ObjectType::PixelArt(p) => {
+            // Exact grid size (no scaling), so the pixels stay crisp by
+            // construction — same shape as placed Image objects, which the
+            // importer already round-trips.
+            let (w, h) = (p.width, p.height);
+            let raw = p.to_rgba8();
+            let mut png = Vec::new();
+            let ok = image::codecs::png::PngEncoder::new(&mut png)
+                .write_image(&raw, w, h, image::ExtendedColorType::Rgba8)
+                .is_ok();
+            if !ok || png.is_empty() {
+                return;
+            }
+            let b64 = base64_encode(&png);
+            // image-rendering keeps integer-scale raster exports crisp:
+            // resvg maps pixelated to Nearest filtering. NOTE: usvg 0.48
+            // only picks this up from inline `style`, not from the
+            // presentation attribute, so both are emitted (browsers honor
+            // either; the attribute is the standards-clean one).
+            let rendering =
+                " image-rendering=\"pixelated\" style=\"image-rendering:pixelated\"";
+            if transform_has_linear_part(&obj.transform) {
+                let transform_attr = svg_transform_attr(&obj.transform);
+                svg.push_str(&format!(
+                    "  <image{id_attr} x=\"0\" y=\"0\" width=\"{w}\" height=\"{h}\" preserveAspectRatio=\"none\"{rendering} href=\"data:image/png;base64,{b64}\"{transform_attr}{effect_attr} />\n",
+                ));
+            } else {
+                svg.push_str(&format!(
+                    "  <image{id_attr} x=\"{}\" y=\"{}\" width=\"{w}\" height=\"{h}\" preserveAspectRatio=\"none\"{rendering} href=\"data:image/png;base64,{b64}\"{effect_attr} />\n",
+                    obj.transform.x, obj.transform.y
+                ));
+            }
         }
         ObjectType::Image {
             width,

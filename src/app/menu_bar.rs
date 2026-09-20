@@ -784,6 +784,7 @@ impl IrasuApp {
                             ActiveTab::VersionHistory => "バージョン履歴",
                             ActiveTab::Export => "Web・書き出し",
                             ActiveTab::Guides => "ガイド・配置",
+                            ActiveTab::PixelArt => "ドット絵",
                         })
                         .width(90.0)
                         .show_ui(ui, |ui| {
@@ -846,6 +847,15 @@ impl IrasuApp {
                                 .clicked()
                             {
                                 self.active_tab = ActiveTab::Export;
+                            }
+                            if ui
+                                .selectable_label(
+                                    self.active_tab == ActiveTab::PixelArt,
+                                    "ドット絵",
+                                )
+                                .clicked()
+                            {
+                                self.active_tab = ActiveTab::PixelArt;
                             }
                         });
                 });

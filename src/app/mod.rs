@@ -23,6 +23,7 @@ pub(super) enum ActiveTab {
     VersionHistory,
     Export,
     Guides,
+    PixelArt,
 }
 
 pub struct IrasuApp {

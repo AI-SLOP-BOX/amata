@@ -210,6 +210,29 @@ impl IrasuApp {
             });
     }
 
+    pub(super) fn tool_button(&mut self, ui: &mut egui::Ui, tool: Tool) {
+        let is_active = self.state.current_tool == tool;
+        let response = tool_icon_button(ui, tool, is_active, Vec2::new(32.0, 30.0))
+            .on_hover_text(format!("{} ({})", tool.name(), tool.shortcut()));
+
+        if response.clicked() {
+            if self.state.current_tool == Tool::Pen && self.canvas.pen_state.is_drawing {
+                if let Some(obj) = self.canvas.pen_state.finish_path(
+                    self.state.fill_color,
+                    self.state.stroke_color,
+                    self.state.stroke_width,
+                ) {
+                    let cmd = Box::new(crate::core::history::AddObjectCommand::new(obj));
+                    self.state
+                        .undo_manager
+                        .execute(cmd, &mut self.state.document);
+                }
+            }
+            self.state.previous_tool = self.state.current_tool;
+            self.state.current_tool = tool;
+        }
+    }
+
     pub(super) fn show_toolbar(&mut self, ctx: &egui::Context) {
         // Left Vertical Toolbar (Classic 2-Column Illustrator Grid)
         egui::SidePanel::left("toolbar")
@@ -229,42 +252,27 @@ impl IrasuApp {
                         (Tool::ShapeBuilder, Tool::Eyedropper),
                         (Tool::Hand, Tool::Zoom),
                     ];
+                    let pixel_tools = [
+                        Tool::PixelPencil,
+                        Tool::PixelEraser,
+                        Tool::PixelBucket,
+                    ];
 
                     for (t1, t2) in tool_pairs {
                         ui.horizontal(|ui| {
                             for tool in [t1, t2] {
-                                let is_active = self.state.current_tool == tool;
-                                let response =
-                                    tool_icon_button(ui, tool, is_active, Vec2::new(32.0, 30.0))
-                                        .on_hover_text(format!(
-                                            "{} ({})",
-                                            tool.name(),
-                                            tool.shortcut()
-                                        ));
-
-                                if response.clicked() {
-                                    if self.state.current_tool == Tool::Pen
-                                        && self.canvas.pen_state.is_drawing
-                                    {
-                                        if let Some(obj) = self.canvas.pen_state.finish_path(
-                                            self.state.fill_color,
-                                            self.state.stroke_color,
-                                            self.state.stroke_width,
-                                        ) {
-                                            let cmd = Box::new(
-                                                crate::core::history::AddObjectCommand::new(obj),
-                                            );
-                                            self.state
-                                                .undo_manager
-                                                .execute(cmd, &mut self.state.document);
-                                        }
-                                    }
-                                    self.state.previous_tool = self.state.current_tool;
-                                    self.state.current_tool = tool;
-                                }
+                                self.tool_button(ui, tool);
                             }
                         });
                     }
+
+                    // Pixel-art (dot絵) tools get their own row so the vector
+                    // pairs above stay untouched.
+                    ui.horizontal(|ui| {
+                        for tool in pixel_tools {
+                            self.tool_button(ui, tool);
+                        }
+                    });
 
                     ui.add_space(8.0);
                     ui.separator();

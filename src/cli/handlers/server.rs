@@ -137,6 +137,7 @@ fn object_type_name(object_type: &ObjectType) -> &'static str {
         ObjectType::ClippingMask { .. } => "clipping-mask",
         ObjectType::Use { .. } => "use",
         ObjectType::Image { .. } => "image",
+        ObjectType::PixelArt(_) => "pixel-art",
     }
 }
 

@@ -336,6 +336,58 @@ impl CanvasWidget {
                 let stroke = stroke_info.unwrap_or_else(|| Stroke::new(2.0_f32, Color32::BLACK));
                 painter.line_segment([p1, p2], stroke);
             }
+            ObjectType::PixelArt(p) => {
+                // Same UV-mapped quad as placed images; the texture itself
+                // is NEAREST-filtered (see ensure_pixel_textures) so dots
+                // stay crisp at any zoom.
+                let (w, h) = (p.width as f64, p.height as f64);
+                if let Some((tex, _)) = self.pixel_textures.get(&obj.id) {
+                    let corners = [
+                        to_screen(0.0, 0.0),
+                        to_screen(w, 0.0),
+                        to_screen(w, h),
+                        to_screen(0.0, h),
+                    ];
+                    let uvs = [
+                        Pos2::new(0.0, 0.0),
+                        Pos2::new(1.0, 0.0),
+                        Pos2::new(1.0, 1.0),
+                        Pos2::new(0.0, 1.0),
+                    ];
+                    let tint = Color32::from_rgba_unmultiplied(
+                        255,
+                        255,
+                        255,
+                        (opacity * 255.0).round().clamp(0.0, 255.0) as u8,
+                    );
+                    let mut mesh = egui::epaint::Mesh {
+                        texture_id: tex.id(),
+                        ..Default::default()
+                    };
+                    for (pos, uv) in corners.into_iter().zip(uvs) {
+                        mesh.vertices.push(egui::epaint::Vertex {
+                            pos,
+                            uv,
+                            color: tint,
+                        });
+                    }
+                    mesh.indices.extend([0, 1, 2, 0, 2, 3]);
+                    painter.add(mesh);
+                } else {
+                    let a = to_screen(0.0, 0.0);
+                    let b = to_screen(w, h);
+                    let r = egui::Rect::from_min_max(
+                        Pos2::new(a.x.min(b.x), a.y.min(b.y)),
+                        Pos2::new(a.x.max(b.x), a.y.max(b.y)),
+                    );
+                    painter.rect_stroke(
+                        r,
+                        0.0,
+                        Stroke::new(1.0_f32, Color32::from_rgb(200, 80, 80)),
+                        egui::StrokeKind::Outside,
+                    );
+                }
+            }
             ObjectType::Image { width, height, .. } => {
                 if let Some(tex) = self.image_textures.get(&obj.id) {
                     // UV-mapped quad so rotation/skew stay exact.

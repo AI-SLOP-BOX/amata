@@ -81,6 +81,15 @@ impl IrasuApp {
                 if i.key_pressed(egui::Key::Z) {
                     self.state.current_tool = Tool::Zoom;
                 }
+                if i.key_pressed(egui::Key::X) {
+                    self.state.current_tool = Tool::PixelPencil;
+                }
+                if i.key_pressed(egui::Key::C) {
+                    self.state.current_tool = Tool::PixelEraser;
+                }
+                if i.key_pressed(egui::Key::K) {
+                    self.state.current_tool = Tool::PixelBucket;
+                }
 
                 // Default Colors (D key)
                 if i.key_pressed(egui::Key::D) {

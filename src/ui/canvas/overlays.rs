@@ -1,5 +1,5 @@
 use super::{CanvasWidget, DragState, HANDLE_SIZE, RULER_WIDTH};
-use crate::core::document::Object;
+use crate::core::document::{Object, ObjectType};
 use crate::core::path::PathData;
 use crate::core::state::AppState;
 use egui::{Color32, FontId, Pos2, Rect, Stroke, StrokeKind, Vec2};
@@ -340,6 +340,99 @@ impl CanvasWidget {
                         }
                     }
                 }
+            }
+        }
+    }
+
+    /// Per-cell grid over every visible pixel-art object, plus a hover-cell
+    /// highlight while a pixel tool is active. Skipped below ~7 screen px
+    /// per cell (sub-pixel lines would just shimmer).
+    pub(super) fn draw_pixel_grid(
+        &self,
+        painter: &egui::Painter,
+        origin: Pos2,
+        state: &AppState,
+    ) {
+        if !state.pixel_show_grid {
+            return;
+        }
+        let pixel_tool = matches!(
+            state.current_tool,
+            crate::core::state::Tool::PixelPencil
+                | crate::core::state::Tool::PixelEraser
+                | crate::core::state::Tool::PixelBucket
+        );
+        let mut stack: Vec<&Object> = state
+            .document
+            .layers
+            .iter()
+            .flat_map(|l| l.objects.iter())
+            .collect();
+        while let Some(obj) = stack.pop() {
+            match &obj.object_type {
+                ObjectType::Group(children)
+                | ObjectType::ClippingMask { children } => {
+                    stack.extend(children.iter());
+                }
+                ObjectType::PixelArt(p) => {
+                    if !obj.visible {
+                        continue;
+                    }
+                    let m = obj.transform.matrix();
+                    // Screen length of one local unit (uniform-scale approx).
+                    let ux = (m[0] * m[0] + m[1] * m[1]).sqrt() as f32 * state.zoom;
+                    if ux < 7.0 {
+                        continue;
+                    }
+                    let to_screen = |lx: f64, ly: f64| -> Pos2 {
+                        let sx = m[0] * lx + m[2] * ly + m[4];
+                        let sy = m[1] * lx + m[3] * ly + m[5];
+                        Pos2::new(
+                            origin.x + sx as f32 * state.zoom,
+                            origin.y + sy as f32 * state.zoom,
+                        )
+                    };
+                    let thin = Stroke::new(
+                        1.0_f32,
+                        Color32::from_rgba_unmultiplied(255, 255, 255, 26),
+                    );
+                    for i in 0..=p.width {
+                        painter.line_segment(
+                            [to_screen(i as f64, 0.0), to_screen(i as f64, p.height as f64)],
+                            thin,
+                        );
+                    }
+                    for j in 0..=p.height {
+                        painter.line_segment(
+                            [to_screen(0.0, j as f64), to_screen(p.width as f64, j as f64)],
+                            thin,
+                        );
+                    }
+                    // Hover cell while painting.
+                    if pixel_tool {
+                        if let Some((wx, wy)) = state.cursor_world {
+                            let (lx, ly) = obj.transform.inverse_transform_point(wx, wy);
+                            if lx >= 0.0
+                                && ly >= 0.0
+                                && lx < p.width as f64
+                                && ly < p.height as f64
+                            {
+                                let (cx, cy) = (lx.floor(), ly.floor());
+                                let corners = [
+                                    to_screen(cx, cy),
+                                    to_screen(cx + 1.0, cy),
+                                    to_screen(cx + 1.0, cy + 1.0),
+                                    to_screen(cx, cy + 1.0),
+                                ];
+                                painter.add(egui::epaint::PathShape::closed_line(
+                                    corners.into_iter().collect(),
+                                    Stroke::new(1.5_f32, Color32::from_rgb(120, 200, 255)),
+                                ));
+                            }
+                        }
+                    }
+                }
+                _ => {}
             }
         }
     }

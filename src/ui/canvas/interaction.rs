@@ -10,10 +10,27 @@ impl CanvasWidget {
         state: &mut AppState,
         wx: f64,
         wy: f64,
-        _screen_pos: Pos2,
+        screen_pos: Pos2,
         _origin: Pos2,
         shift: bool,
     ) {
+        // Pixel tools paint on exact cells: ignore snapping.
+        let (rx, ry) = state.screen_to_world(screen_pos.x, screen_pos.y);
+        match state.current_tool {
+            Tool::PixelPencil => {
+                self.pixel_dab(state, rx, ry, false);
+                return;
+            }
+            Tool::PixelEraser => {
+                self.pixel_dab(state, rx, ry, true);
+                return;
+            }
+            Tool::PixelBucket => {
+                self.pixel_bucket(state, rx, ry);
+                return;
+            }
+            _ => {}
+        }
         match state.current_tool {
             Tool::Pen => {
                 if !self.pen_state.is_drawing {
@@ -62,6 +79,12 @@ impl CanvasWidget {
                 state.zoom_animation_progress = 0.0;
             }
             Tool::Eyedropper => {
+                // Pixel cells first: picking a dot selects its palette index.
+                if self.pixel_pick(state, rx, ry) {
+                    let prev = state.previous_tool;
+                    state.current_tool = prev;
+                    return;
+                }
                 if let Some(id) = self.select_state.hit_test(state, wx, wy) {
                     if let Some((_, obj)) = state.document.all_objects().find(|(_, o)| o.id == id) {
                         if let Some(ref fill) = obj.fill {

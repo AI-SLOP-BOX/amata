@@ -2,6 +2,7 @@ pub mod context_menu;
 pub mod drag;
 pub mod interaction;
 pub mod overlays;
+pub mod pixel;
 pub mod rendering;
 
 pub use rendering::sample_gradient_stops;
@@ -11,6 +12,7 @@ use crate::core::path::AnchorPoint;
 use crate::core::state::{AppState, HandleCorner, Tool};
 use crate::gpu::GpuRenderer;
 use crate::tools::pen::PenState;
+use crate::tools::pixel::PixelStroke;
 use crate::tools::select::SelectState;
 use egui::{Color32, FontId, Pos2, Rect, Sense, Stroke, StrokeKind, Ui, Vec2};
 use std::sync::Arc;
@@ -76,11 +78,13 @@ const RULER_WIDTH: f32 = 20.0_f32;
 
 pub struct CanvasWidget {
     pub pen_state: PenState,
+    pub pixel_stroke: Option<PixelStroke>,
     pub select_state: SelectState,
     drag: Option<DragState>,
     node_edit_state: NodeEditState,
     pub gpu_renderer: Option<GpuRenderer>,
     image_textures: std::collections::HashMap<String, egui::TextureHandle>,
+    pixel_textures: std::collections::HashMap<String, (egui::TextureHandle, u64)>,
 }
 
 struct NodeEditState {
@@ -112,11 +116,13 @@ impl CanvasWidget {
     pub fn new() -> Self {
         Self {
             pen_state: PenState::new(),
+            pixel_stroke: None,
             select_state: SelectState::new(),
             drag: None,
             node_edit_state: NodeEditState::new(),
             gpu_renderer: None,
             image_textures: std::collections::HashMap::new(),
+            pixel_textures: std::collections::HashMap::new(),
         }
     }
 
@@ -173,6 +179,62 @@ impl CanvasWidget {
             }
         }
         self.image_textures.retain(|id, _| live.contains(id));
+    }
+
+    /// Decode a pixel-art object into an egui texture (NEAREST so dots stay
+    /// crisp). Re-uploads only when the grid checksum changed, so drawing
+    /// strokes don't pay per-frame upload costs.
+    fn ensure_pixel_textures(&mut self, ctx: &egui::Context, state: &AppState) {
+        use std::collections::HashSet;
+        let mut live: HashSet<String> = HashSet::new();
+        let mut stack: Vec<&crate::core::document::Object> = state
+            .document
+            .layers
+            .iter()
+            .flat_map(|l| l.objects.iter())
+            .collect();
+        while let Some(obj) = stack.pop() {
+            match &obj.object_type {
+                crate::core::document::ObjectType::PixelArt(p) => {
+                    live.insert(obj.id.clone());
+                    let sum = p.checksum();
+                    let stale = self
+                        .pixel_textures
+                        .get(&obj.id)
+                        .map(|(_, s)| *s != sum)
+                        .unwrap_or(true);
+                    if stale {
+                        let raw = p.to_rgba8();
+                        let (w, h) = (p.width as usize, p.height as usize);
+                        if w > 0 && h > 0 && raw.len() == w * h * 4 {
+                            let pixels = raw
+                                .chunks_exact(4)
+                                .map(|px| {
+                                    egui::Color32::from_rgba_unmultiplied(
+                                        px[0], px[1], px[2], px[3],
+                                    )
+                                })
+                                .collect();
+                            let tex = ctx.load_texture(
+                                format!("{}#{}", obj.id, sum),
+                                egui::ColorImage {
+                                    size: [w, h],
+                                    pixels,
+                                },
+                                egui::TextureOptions::NEAREST,
+                            );
+                            self.pixel_textures.insert(obj.id.clone(), (tex, sum));
+                        }
+                    }
+                }
+                crate::core::document::ObjectType::Group(children)
+                | crate::core::document::ObjectType::ClippingMask { children } => {
+                    stack.extend(children.iter());
+                }
+                _ => {}
+            }
+        }
+        self.pixel_textures.retain(|id, _| live.contains(id));
     }
 
     /// Place raster bytes on the canvas centred at world `(cx, cy)`.
@@ -369,6 +431,7 @@ impl CanvasWidget {
 
         // Decode placed images ahead of drawing (texture cache).
         self.ensure_image_textures(ui.ctx(), state);
+        self.ensure_pixel_textures(ui.ctx(), state);
 
         // Handle files dropped onto the canvas: raster images are placed,
         // documents are ignored here (use File > Open).
@@ -471,6 +534,9 @@ impl CanvasWidget {
 
         // User cyan guidelines
         self.draw_user_guides(&painter, rect, origin, state);
+
+        // Pixel-art cell grid + hover cell (dot絵)
+        self.draw_pixel_grid(&painter, origin, state);
 
         // Active dragged guide preview
         if let Some(ref drag) = self.drag {
@@ -633,7 +699,13 @@ impl CanvasWidget {
                 };
             } else if matches!(
                 state.current_tool,
-                Tool::Eyedropper | Tool::Brush | Tool::Eraser | Tool::Pen
+                Tool::Eyedropper
+                    | Tool::Brush
+                    | Tool::Eraser
+                    | Tool::Pen
+                    | Tool::PixelPencil
+                    | Tool::PixelEraser
+                    | Tool::PixelBucket
             ) {
                 cursor = egui::CursorIcon::Crosshair;
             } else if state.current_tool == Tool::Text {
@@ -747,6 +819,19 @@ impl CanvasWidget {
                         }
                         Tool::Brush => {
                             self.drag = Some(DragState::new(DragMode::BrushDraw, wx, wy));
+                        }
+                        Tool::PixelPencil | Tool::PixelEraser | Tool::PixelBucket => {
+                            // Dots live on exact integer cells: never snap.
+                            let (rx, ry) = state.screen_to_world(screen_pos.x, screen_pos.y);
+                            match state.current_tool {
+                                Tool::PixelBucket => self.pixel_bucket(state, rx, ry),
+                                Tool::PixelPencil => {
+                                    self.pixel_stroke_begin(state, rx, ry, false);
+                                }
+                                _ => {
+                                    self.pixel_stroke_begin(state, rx, ry, true);
+                                }
+                            }
                         }
                         Tool::Eraser => {
                             self.drag = Some(DragState::new(DragMode::EraserDrag, wx, wy));
@@ -868,6 +953,14 @@ impl CanvasWidget {
                 if let Some(screen_pos) = response.interact_pointer_pos() {
                     let (wx, wy) = state.screen_to_world(screen_pos.x, screen_pos.y);
                     self.pen_state.drag_handle(wx, wy);
+                }
+            }
+
+            // Active pixel stroke follows the raw pointer (never snapped).
+            if self.pixel_stroke.is_some() {
+                if let Some(screen_pos) = response.interact_pointer_pos() {
+                    let (rx, ry) = state.screen_to_world(screen_pos.x, screen_pos.y);
+                    self.pixel_stroke_extend(state, rx, ry);
                 }
             }
 

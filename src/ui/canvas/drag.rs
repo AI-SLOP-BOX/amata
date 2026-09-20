@@ -10,6 +10,9 @@ impl CanvasWidget {
         shift_down: bool,
         alt_down: bool,
     ) {
+        // Pixel strokes don't use DragState; committing is a no-op unless a
+        // stroke is actually in flight.
+        self.pixel_stroke_end(state);
         if let Some(drag) = self.drag.take() {
             match drag.mode {
                 DragMode::CreateRect => {
