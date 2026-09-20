@@ -206,7 +206,21 @@ impl Default for RadialGradient {
     }
 }
 
-/// How an image fill tiles across the object's shape.
+/// How an image fill maps onto the object's shape.
+///
+/// The four modes mirror CSS `background-size` semantics so canvas preview,
+/// SVG export, and raster export can agree on one definition:
+///
+/// * [`ImageTileMode::Cover`] — uniform scale until the shape bbox is fully
+///   covered, centered, overflow cropped (SVG `preserveAspectRatio="xMidYMid
+///   slice"`).
+/// * [`ImageTileMode::Contain`] — uniform scale until the whole image fits
+///   inside the bbox, centered, empty bands left transparent (SVG
+///   `"xMidYMid meet"`).
+/// * [`ImageTileMode::Fit`] — non-uniform stretch to the bbox exactly,
+///   aspect ratio ignored (SVG `"none"`).
+/// * [`ImageTileMode::Tile`] — repeat at natural pixel size (1px = 1 world
+///   unit) anchored at the bbox origin (SVG `<pattern>` tiling).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ImageTileMode {
     #[serde(rename = "cover")]

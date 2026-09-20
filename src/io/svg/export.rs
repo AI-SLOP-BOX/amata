@@ -5,62 +5,67 @@ use crate::core::path::{
 };
 use super::util::*;
 
-/// Encode raw bytes as a base64 data URI (for `<image>` data attributes in SVG).
-fn base64_data_uri(mime: &str, bytes: &[u8]) -> String {
-    const CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut out = String::with_capacity(bytes.len() * 4 / 3 + 16);
-    let chunks = bytes.chunks(3);
-    for chunk in chunks {
-        let b0 = chunk[0] as usize;
-        let b1 = if chunk.len() > 1 { chunk[1] as usize } else { 0 };
-        let b2 = if chunk.len() > 2 { chunk[2] as usize } else { 0 };
-        let n = (b0 << 16) | (b1 << 8) | b2;
-        out.push(CHARS[((n >> 18) & 63) as usize] as char);
-        out.push(CHARS[((n >> 12) & 63) as usize] as char);
-        out.push(if chunk.len() > 1 {
-            CHARS[((n >> 6) & 63) as usize] as char
-        } else {
-            '='
-        });
-        out.push(if chunk.len() > 2 {
-            CHARS[(n & 63) as usize] as char
-        } else {
-            '='
-        });
-    }
-    format!("data:{};base64,{}", mime, out)
-}
-
 /// Emit a `<pattern>` containing an embedded `<image>` for use as an image fill.
-/// Returns the full `<pattern>...</pattern>` block (not the fill attribute).
+/// Returns the full `<pattern>...</pattern>` block (not the fill attribute),
+/// or `None` when there is nothing paintable (missing image object, empty
+/// bytes, undecodable PNG, degenerate shape bbox) — callers must fall back
+/// to `fill="none"` instead of emitting a dangling `url(#...)` reference.
+///
+/// Geometry follows [`ImageTileMode`]: Cover/Contain/Fit use a single tile
+/// exactly covering the shape bbox in the object's local coordinates
+/// (`patternUnits="userSpaceOnUse"` resolves inside the referencing
+/// element's transform, so local space is correct), differing only in
+/// `preserveAspectRatio` (`xMidYMid slice` / `xMidYMid meet` / `none`).
+/// Tile repeats at natural pixel size anchored at the bbox origin.
 fn embed_image_for_pattern(
     doc: &Document,
+    obj: &Object,
     img: &crate::core::path::ImageFill,
     pattern_id: &str,
-) -> String {
-    let image_obj = match doc.object_by_id(&img.image_id) {
-        Some((_, obj)) => obj,
-        None => return String::new(),
-    };
+) -> Option<String> {
+    // Deep lookup: image objects nested in groups are valid fill sources.
+    let image_obj = doc.find_object(&img.image_id)?;
     let png_bytes = match &image_obj.object_type {
-        ObjectType::Image { png_bytes, .. } => png_bytes.clone(),
-        _ => return String::new(),
+        ObjectType::Image { png_bytes, .. } => png_bytes,
+        _ => return None,
     };
     if png_bytes.is_empty() {
-        return String::new();
+        return None;
     }
-    let data_uri = base64_data_uri("image/png", &png_bytes);
-    let tile_mode = match img.tile_mode {
-        crate::core::path::style::ImageTileMode::Cover => "slice",
-        crate::core::path::style::ImageTileMode::Contain => "slice",
-        crate::core::path::style::ImageTileMode::Fit => "slice",
-        crate::core::path::style::ImageTileMode::Tile => "repeat",
+    let (iw, ih) = image::load_from_memory(png_bytes)
+        .ok()
+        .map(|d| (d.width() as f64, d.height() as f64))
+        .filter(|(w, h)| *w > 0.0 && *h > 0.0)?;
+    let (bb_min, bb_max) = obj.to_path_data().bounding_box()?;
+    let (bx, by) = (bb_min.x, bb_min.y);
+    let (bw, bh) = (bb_max.x - bb_min.x, bb_max.y - bb_min.y);
+    if !(bw > 0.0) || !(bh > 0.0) {
+        return None;
+    }
+    let data_uri = format!("data:image/png;base64,{}", base64_encode(png_bytes));
+    // (tile x/y/w/h, image x/y/w/h, preserveAspectRatio)
+    let (tile, place, par) = match img.tile_mode {
+        crate::core::path::style::ImageTileMode::Cover => {
+            ((bx, by, bw, bh), (bx, by, bw, bh), "xMidYMid slice")
+        }
+        crate::core::path::style::ImageTileMode::Contain => {
+            ((bx, by, bw, bh), (bx, by, bw, bh), "xMidYMid meet")
+        }
+        crate::core::path::style::ImageTileMode::Fit => {
+            ((bx, by, bw, bh), (bx, by, bw, bh), "none")
+        }
+        crate::core::path::style::ImageTileMode::Tile => {
+            ((bx, by, iw, ih), (bx, by, iw, ih), "none")
+        }
     };
-    format!(
-        r#"  <pattern id="{}" patternUnits="userSpaceOnUse" patternContentUnits="userSpaceOnUse"><image href="{}" width="100%" height="100%" preserveAspectRatio="{}" /></pattern>
-"#,
-        pattern_id, data_uri, tile_mode
-    )
+    Some(format!(
+        "  <pattern id=\"{}\" patternUnits=\"userSpaceOnUse\" x=\"{:.3}\" y=\"{:.3}\" width=\"{:.3}\" height=\"{:.3}\"><image href=\"{}\" x=\"{:.3}\" y=\"{:.3}\" width=\"{:.3}\" height=\"{:.3}\" preserveAspectRatio=\"{}\" /></pattern>\n",
+        pattern_id,
+        tile.0, tile.1, tile.2, tile.3,
+        data_uri,
+        place.0, place.1, place.2, place.3,
+        par
+    ))
 }
 
 pub fn export_svg(doc: &Document) -> String {
@@ -361,9 +366,15 @@ fn render_object_to_svg(
             FillType::Image(ref img) => {
                 let pattern_id = format!("img_fill_{}", *counter);
                 *counter += 1;
-                let embed = embed_image_for_pattern(doc, img, &pattern_id);
-                defs.push_str(&embed);
-                format!(" fill=\"url(#{pattern_id})\"")
+                match embed_image_for_pattern(doc, obj, img, &pattern_id) {
+                    Some(embed) => {
+                        defs.push_str(&embed);
+                        format!(" fill=\"url(#{pattern_id})\"")
+                    }
+                    // No paintable pixels (or degenerate shape): a dangling
+                    // url(#...) would render inconsistently across viewers.
+                    None => " fill=\"none\"".to_string(),
+                }
             }
         }
     } else {

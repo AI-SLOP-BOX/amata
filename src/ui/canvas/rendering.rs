@@ -1,7 +1,8 @@
 use super::CanvasWidget;
 use crate::core::document::{BlendMode, Object, ObjectType};
 use crate::core::path::{
-    FillStyle, FillType, LinearGradient, PathData, PatternFill, RadialGradient,
+    FillStyle, FillType, ImageFill, ImageTileMode, LinearGradient, PathData, PatternFill,
+    RadialGradient,
 };
 use crate::core::state::AppState;
 use egui::{Color32, FontId, Pos2, Rect, Stroke, Vec2};
@@ -548,7 +549,10 @@ impl CanvasWidget {
                 FillType::Pattern(pat) => {
                     self.draw_pattern_fill(painter, obj, pat, opacity, origin, state, parent);
                 }
-                FillType::Solid(_) | FillType::Image(_) => {}
+                FillType::Image(img) => {
+                    self.draw_image_fill(painter, obj, img, opacity, origin, state, parent);
+                }
+                FillType::Solid(_) => {}
             }
         }
     }
@@ -877,6 +881,302 @@ impl CanvasWidget {
                 y += tile_h;
             }
         }
+    }
+
+    /// Draw a referenced raster image clipped to the object's shape.
+    ///
+    /// This is the canvas counterpart of the SVG `<pattern>` image fill, so
+    /// both agree on [`ImageTileMode`] semantics: Cover/Contain center the
+    /// uniformly-scaled image (overflow cropped / letterboxed), Fit
+    /// stretches it to the bbox, Tile repeats it at natural pixel size
+    /// anchored at the bbox origin. Shape triangulation (holes included)
+    /// provides the clip; per-vertex UVs come from an affine world-space
+    /// map, so rect-clipped fragments stay exact.
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn draw_image_fill(
+        &self,
+        painter: &egui::Painter,
+        obj: &Object,
+        img: &ImageFill,
+        opacity: f32,
+        origin: Pos2,
+        state: &AppState,
+        parent: &[f64; 6],
+    ) {
+        let composed = affine_mul(parent, &obj.transform.matrix());
+        let to_screen = |wx: f64, wy: f64| -> Pos2 {
+            let (sx, sy) = affine_apply(&composed, wx, wy);
+            Pos2::new(
+                origin.x + sx as f32 * state.zoom,
+                origin.y + sy as f32 * state.zoom,
+            )
+        };
+
+        if state.document.find_object(&img.image_id).is_none() {
+            self.draw_missing_image_placeholder(painter, obj, &to_screen);
+            return;
+        }
+        // 1px = 1 world unit, same convention as placed Image objects.
+        let (tex_id, iw, ih) = match self.image_textures.get(&img.image_id) {
+            Some(tex) => {
+                let [w, h] = tex.size();
+                (tex.id(), w as f64, h as f64)
+            }
+            None => {
+                self.draw_missing_image_placeholder(painter, obj, &to_screen);
+                return;
+            }
+        };
+        if iw <= 0.0 || ih <= 0.0 {
+            return;
+        }
+        let wpoly: Vec<(f64, f64)> = obj
+            .to_path_data()
+            .to_polygon(16)
+            .iter()
+            .map(|p| affine_apply(&composed, p.x, p.y))
+            .collect();
+        let (bx, by, bw, bh) = match world_bbox(&wpoly) {
+            Some(v) => v,
+            None => return,
+        };
+        if !(bw > 0.0) || !(bh > 0.0) {
+            return;
+        }
+        let tris: Vec<[(f64, f64); 3]> = obj
+            .to_path_data()
+            .to_triangles(16)
+            .iter()
+            .map(|t| {
+                [
+                    affine_apply(&composed, t[0].x, t[0].y),
+                    affine_apply(&composed, t[1].x, t[1].y),
+                    affine_apply(&composed, t[2].x, t[2].y),
+                ]
+            })
+            .collect();
+        if tris.is_empty() {
+            return;
+        }
+
+        let tint = Color32::from_rgba_unmultiplied(
+            255,
+            255,
+            255,
+            (opacity * 255.0).round().clamp(0.0, 255.0) as u8,
+        );
+        let mut mesh = egui::epaint::Mesh {
+            texture_id: tex_id,
+            ..Default::default()
+        };
+        match img.tile_mode {
+            ImageTileMode::Cover | ImageTileMode::Contain => {
+                let cover = img.tile_mode == ImageTileMode::Cover;
+                let (ox, oy, dw, dh) = cover_contain_placement(bw, bh, iw, ih, cover);
+                let (ox, oy) = (bx + ox, by + oy);
+                let uv = |x: f64, y: f64| (((x - ox) / dw) as f32, ((y - oy) / dh) as f32);
+                for t in &tris {
+                    // Cover always spans the bbox; Contain letterboxes, so
+                    // fragments outside the fitted rect must be cut away
+                    // (egui clamps UVs — without this the bands would smear
+                    // edge pixels instead of staying transparent).
+                    let clipped = if cover {
+                        t.to_vec()
+                    } else {
+                        clip_tri_to_rect(t, (ox, oy, dw, dh))
+                    };
+                    push_textured_fan(&mut mesh, &clipped, &uv, &to_screen, tint);
+                }
+            }
+            ImageTileMode::Fit => {
+                let uv = |x: f64, y: f64| (((x - bx) / bw) as f32, ((y - by) / bh) as f32);
+                for t in &tris {
+                    push_textured_fan(&mut mesh, t, &uv, &to_screen, tint);
+                }
+            }
+            ImageTileMode::Tile => {
+                let nx = (bw / iw).ceil() as usize;
+                let ny = (bh / ih).ceil() as usize;
+                let too_many =
+                    nx == 0 || ny == 0 || nx.checked_mul(ny).unwrap_or(usize::MAX) > MAX_IMAGE_FILL_TILES;
+                if too_many {
+                    // Pathological tiling (tiny tile, huge shape): degrade to
+                    // a single Cover placement instead of stalling the frame.
+                    let (ox, oy, dw, dh) = cover_contain_placement(bw, bh, iw, ih, true);
+                    let (ox, oy) = (bx + ox, by + oy);
+                    let uv = |x: f64, y: f64| (((x - ox) / dw) as f32, ((y - oy) / dh) as f32);
+                    for t in &tris {
+                        push_textured_fan(&mut mesh, t, &uv, &to_screen, tint);
+                    }
+                } else {
+                    for j in 0..ny {
+                        for i in 0..nx {
+                            let (tx, ty) = (bx + i as f64 * iw, by + j as f64 * ih);
+                            let uv = |x: f64, y: f64| {
+                                (((x - tx) / iw) as f32, ((y - ty) / ih) as f32)
+                            };
+                            for t in &tris {
+                                let clipped = clip_tri_to_rect(t, (tx, ty, iw, ih));
+                                push_textured_fan(&mut mesh, &clipped, &uv, &to_screen, tint);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if !mesh.indices.is_empty() {
+            painter.add(mesh);
+        }
+    }
+
+    /// Red outline for image fills whose source is missing or undecodable
+    /// (mirrors the placeholder style of unrenderable Image objects).
+    fn draw_missing_image_placeholder(
+        &self,
+        painter: &egui::Painter,
+        obj: &Object,
+        to_screen: &dyn Fn(f64, f64) -> Pos2,
+    ) {
+        let pts: Vec<Pos2> = obj
+            .to_path_data()
+            .to_polygon(16)
+            .iter()
+            .map(|p| to_screen(p.x, p.y))
+            .collect();
+        if pts.len() >= 2 {
+            painter.add(egui::epaint::PathShape::closed_line(
+                pts,
+                Stroke::new(1.0_f32, Color32::from_rgb(200, 80, 80)),
+            ));
+        }
+    }
+}
+
+/// Upper bound on tiles rasterized for [`ImageTileMode::Tile`] previews.
+const MAX_IMAGE_FILL_TILES: usize = 2048;
+
+/// World-space bbox `(min_x, min_y, w, h)` of a point cloud.
+fn world_bbox(pts: &[(f64, f64)]) -> Option<(f64, f64, f64, f64)> {
+    if pts.is_empty() {
+        return None;
+    }
+    let mut min_x = f64::MAX;
+    let mut min_y = f64::MAX;
+    let mut max_x = f64::MIN;
+    let mut max_y = f64::MIN;
+    for (x, y) in pts {
+        min_x = min_x.min(*x);
+        min_y = min_y.min(*y);
+        max_x = max_x.max(*x);
+        max_y = max_y.max(*y);
+    }
+    Some((min_x, min_y, max_x - min_x, max_y - min_y))
+}
+
+/// Image placement `(ox, oy, dw, dh)` relative to the shape bbox origin for
+/// Cover (`cover = true`, uniform scale until the bbox is fully covered) and
+/// Contain (`cover = false`, whole image fits inside), both centered —
+/// mirroring SVG `xMidYMid slice` / `xMidYMid meet`.
+fn cover_contain_placement(bw: f64, bh: f64, iw: f64, ih: f64, cover: bool) -> (f64, f64, f64, f64) {
+    let s = if cover {
+        (bw / iw).max(bh / ih)
+    } else {
+        (bw / iw).min(bh / ih)
+    };
+    let (dw, dh) = (iw * s, ih * s);
+    (-(dw - bw) / 2.0, -(dh - bh) / 2.0, dw, dh)
+}
+
+/// Clip a triangle to an axis-aligned rect `(x, y, w, h)` (Sutherland–Hodgman).
+/// Returns the convex intersection polygon (empty when disjoint). New
+/// vertices keep world coordinates, so the caller's affine UV map stays
+/// exact with no interpolation bookkeeping.
+fn clip_tri_to_rect(tri: &[(f64, f64); 3], rect: (f64, f64, f64, f64)) -> Vec<(f64, f64)> {
+    let (rx, ry, rw, rh) = rect;
+    if rw <= 0.0 || rh <= 0.0 {
+        return Vec::new();
+    }
+    let (x0, y0, x1, y1) = (rx, ry, rx + rw, ry + rh);
+    let mut poly = vec![tri[0], tri[1], tri[2]];
+    // (axis, bound, keep_greater): left, right, top, bottom.
+    for (axis, bound, keep_greater) in
+        [(0u8, x0, true), (0, x1, false), (1, y0, true), (1, y1, false)]
+    {
+        if poly.is_empty() {
+            break;
+        }
+        let coord = |p: (f64, f64)| if axis == 0 { p.0 } else { p.1 };
+        let mut out: Vec<(f64, f64)> = Vec::new();
+        for i in 0..poly.len() {
+            let cur = poly[i];
+            let prev = poly[(i + poly.len() - 1) % poly.len()];
+            let cur_in = if keep_greater {
+                coord(cur) >= bound
+            } else {
+                coord(cur) <= bound
+            };
+            let prev_in = if keep_greater {
+                coord(prev) >= bound
+            } else {
+                coord(prev) <= bound
+            };
+            if cur_in {
+                if !prev_in {
+                    out.push(edge_intersect(prev, cur, axis, bound));
+                }
+                out.push(cur);
+            } else if prev_in {
+                out.push(edge_intersect(prev, cur, axis, bound));
+            }
+        }
+        poly = out;
+    }
+    poly
+}
+
+/// Intersection of segment `a→b` with the line `axis = bound`.
+fn edge_intersect(a: (f64, f64), b: (f64, f64), axis: u8, bound: f64) -> (f64, f64) {
+    let (dx, dy) = (b.0 - a.0, b.1 - a.1);
+    if axis == 0 {
+        let t = if dx.abs() > 1e-12 {
+            ((bound - a.0) / dx).clamp(0.0, 1.0)
+        } else {
+            0.0
+        };
+        (bound, a.1 + dy * t)
+    } else {
+        let t = if dy.abs() > 1e-12 {
+            ((bound - a.1) / dy).clamp(0.0, 1.0)
+        } else {
+            0.0
+        };
+        (a.0 + dx * t, bound)
+    }
+}
+
+/// Append a convex world-space polygon to a textured mesh, mapping each
+/// vertex through `uv` (fan triangulation from vertex 0).
+fn push_textured_fan(
+    mesh: &mut egui::epaint::Mesh,
+    poly: &[(f64, f64)],
+    uv: &dyn Fn(f64, f64) -> (f32, f32),
+    to_screen: &dyn Fn(f64, f64) -> Pos2,
+    tint: Color32,
+) {
+    if poly.len() < 3 {
+        return;
+    }
+    let base = mesh.vertices.len() as u32;
+    for (x, y) in poly {
+        let (u, v) = uv(*x, *y);
+        mesh.vertices.push(egui::epaint::Vertex {
+            pos: to_screen(*x, *y),
+            uv: Pos2::new(u, v),
+            color: tint,
+        });
+    }
+    for i in 1..poly.len() - 1 {
+        mesh.indices.extend([base, base + i as u32, base + i as u32 + 1]);
     }
 }
 
@@ -1275,5 +1575,96 @@ mod gradient_clip_tests {
             assert_eq!(d, band_dither(k));
         }
         assert_ne!(band_dither(3), band_dither(4));
+    }
+}
+
+#[cfg(test)]
+mod image_fill_clip_tests {
+    use super::*;
+
+    fn area(poly: &[(f64, f64)]) -> f64 {
+        if poly.len() < 3 {
+            return 0.0;
+        }
+        let mut a = 0.0;
+        for i in 0..poly.len() {
+            let (px, py) = poly[i];
+            let (qx, qy) = poly[(i + 1) % poly.len()];
+            a += px * qy - qx * py;
+        }
+        (a * 0.5).abs()
+    }
+
+    #[test]
+    fn test_clip_fully_inside_keeps_triangle() {
+        let tri = [(2.0, 2.0), (4.0, 2.0), (3.0, 4.0)];
+        let out = clip_tri_to_rect(&tri, (0.0, 0.0, 10.0, 10.0));
+        assert_eq!(out.len(), 3);
+        assert!((area(&out) - 2.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn test_clip_fully_outside_empties() {
+        let tri = [(20.0, 20.0), (24.0, 20.0), (22.0, 24.0)];
+        assert!(clip_tri_to_rect(&tri, (0.0, 0.0, 10.0, 10.0)).is_empty());
+    }
+
+    #[test]
+    fn test_clip_partial_halves_right_triangle() {
+        // Right triangle legs on the axes; clip to x <= 5 keeps the
+        // quad (0,0),(5,0),(5,5),(0,10): full area 50 minus the cut
+        // triangle (5,0),(10,0),(5,5) of area 12.5.
+        let tri = [(0.0, 0.0), (10.0, 0.0), (0.0, 10.0)];
+        let out = clip_tri_to_rect(&tri, (0.0, 0.0, 5.0, 10.0));
+        assert!((area(&out) - 37.5).abs() < 1e-6, "area {}", area(&out));
+        for (x, y) in &out {
+            assert!(*x >= -1e-9 && *x <= 5.0 + 1e-9 && *y >= -1e-9 && *y <= 10.0 + 1e-9);
+        }
+    }
+
+    #[test]
+    fn test_clip_degenerate_rect_empties() {
+        let tri = [(2.0, 2.0), (4.0, 2.0), (3.0, 4.0)];
+        assert!(clip_tri_to_rect(&tri, (0.0, 0.0, 0.0, 10.0)).is_empty());
+    }
+
+    #[test]
+    fn test_cover_contain_placement_centering() {
+        // Same aspect: both collapse to an exact fit.
+        let (ox, oy, dw, dh) = cover_contain_placement(200.0, 100.0, 4.0, 2.0, true);
+        assert!(ox.abs() < 1e-9 && oy.abs() < 1e-9);
+        assert!((dw - 200.0).abs() < 1e-9 && (dh - 100.0).abs() < 1e-9);
+        // Wide 8x2 image into a 200x100 bbox.
+        let (ox, oy, dw, dh) = cover_contain_placement(200.0, 100.0, 8.0, 2.0, true);
+        assert!((dw - 400.0).abs() < 1e-9 && (dh - 100.0).abs() < 1e-9);
+        assert!((ox + 100.0).abs() < 1e-9 && oy.abs() < 1e-9, "cover centers overflow");
+        let (ox, oy, dw, dh) = cover_contain_placement(200.0, 100.0, 8.0, 2.0, false);
+        assert!((dw - 200.0).abs() < 1e-9 && (dh - 50.0).abs() < 1e-9);
+        assert!(ox.abs() < 1e-9 && (oy - 25.0).abs() < 1e-9, "contain centers bands");
+    }
+
+    #[test]
+    fn test_push_textured_fan_emits_indexed_mesh() {
+        let mut mesh = egui::epaint::Mesh::default();
+        let quad = vec![(0.0, 0.0), (10.0, 0.0), (10.0, 10.0), (0.0, 10.0)];
+        push_textured_fan(
+            &mut mesh,
+            &quad,
+            &|x, y| (x as f32 / 10.0, y as f32 / 10.0),
+            &|x, y| Pos2::new(x as f32, y as f32),
+            Color32::WHITE,
+        );
+        assert_eq!(mesh.vertices.len(), 4);
+        assert_eq!(mesh.indices, vec![0, 1, 2, 0, 2, 3]);
+        assert_eq!(mesh.vertices[2].uv, Pos2::new(1.0, 1.0));
+        // Degenerate input appends nothing.
+        push_textured_fan(
+            &mut mesh,
+            &quad[..2],
+            &|x, y| (x as f32, y as f32),
+            &|x, y| Pos2::new(x as f32, y as f32),
+            Color32::WHITE,
+        );
+        assert_eq!(mesh.vertices.len(), 4);
     }
 }
