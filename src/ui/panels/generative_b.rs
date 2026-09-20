@@ -438,7 +438,7 @@ impl RevolvePanel {
                         .add_filter("OBJ 3D Model", &["obj"])
                         .save_file()
                     {
-                        let _ = std::fs::write(path, obj_data);
+                        let _ = crate::io::atomic::atomic_write_str(&path, &obj_data);
                     }
                 }
             }

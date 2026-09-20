@@ -257,7 +257,7 @@ impl ExportPanel {
                 };
                 if format == "SVG" {
                     let svg = crate::io::svg::export_svg(doc_ref);
-                    match std::fs::write(&path, svg) {
+                    match crate::io::atomic::atomic_write_str(&path, &svg) {
                         Ok(_) => state.notify_info("SVGを書き出しました"),
                         Err(e) => state.notify_error(format!("SVG書き出しに失敗しました: {e}")),
                     }
@@ -267,15 +267,19 @@ impl ExportPanel {
                         state.export_scale,
                         state.export_transparent,
                     ) {
-                        Ok(png_bytes) => match std::fs::write(&path, png_bytes) {
-                            Ok(_) => state.notify_info("PNGを書き出しました"),
-                            Err(e) => state.notify_error(format!("PNG保存に失敗しました: {e}")),
-                        },
+                        Ok(png_bytes) => {
+                            match crate::io::atomic::atomic_write_bytes(&path, &png_bytes) {
+                                Ok(_) => state.notify_info("PNGを書き出しました"),
+                                Err(e) => {
+                                    state.notify_error(format!("PNG保存に失敗しました: {e}"))
+                                }
+                            }
+                        }
                         Err(e) => state.notify_error(format!("ラスタライズに失敗しました: {e}")),
                     }
                 } else if format == "JSON" {
                     match serde_json::to_string_pretty(doc_ref) {
-                        Ok(json) => match std::fs::write(&path, json) {
+                        Ok(json) => match crate::io::atomic::atomic_write_str(&path, &json) {
                             Ok(_) => state.notify_info("JSONを保存しました"),
                             Err(e) => state.notify_error(format!("保存に失敗しました: {e}")),
                         },

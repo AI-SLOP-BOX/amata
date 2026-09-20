@@ -10,13 +10,8 @@ mod tools;
 mod ui;
 
 use crate::cli::{run_cli, Cli};
-use crate::core::state::AppState;
 use app::IrasuApp;
 use clap::Parser;
-
-fn zoom_to_fit(state: &mut AppState) {
-    state.zoom_to_fit();
-}
 
 fn main() -> eframe::Result<()> {
     env_logger::init();

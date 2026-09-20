@@ -18,13 +18,24 @@ pub fn atomic_write_bytes(path: &Path, contents: &[u8]) -> std::io::Result<()> {
             .unwrap_or_else(|| "tmp".to_string()),
     );
 
-    {
+    let write_result = (|| -> std::io::Result<()> {
         let mut file = std::fs::File::create(&tmp_path)?;
         file.write_all(contents)?;
         file.sync_all()?;
+        Ok(())
+    })();
+
+    if let Err(err) = write_result {
+        // A half-written sibling would otherwise be picked up by the file
+        // watcher / a later `*.tmp` scan as if it were a real document.
+        let _ = std::fs::remove_file(&tmp_path);
+        return Err(err);
     }
 
-    std::fs::rename(tmp_path, path)?;
+    if let Err(err) = std::fs::rename(&tmp_path, path) {
+        let _ = std::fs::remove_file(&tmp_path);
+        return Err(err);
+    }
 
     Ok(())
 }

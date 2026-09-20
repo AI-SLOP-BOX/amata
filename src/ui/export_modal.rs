@@ -611,7 +611,7 @@ impl ExportModal {
                                 .save_file()
                             {
                                 let svg = crate::io::svg::export_svg(&state.document);
-                                match std::fs::write(&path, svg) {
+                                match crate::io::atomic::atomic_write_str(&path, &svg) {
                                     Ok(_) => state.notify_info(format!(
                                         "SVGを書き出しました: {}",
                                         path.file_name().and_then(|n| n.to_str()).unwrap_or("file")
@@ -628,7 +628,7 @@ impl ExportModal {
                                 .save_file()
                             {
                                 let pdf_bytes = crate::io::pdf::export_pdf(&state.document);
-                                match std::fs::write(&path, pdf_bytes) {
+                                match crate::io::atomic::atomic_write_bytes(&path, &pdf_bytes) {
                                     Ok(_) => state.notify_info(format!(
                                         "PDFを書き出しました: {}",
                                         path.file_name().and_then(|n| n.to_str()).unwrap_or("file")
@@ -652,18 +652,23 @@ impl ExportModal {
                                     _ => 1.0_f32,
                                 };
                                 match crate::io::raster::export_png(&state.document, scale, true) {
-                                    Ok(png_bytes) => match std::fs::write(&path, png_bytes) {
-                                        Ok(_) => state.notify_info(format!(
-                                            "PNGを書き出しました ({}): {}",
-                                            self.scale_factor,
-                                            path.file_name()
-                                                .and_then(|n| n.to_str())
-                                                .unwrap_or("file")
-                                        )),
-                                        Err(e) => {
-                                            state.notify_error(format!("保存に失敗しました: {e}"))
+                                    Ok(png_bytes) => {
+                                        match crate::io::atomic::atomic_write_bytes(
+                                            &path,
+                                            &png_bytes,
+                                        ) {
+                                            Ok(_) => state.notify_info(format!(
+                                                "PNGを書き出しました ({}): {}",
+                                                self.scale_factor,
+                                                path.file_name()
+                                                    .and_then(|n| n.to_str())
+                                                    .unwrap_or("file")
+                                            )),
+                                            Err(e) => {
+                                                state.notify_error(format!("保存に失敗しました: {e}"))
+                                            }
                                         }
-                                    },
+                                    }
                                     Err(e) => state.notify_error(format!(
                                         "PNGラスタライズに失敗しました: {e}"
                                     )),
@@ -684,18 +689,23 @@ impl ExportModal {
                                     _ => 1.0_f32,
                                 };
                                 match crate::io::raster::export_jpeg(&state.document, scale) {
-                                    Ok(jpeg_bytes) => match std::fs::write(&path, jpeg_bytes) {
-                                        Ok(_) => state.notify_info(format!(
-                                            "JPEGを書き出しました ({}): {}",
-                                            self.scale_factor,
-                                            path.file_name()
-                                                .and_then(|n| n.to_str())
-                                                .unwrap_or("file")
-                                        )),
-                                        Err(e) => {
-                                            state.notify_error(format!("保存に失敗しました: {e}"))
+                                    Ok(jpeg_bytes) => {
+                                        match crate::io::atomic::atomic_write_bytes(
+                                            &path,
+                                            &jpeg_bytes,
+                                        ) {
+                                            Ok(_) => state.notify_info(format!(
+                                                "JPEGを書き出しました ({}): {}",
+                                                self.scale_factor,
+                                                path.file_name()
+                                                    .and_then(|n| n.to_str())
+                                                    .unwrap_or("file")
+                                            )),
+                                            Err(e) => {
+                                                state.notify_error(format!("保存に失敗しました: {e}"))
+                                            }
                                         }
-                                    },
+                                    }
                                     Err(e) => state.notify_error(format!(
                                         "JPEGラスタライズに失敗しました: {e}"
                                     )),

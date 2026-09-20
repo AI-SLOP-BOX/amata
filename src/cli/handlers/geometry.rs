@@ -411,37 +411,66 @@ pub fn handle_script(
 }
 
 pub fn handle_plugins(info: Option<String>) -> Result<bool, Box<dyn std::error::Error>> {
-    println!("🧩 IRASU Plugin System");
-    println!("   Plugins are loaded from ~/.irasu/plugins/ or ./plugins/");
-    if let Some(plugin_id) = info {
-        println!("   Plugin info for '{}':", plugin_id);
-        println!("   (Plugin discovery not yet implemented — use the GUI Plugin Manager)");
-    } else {
-        println!("   No plugins loaded (headless mode). Use the GUI to manage plugins.");
-        println!("   Plugin API: implement the `Plugin` trait from irasu_illustrator::plugin::api");
-    }
-    Ok(false)
-}
+    use crate::plugin::discovery::{default_search_dirs, discover_in, find_plugin};
 
-pub fn handle_serve(port: u16, input: Option<PathBuf>) -> Result<bool, Box<dyn std::error::Error>> {
-    println!("🌐 IRASU API Server starting on port {}...", port);
-    let doc = match input {
-        Some(path) => load_any_document(&path)?,
-        None => crate::core::document::Document::default(),
-    };
+    let dirs = default_search_dirs();
+    let plugins = discover_in(&dirs);
+
+    println!("🧩 Amata Plugin System");
+    println!("   Search paths (highest priority first):");
+    for dir in &dirs {
+        let marker = if dir.is_dir() { "✓" } else { "·" };
+        println!("     {marker} {}", dir.display());
+    }
     println!(
-        "   Loaded document: '{}' ({} × {} px)",
-        doc.name, doc.width, doc.height
+        "   (override with AMATA_PLUGIN_DIR / IRASU_PLUGIN_DIR; plugins are *.rhai scripts)"
     );
-    println!("   API endpoints:");
-    println!("     GET  /api/document       — Get document info");
-    println!("     GET  /api/objects        — List all objects");
-    println!("     POST /api/objects/rect   — Create rectangle");
-    println!("     POST /api/objects/ellipse — Create ellipse");
-    println!("     POST /api/objects/path   — Create path");
-    println!("     POST /api/script          — Execute Rhai script");
-    println!("     POST /api/export/svg      — Export to SVG");
-    println!("   (HTTP server requires `tiny_http` or `axum` dependency — currently stub)");
-    println!("   For full API server, add `axum` to Cargo.toml and implement routes.");
+
+    if let Some(key) = info {
+        let plugin = find_plugin(&plugins, &key).ok_or_else(|| {
+            let available: Vec<&str> = plugins.iter().map(|p| p.id.as_str()).collect();
+            if available.is_empty() {
+                format!("Plugin '{key}' not found — no plugins discovered.")
+            } else {
+                format!("Plugin '{key}' not found. Available: {}", available.join(", "))
+            }
+        })?;
+
+        println!("\n📦 {}", plugin.name);
+        println!("   id:          {}", plugin.id);
+        println!("   version:     {}", plugin.version);
+        println!("   author:      {}", plugin.author);
+        if !plugin.description.is_empty() {
+            println!("   description: {}", plugin.description);
+        }
+        println!(
+            "   path:        {} ({} bytes, {} lines)",
+            plugin.path.display(),
+            plugin.size_bytes,
+            plugin.line_count
+        );
+        println!("\n--- source preview (first 25 lines) ---");
+        println!("{}", plugin.preview(25));
+        println!("--- end preview ---");
+        return Ok(false);
+    }
+
+    if plugins.is_empty() {
+        println!("   No plugins found. Drop a *.rhai script into one of the paths above.");
+        println!("   Header format: // @name: My Plugin  // @version: 1.0.0  // @author: me");
+        return Ok(false);
+    }
+
+    println!("\n   {} plugin(s) discovered:", plugins.len());
+    for plugin in &plugins {
+        println!(
+            "   • {:<22} v{:<10} {}",
+            plugin.id, plugin.version, plugin.name
+        );
+        if !plugin.description.is_empty() {
+            println!("       {}", plugin.description);
+        }
+    }
+    println!("   Use `amata plugins --info <id>` for details.");
     Ok(false)
 }

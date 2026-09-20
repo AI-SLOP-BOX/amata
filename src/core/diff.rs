@@ -1,5 +1,5 @@
 use crate::core::document::{Document, Object, ObjectType};
-use crate::core::path::{FillType, GradientStop};
+use crate::core::path::{FillType, GradientStop, ImageFill};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 
@@ -865,6 +865,9 @@ fn format_fill(fill: &Option<crate::core::path::FillStyle>) -> String {
                 )
             }
             FillType::Pattern(_) => "pattern".to_string(),
+            FillType::Image(ImageFill { image_id, .. }) => {
+                format!("image-fill({})", image_id)
+            },
         },
     }
 }

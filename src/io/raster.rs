@@ -1,10 +1,35 @@
 use crate::core::document::Document;
 
+/// Hard cap on either output dimension. Guards against OOM on gigapixel
+/// canvases (matches the CLI `render --width/--height` guard).
+pub const MAX_EXPORT_DIM: u32 = 16384;
+
 /// Export the vector document to PNG byte buffer at given scale factor.
 /// `scale = 1.0` produces 1:1 pixel dimensions matching document width/height.
 /// `transparent = true` keeps transparent canvas background.
+///
+/// When the requested scale would push either side past [`MAX_EXPORT_DIM`]
+/// the scale is reduced uniformly instead of cropping the image (see
+/// [`export_png_with_limit`]).
 pub fn export_png(doc: &Document, scale: f32, transparent: bool) -> Result<Vec<u8>, String> {
-    let scale = scale.clamp(0.1, 16.0);
+    export_png_with_limit(doc, scale, transparent, MAX_EXPORT_DIM)
+}
+
+/// [`export_png`] with an explicit dimension cap.
+///
+/// The requested `scale` is honoured unless it would exceed `max_dim`; in that
+/// case it is reduced uniformly so the whole canvas still fits. Previously the
+/// pixmap was clamped to 16384 while the render transform kept the requested
+/// scale, so a large canvas exported at a high zoom silently lost everything
+/// past the 16384th pixel (right/bottom of the image was cropped away).
+pub fn export_png_with_limit(
+    doc: &Document,
+    scale: f32,
+    transparent: bool,
+    max_dim: u32,
+) -> Result<Vec<u8>, String> {
+    let requested_scale = scale.clamp(0.1, 16.0);
+    let max_dim = max_dim.max(1) as f32;
     let svg_data = crate::io::svg::export_svg(doc);
     let opt = resvg::usvg::Options {
         fontdb: std::sync::Arc::new(crate::core::font::FontRegistry::global().database().clone()),
@@ -14,8 +39,17 @@ pub fn export_png(doc: &Document, scale: f32, transparent: bool) -> Result<Vec<u
         .map_err(|e| format!("Failed to parse SVG for raster export: {}", e))?;
 
     let base_size = rtree.size();
-    let target_width = ((base_size.width() * scale).round().max(1.0) as u32).min(16384);
-    let target_height = ((base_size.height() * scale).round().max(1.0) as u32).min(16384);
+    let base_width = (base_size.width() as f64).max(1.0) as f32;
+    let base_height = (base_size.height() as f64).max(1.0) as f32;
+    let longest_side = base_width.max(base_height);
+    let scale = if longest_side * requested_scale > max_dim {
+        max_dim / longest_side
+    } else {
+        requested_scale
+    };
+
+    let target_width = ((base_width * scale).round().max(1.0) as u32).min(max_dim as u32);
+    let target_height = ((base_height * scale).round().max(1.0) as u32).min(max_dim as u32);
 
     let mut pixmap = resvg::tiny_skia::Pixmap::new(target_width, target_height)
         .ok_or_else(|| "Failed to allocate pixmap buffer".to_string())?;

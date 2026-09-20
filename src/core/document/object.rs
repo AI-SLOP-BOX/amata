@@ -1,4 +1,4 @@
-use super::super::effects::{DropShadow, GlowEffect};
+use super::super::effects::{AppearanceStack, DropShadow, GlowEffect};
 use super::WidthProfile;
 use crate::core::path::{AnchorPoint, FillStyle, PathData, StrokeStyle};
 use serde::{Deserialize, Serialize};
@@ -434,6 +434,11 @@ pub struct Object {
     pub stroke: Option<StrokeStyle>,
     pub shadow: Option<DropShadow>,
     pub glow: Option<GlowEffect>,
+    /// Non-destructive Illustrator-style appearance effects (stackable blur,
+    /// color adjustments, ...). Missing in older project files, so it must
+    /// default or every legacy `.amata`/JSON document fails to deserialize.
+    #[serde(default)]
+    pub appearance: AppearanceStack,
     pub opacity: f32,
     pub blend_mode: BlendMode,
     #[serde(default)]
@@ -455,6 +460,7 @@ impl Object {
             stroke,
             shadow: None,
             glow: None,
+            appearance: AppearanceStack::default(),
             opacity: 1.0,
             width_profile: None,
             blend_mode: BlendMode::Normal,
@@ -481,6 +487,7 @@ impl Object {
             stroke: Some(StrokeStyle::default()),
             shadow: None,
             glow: None,
+            appearance: AppearanceStack::default(),
             opacity: 1.0,
             width_profile: None,
             blend_mode: BlendMode::Normal,
@@ -503,6 +510,7 @@ impl Object {
             stroke: Some(StrokeStyle::default()),
             shadow: None,
             glow: None,
+            appearance: AppearanceStack::default(),
             opacity: 1.0,
             width_profile: None,
             blend_mode: BlendMode::Normal,
@@ -536,6 +544,7 @@ impl Object {
             stroke: Some(StrokeStyle::default()),
             shadow: None,
             glow: None,
+            appearance: AppearanceStack::default(),
             opacity: 1.0,
             width_profile: None,
             blend_mode: BlendMode::Normal,
@@ -558,6 +567,7 @@ impl Object {
             stroke: Some(StrokeStyle::default()),
             shadow: None,
             glow: None,
+            appearance: AppearanceStack::default(),
             opacity: 1.0,
             width_profile: None,
             blend_mode: BlendMode::Normal,
@@ -583,6 +593,7 @@ impl Object {
             stroke: Some(StrokeStyle::default()),
             shadow: None,
             glow: None,
+            appearance: AppearanceStack::default(),
             opacity: 1.0,
             width_profile: None,
             blend_mode: BlendMode::Normal,
@@ -620,6 +631,7 @@ impl Object {
             stroke: None,
             shadow: None,
             glow: None,
+            appearance: AppearanceStack::default(),
             opacity: 1.0,
             width_profile: None,
             blend_mode: BlendMode::Normal,
@@ -638,6 +650,7 @@ impl Object {
             stroke: None,
             shadow: None,
             glow: None,
+            appearance: AppearanceStack::default(),
             opacity: 1.0,
             width_profile: None,
             blend_mode: BlendMode::Normal,
@@ -671,6 +684,7 @@ impl Object {
             stroke: None,
             shadow: None,
             glow: None,
+            appearance: AppearanceStack::default(),
             opacity: 1.0,
             width_profile: None,
             blend_mode: BlendMode::Normal,
@@ -704,6 +718,7 @@ impl Object {
             stroke: None,
             shadow: None,
             glow: None,
+            appearance: AppearanceStack::default(),
             opacity: 1.0,
             width_profile: None,
             blend_mode: BlendMode::Normal,

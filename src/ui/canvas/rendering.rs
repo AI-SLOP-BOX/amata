@@ -548,7 +548,7 @@ impl CanvasWidget {
                 FillType::Pattern(pat) => {
                     self.draw_pattern_fill(painter, obj, pat, opacity, origin, state, parent);
                 }
-                FillType::Solid(_) => {}
+                FillType::Solid(_) | FillType::Image(_) => {}
             }
         }
     }
@@ -913,7 +913,7 @@ pub fn sample_gradient_stops(stops: &[crate::core::path::GradientStop], t: f32) 
 fn fill_type_color(fill: &FillStyle, opacity: f32) -> Option<Color32> {
     let c = match &fill.fill_type {
         FillType::Solid(color) => *color,
-        FillType::Linear(_) | FillType::Radial(_) | FillType::Pattern(_) => return None,
+        FillType::Linear(_) | FillType::Radial(_) | FillType::Pattern(_) | FillType::Image(_) => return None,
     };
     let a = c[3] * opacity;
     if a <= 0.0 {

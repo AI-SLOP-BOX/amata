@@ -1,8 +1,67 @@
 use crate::core::document::{Document, FontStyle, Object, ObjectType, TextAnchor, Transform};
+use crate::core::effects::color_adjust_matrix;
 use crate::core::path::{
     FillType, PathData, PathElement, StrokeStyle,
 };
 use super::util::*;
+
+/// Encode raw bytes as a base64 data URI (for `<image>` data attributes in SVG).
+fn base64_data_uri(mime: &str, bytes: &[u8]) -> String {
+    const CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity(bytes.len() * 4 / 3 + 16);
+    let chunks = bytes.chunks(3);
+    for chunk in chunks {
+        let b0 = chunk[0] as usize;
+        let b1 = if chunk.len() > 1 { chunk[1] as usize } else { 0 };
+        let b2 = if chunk.len() > 2 { chunk[2] as usize } else { 0 };
+        let n = (b0 << 16) | (b1 << 8) | b2;
+        out.push(CHARS[((n >> 18) & 63) as usize] as char);
+        out.push(CHARS[((n >> 12) & 63) as usize] as char);
+        out.push(if chunk.len() > 1 {
+            CHARS[((n >> 6) & 63) as usize] as char
+        } else {
+            '='
+        });
+        out.push(if chunk.len() > 2 {
+            CHARS[(n & 63) as usize] as char
+        } else {
+            '='
+        });
+    }
+    format!("data:{};base64,{}", mime, out)
+}
+
+/// Emit a `<pattern>` containing an embedded `<image>` for use as an image fill.
+/// Returns the full `<pattern>...</pattern>` block (not the fill attribute).
+fn embed_image_for_pattern(
+    doc: &Document,
+    img: &crate::core::path::ImageFill,
+    pattern_id: &str,
+) -> String {
+    let image_obj = match doc.object_by_id(&img.image_id) {
+        Some((_, obj)) => obj,
+        None => return String::new(),
+    };
+    let png_bytes = match &image_obj.object_type {
+        ObjectType::Image { png_bytes, .. } => png_bytes.clone(),
+        _ => return String::new(),
+    };
+    if png_bytes.is_empty() {
+        return String::new();
+    }
+    let data_uri = base64_data_uri("image/png", &png_bytes);
+    let tile_mode = match img.tile_mode {
+        crate::core::path::style::ImageTileMode::Cover => "slice",
+        crate::core::path::style::ImageTileMode::Contain => "slice",
+        crate::core::path::style::ImageTileMode::Fit => "slice",
+        crate::core::path::style::ImageTileMode::Tile => "repeat",
+    };
+    format!(
+        r#"  <pattern id="{}" patternUnits="userSpaceOnUse" patternContentUnits="userSpaceOnUse"><image href="{}" width="100%" height="100%" preserveAspectRatio="{}" /></pattern>
+"#,
+        pattern_id, data_uri, tile_mode
+    )
+}
 
 pub fn export_svg(doc: &Document) -> String {
     let mut svg = format!(
@@ -18,7 +77,7 @@ pub fn export_svg(doc: &Document) -> String {
 
     for sym in &doc.symbols {
         sym_defs.push_str(&format!("  <symbol id=\"{}\">\n", sym.id));
-        render_object_to_svg(&sym.object, &mut sym_defs, &mut defs, &mut id_counter);
+        render_object_to_svg(&sym.object, doc, &mut sym_defs, &mut defs, &mut id_counter);
         sym_defs.push_str("  </symbol>\n");
     }
     defs.push_str(&sym_defs);
@@ -32,7 +91,7 @@ pub fn export_svg(doc: &Document) -> String {
         if (layer.opacity - 1.0).abs() > 1e-3 {
             let mut group = String::new();
             for obj in &layer.objects {
-                render_object_to_svg(obj, &mut group, &mut defs, &mut id_counter);
+                render_object_to_svg(obj, doc, &mut group, &mut defs, &mut id_counter);
             }
             svg.push_str(&format!(
                 "  <g opacity=\"{:.3}\">\n{}  </g>\n",
@@ -40,7 +99,7 @@ pub fn export_svg(doc: &Document) -> String {
             ));
         } else {
             for obj in &layer.objects {
-                render_object_to_svg(obj, &mut svg, &mut defs, &mut id_counter);
+                render_object_to_svg(obj, doc, &mut svg, &mut defs, &mut id_counter);
             }
         }
     }
@@ -146,14 +205,29 @@ fn svg_transform_attr(t: &Transform) -> String {
     )
 }
 
-fn render_object_to_svg(obj: &Object, svg: &mut String, defs: &mut String, counter: &mut usize) {
+fn render_object_to_svg(
+    obj: &Object,
+    doc: &Document,
+    svg: &mut String,
+    defs: &mut String,
+    counter: &mut usize,
+) {
     if !obj.visible {
         return;
     }
 
-    // Generate SVG Filter if object has shadow or glow
+    // Generate SVG Filter if object has shadow, glow, blur, or color adjust
     let mut filter_attr = String::new();
-    if obj.shadow.is_some() || obj.glow.is_some() {
+    let blur_radius = obj.appearance.has_blur().unwrap_or(0.0);
+    let color_matrix = obj
+        .appearance
+        .has_color_adjust()
+        .and_then(color_adjust_matrix);
+    let wants_filter = obj.shadow.is_some()
+        || obj.glow.is_some()
+        || (blur_radius.is_finite() && blur_radius > 0.0)
+        || color_matrix.is_some();
+    if wants_filter {
         *counter += 1;
         let fid = format!("filter_{}", *counter);
         let mut filter_content = String::new();
@@ -181,6 +255,35 @@ fn render_object_to_svg(obj: &Object, svg: &mut String, defs: &mut String, count
     </feMerge>
 "#,
                 gl.radius, color_hex, opac
+            ));
+        }
+
+        if blur_radius.is_finite() && blur_radius > 0.0 {
+            // Illustrator "Effect > Blur > Gaussian Blur" on the object's own
+            // artwork: blur the source graphic, then paint it back. resvg
+            // honors feGaussianBlur; canvas preview approximates in egui.
+            filter_content.push_str(&format!(
+                "    <feGaussianBlur stdDeviation=\"{:.3}\" />\n",
+                blur_radius
+            ));
+        }
+
+        if let Some(matrix) = color_matrix {
+            // One matrix carries brightness/contrast/saturation/hue-rotate
+            // (see `color_adjust_matrix` for the exact composition).
+            let values = matrix
+                .iter()
+                .map(|v| {
+                    if v.is_finite() {
+                        format!("{v:.5}")
+                    } else {
+                        "0".to_string()
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(" ");
+            filter_content.push_str(&format!(
+                "    <feColorMatrix type=\"matrix\" values=\"{values}\" />\n"
             ));
         }
 
@@ -255,6 +358,13 @@ fn render_object_to_svg(obj: &Object, svg: &mut String, defs: &mut String, count
                 format!(" fill=\"url(#{gid})\"")
             }
             FillType::Pattern(_) => String::new(),
+            FillType::Image(ref img) => {
+                let pattern_id = format!("img_fill_{}", *counter);
+                *counter += 1;
+                let embed = embed_image_for_pattern(doc, img, &pattern_id);
+                defs.push_str(&embed);
+                format!(" fill=\"url(#{pattern_id})\"")
+            }
         }
     } else {
         " fill=\"none\"".to_string()
@@ -591,7 +701,7 @@ fn render_object_to_svg(obj: &Object, svg: &mut String, defs: &mut String, count
             let transform_attr = svg_transform_attr(&obj.transform);
             svg.push_str(&format!("  <g{id_attr}{transform_attr}{effect_attr}>\n"));
             for child in children {
-                render_object_to_svg(child, svg, defs, counter);
+                render_object_to_svg(child, doc, svg, defs, counter);
             }
             svg.push_str("  </g>\n");
         }
@@ -611,7 +721,7 @@ fn render_object_to_svg(obj: &Object, svg: &mut String, defs: &mut String, count
                     "  <g{id_attr} clip-path=\"url(#{clip_id})\"{transform_attr}{effect_attr}>\n"
                 ));
                 for child in &children[1..] {
-                    render_object_to_svg(child, svg, defs, counter);
+                    render_object_to_svg(child, doc, svg, defs, counter);
                 }
                 svg.push_str("  </g>\n");
             }

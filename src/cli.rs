@@ -14,6 +14,7 @@ use handlers::basic::*;
 use handlers::diff_history::*;
 use handlers::generative::*;
 use handlers::geometry::*;
+use handlers::server::*;
 use handlers::svg_pipeline::*;
 
 static INITIAL_FILE: Mutex<Option<PathBuf>> = Mutex::new(None);

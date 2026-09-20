@@ -193,7 +193,7 @@ impl IrasuApp {
                         {
                             let svg = crate::io::svg::export_svg(&self.state.document);
                             self.state.sync_doc_extras();
-                            if let Err(e) = std::fs::write(&path, &svg) {
+                            if let Err(e) = crate::io::atomic::atomic_write_str(&path, &svg) {
                                 self.state.notify_error(format!("保存に失敗しました: {e}"));
                             } else {
                                 let mut watcher =
@@ -283,7 +283,7 @@ impl IrasuApp {
                             .save_file()
                         {
                             let svg = crate::io::svg::export_svg(&self.state.document);
-                            match std::fs::write(&path, svg) {
+                            match crate::io::atomic::atomic_write_str(&path, &svg) {
                                 Ok(_) => {
                                     self.state.notify_info("SVGを書き出しました");
                                 }
@@ -311,14 +311,16 @@ impl IrasuApp {
                                     5.0,
                                 );
                                 match serde_json::to_string_pretty(&comp) {
-                                    Ok(json) => match std::fs::write(&path, json) {
-                                        Ok(_) => self
-                                            .state
-                                            .notify_info("AEVFXコンポジションを書き出しました"),
-                                        Err(e) => self
-                                            .state
-                                            .notify_error(format!("書き出しに失敗しました: {e}")),
-                                    },
+                                    Ok(json) => {
+                                        match crate::io::atomic::atomic_write_str(&path, &json) {
+                                            Ok(_) => self
+                                                .state
+                                                .notify_info("AEVFXコンポジションを書き出しました"),
+                                            Err(e) => self
+                                                .state
+                                                .notify_error(format!("書き出しに失敗しました: {e}")),
+                                        }
+                                    }
                                     Err(e) => {
                                         self.state.notify_error(format!("変換に失敗しました: {e}"))
                                     }
@@ -347,7 +349,7 @@ impl IrasuApp {
                                     }
                                 }
                                 if let Ok(json) = serde_json::to_string_pretty(&paths) {
-                                    let _ = std::fs::write(&path, json);
+                                    let _ = crate::io::atomic::atomic_write_str(&path, &json);
                                 }
                             }
                             ui.close_menu();
@@ -362,7 +364,7 @@ impl IrasuApp {
                                     20.0,
                                     2.0,
                                 );
-                                let _ = std::fs::write(&path, obj_str);
+                                let _ = crate::io::atomic::atomic_write_str(&path, &obj_str);
                             }
                             ui.close_menu();
                         }

@@ -142,7 +142,7 @@ impl VfxTrailPanel {
                         .save_file()
                     {
                         if let Ok(json) = serde_json::to_string_pretty(&particles) {
-                            let _ = std::fs::write(&save_path, json);
+                            let _ = crate::io::atomic::atomic_write_str(&save_path, &json);
                         }
                     }
                 }

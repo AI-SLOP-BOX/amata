@@ -45,6 +45,9 @@ impl GradientPanel {
                         FillType::Pattern(_) => {
                             fill_type_name = "Pattern".into();
                         }
+                        FillType::Image(_) => {
+                            fill_type_name = "Image".into();
+                        }
                     }
                 }
                 found = true;

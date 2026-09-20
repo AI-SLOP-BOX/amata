@@ -206,12 +206,75 @@ impl Default for RadialGradient {
     }
 }
 
+/// How an image fill tiles across the object's shape.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ImageTileMode {
+    #[serde(rename = "cover")]
+    Cover,
+    #[serde(rename = "contain")]
+    Contain,
+    #[serde(rename = "fit")]
+    Fit,
+    #[serde(rename = "tile")]
+    Tile,
+}
+
+impl Default for ImageTileMode {
+    fn default() -> Self {
+        Self::Cover
+    }
+}
+
+/// An image used as a fill. The actual pixels live in the document's image
+/// objects (`ObjectType::Image`); this struct only keeps a reference so a fill
+/// can follow an image object that the user later edits.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ImageFill {
+    /// ID of the `ObjectType::Image` object whose PNG bytes provide the pixels.
+    pub image_id: String,
+    /// How the image should be mapped onto the shape.
+    #[serde(default)]
+    pub tile_mode: ImageTileMode,
+    /// Optional crop in image pixel coordinates (0..=1 relative to pixel size).
+    #[serde(default)]
+    pub crop_rect: Option<[f32; 4]>,
+}
+
+impl Default for ImageFill {
+    fn default() -> Self {
+        Self {
+            image_id: String::new(),
+            tile_mode: ImageTileMode::Cover,
+            crop_rect: None,
+        }
+    }
+}
+
+/// Eraser-style gap between tiles when `ImageTileMode::Tile` is used.
+pub const DEFAULT_IMAGE_TILE_GAP: f64 = 0.0;
+
+impl ImageFill {
+    pub fn new(image_id: impl Into<String>) -> Self {
+        Self {
+            image_id: image_id.into(),
+            ..Default::default()
+        }
+    }
+
+    /// True when this image fill refers to a non-empty image.
+    pub fn has_image(&self) -> bool {
+        !self.image_id.is_empty()
+    }
+}
+
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum FillType {
     Solid([f32; 4]),
     Linear(LinearGradient),
     Radial(RadialGradient),
     Pattern(PatternFill),
+    Image(ImageFill),
 }
 
 impl Default for FillType {
@@ -270,6 +333,35 @@ impl FillStyle {
             fill_type: FillType::Radial(gradient),
             rule: FillRule::NonZero,
         }
+    }
+
+    pub fn image_fill(image_id: impl Into<String>, tile_mode: ImageTileMode) -> Self {
+        Self {
+            color: [0.0, 0.0, 0.0, 0.0],
+            fill_type: FillType::Image(ImageFill {
+                image_id: image_id.into(),
+                tile_mode,
+                ..Default::default()
+            }),
+            rule: FillRule::NonZero,
+        }
+    }
+
+    /// Best-guess alpha color for UI previews. Image fills return (0,0,0,0) so
+    /// callers can distinguish "no color" from a solid fill.
+    pub fn alpha_color(&self) -> [f32; 4] {
+        match &self.fill_type {
+            FillType::Solid(c) => *c,
+            FillType::Linear(g) => g.stops.first().map(|s| s.color).unwrap_or([0.0; 4]),
+            FillType::Radial(g) => g.stops.first().map(|s| s.color).unwrap_or([0.0; 4]),
+            FillType::Pattern(_) => self.color,
+            FillType::Image(_) => [0.0, 0.0, 0.0, 0.0],
+        }
+    }
+
+    /// True when this style should be drawn as a raster image fill.
+    pub fn is_image_fill(&self) -> bool {
+        matches!(self.fill_type, FillType::Image(_))
     }
 }
 
