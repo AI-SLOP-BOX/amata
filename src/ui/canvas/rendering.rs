@@ -527,7 +527,6 @@ impl CanvasWidget {
                     self.draw_fill_overlay(painter, obj, opacity, origin, state, parent);
                     return;
                 }
-                let pos = to_screen(0.0, 0.0);
                 let scaled_size = (font_size * state.zoom as f64) as f32;
 
                 let align = match style.text_anchor {
@@ -663,7 +662,7 @@ impl CanvasWidget {
                 if !is_avail && state.selected_ids.contains(&obj.id) {
                     let text_h = line_height * lines.len() as f32;
                     let text_rect = egui::Rect::from_min_size(
-                        egui::pos2(pos.x, pos.y - scaled_size),
+                        egui::pos2(base_pos.x, base_pos.y - scaled_size),
                         egui::vec2(widest.max(scaled_size * 0.6), text_h),
                     );
                     painter.rect_stroke(

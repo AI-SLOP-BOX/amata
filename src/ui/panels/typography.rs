@@ -815,6 +815,8 @@ impl PatternPanel {
                 color: state.fill_color,
                 fill_type: FillType::Pattern(pattern.clone()),
                 rule: crate::core::path::FillRule::NonZero,
+                overprint: false,
+                spot: None,
             };
             for (_, obj) in state.document.all_objects_mut() {
                 if obj.id == id {
@@ -861,6 +863,8 @@ impl PatternPanel {
                         color: state.fill_color,
                         fill_type: FillType::Pattern(p),
                         rule: crate::core::path::FillRule::NonZero,
+                        overprint: false,
+                        spot: None,
                     };
                     for (_, obj) in state.document.all_objects_mut() {
                         if obj.id == id {

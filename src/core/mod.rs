@@ -29,6 +29,7 @@ pub mod path;
 pub mod pixel;
 pub mod polar;
 pub mod presets;
+pub mod print;
 pub mod revolve;
 pub mod shape_builder;
 pub mod simplify;

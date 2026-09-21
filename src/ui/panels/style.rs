@@ -439,6 +439,108 @@ impl AppearancePanel {
 
         ui.separator();
 
+        // Print attributes: overprint + spot plates per fill/stroke.
+        ui.label(RichText::new("Print").strong());
+        {
+            let (mut f_op, mut s_op) = (false, false);
+            let (mut f_spot, mut s_spot) = (None, None);
+            let mut has_fill = false;
+            let mut has_stroke = false;
+            for (_, obj) in state.document.all_objects() {
+                if obj.id == id {
+                    if let Some(f) = &obj.fill {
+                        has_fill = true;
+                        f_op = f.overprint;
+                        f_spot = f.spot.clone();
+                    }
+                    if let Some(s) = &obj.stroke {
+                        has_stroke = true;
+                        s_op = s.overprint;
+                        s_spot = s.spot.clone();
+                    }
+                    break;
+                }
+            }
+            let spots: Vec<String> =
+                state.document.spots.iter().map(|s| s.name.clone()).collect();
+            ui.horizontal(|ui| {
+                ui.label("Fill:");
+                let op_resp = ui.add_enabled(has_fill, egui::Checkbox::new(&mut f_op, "OP"));
+                if op_resp.changed() {
+                    state.object_edit(&id, &op_resp, |o| {
+                        if let Some(f) = o.fill.as_mut() {
+                            f.overprint = f_op;
+                        }
+                    });
+                }
+                egui::ComboBox::from_id_salt("fill_spot")
+                    .selected_text(f_spot.clone().unwrap_or_else(|| "プロセス".into()))
+                    .width(110.0)
+                    .show_ui(ui, |ui| {
+                        if ui.selectable_label(f_spot.is_none(), "プロセス").clicked() {
+                            state.ensure_object_snapshot(&id);
+                            if let Some(o) = state.document.find_object_mut(&id) {
+                                if let Some(f) = o.fill.as_mut() {
+                                    f.spot = None;
+                                }
+                            }
+                            state.commit_object_edits("Edit Object");
+                        }
+                        for name in &spots {
+                            if ui.selectable_label(f_spot.as_ref() == Some(name), name).clicked() {
+                                let name = name.clone();
+                                state.ensure_object_snapshot(&id);
+                                if let Some(o) = state.document.find_object_mut(&id) {
+                                    if let Some(f) = o.fill.as_mut() {
+                                        f.spot = Some(name);
+                                    }
+                                }
+                                state.commit_object_edits("Edit Object");
+                            }
+                        }
+                    });
+            });
+            ui.horizontal(|ui| {
+                ui.label("Stroke:");
+                let op_resp = ui.add_enabled(has_stroke, egui::Checkbox::new(&mut s_op, "OP"));
+                if op_resp.changed() {
+                    state.object_edit(&id, &op_resp, |o| {
+                        if let Some(s) = o.stroke.as_mut() {
+                            s.overprint = s_op;
+                        }
+                    });
+                }
+                egui::ComboBox::from_id_salt("stroke_spot")
+                    .selected_text(s_spot.clone().unwrap_or_else(|| "プロセス".into()))
+                    .width(110.0)
+                    .show_ui(ui, |ui| {
+                        if ui.selectable_label(s_spot.is_none(), "プロセス").clicked() {
+                            state.ensure_object_snapshot(&id);
+                            if let Some(o) = state.document.find_object_mut(&id) {
+                                if let Some(s) = o.stroke.as_mut() {
+                                    s.spot = None;
+                                }
+                            }
+                            state.commit_object_edits("Edit Object");
+                        }
+                        for name in &spots {
+                            if ui.selectable_label(s_spot.as_ref() == Some(name), name).clicked() {
+                                let name = name.clone();
+                                state.ensure_object_snapshot(&id);
+                                if let Some(o) = state.document.find_object_mut(&id) {
+                                    if let Some(s) = o.stroke.as_mut() {
+                                        s.spot = Some(name);
+                                    }
+                                }
+                                state.commit_object_edits("Edit Object");
+                            }
+                        }
+                    });
+            });
+        }
+
+        ui.separator();
+
         // Effects summary
         ui.label(RichText::new("Effects").strong());
         let mut has_shadow = false;

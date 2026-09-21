@@ -108,6 +108,8 @@ fn test_nested_groups_and_gradient_and_text_in_symbol() {
         color: [0.0, 0.0, 0.0, 1.0],
         fill_type: FillType::Linear(grad),
         rule: irasu_illustrator::core::path::FillRule::NonZero,
+        overprint: false,
+        spot: None,
     });
 
     let label = Object::new_text("BadgeLabel", "VIP ACCESS", 20.0, 50.0, 22.0);

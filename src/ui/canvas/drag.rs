@@ -1,5 +1,5 @@
 use super::{CanvasWidget, DragMode};
-use crate::core::document::Object;
+use crate::core::document::{Object, ObjectType, TextArea};
 use crate::core::path::{FillStyle, PathData, StrokeStyle};
 use crate::core::state::AppState;
 
@@ -156,6 +156,34 @@ impl CanvasWidget {
                         });
                         let cmd = Box::new(crate::core::history::AddObjectCommand::new(obj));
                         state.undo_manager.execute(cmd, &mut state.document);
+                    }
+                }
+                // Text tool drag-release: Illustrator area-text semantics —
+                // the box *is* the object (transform stays identity, the box
+                // lives in local coordinates). Tiny drags are not text; they
+                // fall through so `handle_click` creates point text instead.
+                DragMode::CreateTextArea => {
+                    let x = drag.start_world.0.min(drag.current_world.0);
+                    let y = drag.start_world.1.min(drag.current_world.1);
+                    let w = (drag.current_world.0 - drag.start_world.0).abs();
+                    let h = (drag.current_world.1 - drag.start_world.1).abs();
+                    if w > 8.0 && h > 8.0 {
+                        let mut obj = Object::new_text(
+                            "Area Text",
+                            &state.text_input_buf,
+                            0.0,
+                            0.0,
+                            state.font_size,
+                        );
+                        obj.fill = Some(FillStyle::solid(state.fill_color));
+                        if let ObjectType::Text { area, .. } = &mut obj.object_type {
+                            *area = Some(TextArea::new(x, y, w, h));
+                        }
+                        let new_id = obj.id.clone();
+                        let cmd = Box::new(crate::core::history::AddObjectCommand::new(obj));
+                        state.undo_manager.execute(cmd, &mut state.document);
+                        state.selected_ids = vec![new_id];
+                        state.notify_success("エリアテキストを作成しました");
                     }
                 }
                 DragMode::MoveObject => {

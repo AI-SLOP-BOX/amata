@@ -118,6 +118,12 @@ pub struct Document {
     /// picker shown in the style panel and how colors are serialized.
     #[serde(default)]
     pub color_mode: ColorMode,
+    /// Spot color library (print separations).
+    #[serde(default)]
+    pub spots: Vec<super::print::SpotColor>,
+    /// Bleed in points (3mm ≈ 8.5pt is the Japanese offset standard).
+    #[serde(default)]
+    pub bleed: f64,
     /// Artboards owned by this document. Empty means a single implicit
     /// artboard using `width`/`height`.
     #[serde(default)]
@@ -136,6 +142,8 @@ impl Default for Document {
             timeline: super::timeline::Timeline::default(),
             guides: Vec::new(),
             color_mode: ColorMode::Rgb,
+            spots: super::print::default_spots(),
+            bleed: 0.0,
             artboards: Vec::new(),
         };
         doc.layers.push(Layer::new("Layer 1"));

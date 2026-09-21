@@ -188,6 +188,8 @@ fn test_semantic_diff_gradient_stop_change() {
         color: [0.0, 0.0, 0.0, 1.0],
         fill_type: FillType::Linear(grad_a),
         rule: irasu_illustrator::core::path::FillRule::NonZero,
+        overprint: false,
+        spot: None,
     });
 
     let mut bg_b = Object::new_rect("BG", 0.0, 0.0, 800.0, 600.0, 0.0);
@@ -196,6 +198,8 @@ fn test_semantic_diff_gradient_stop_change() {
         color: [0.0, 0.0, 0.0, 1.0],
         fill_type: FillType::Linear(grad_b),
         rule: irasu_illustrator::core::path::FillRule::NonZero,
+        overprint: false,
+        spot: None,
     });
 
     doc_a.add_object(bg_a);

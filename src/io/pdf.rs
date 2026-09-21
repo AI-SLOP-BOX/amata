@@ -1,5 +1,5 @@
 use crate::core::document::{Document, Object, ObjectType};
-use crate::core::path::{FillStyle, PathData, PathElement};
+use crate::core::path::{PathData, PathElement};
 use std::fmt::Write;
 
 fn affine_mul(m1: &[f64; 6], m2: &[f64; 6]) -> [f64; 6] {

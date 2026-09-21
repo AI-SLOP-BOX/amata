@@ -272,6 +272,9 @@ impl IrasuApp {
                         ExportPanel::show(ui, &mut self.state);
                         ui.add_space(8.0);
                         ui.separator();
+                        PrintPanel::show(ui, &mut self.state);
+                        ui.add_space(8.0);
+                        ui.separator();
                         GridRepeatPanel::show(ui, &mut self.state);
                     }
                     ActiveTab::Guides => {

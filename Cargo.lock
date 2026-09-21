@@ -79,6 +79,7 @@ dependencies = [
  "egui",
  "egui-wgpu",
  "env_logger",
+ "flate2",
  "fontdb",
  "image",
  "kurbo 0.11.3",

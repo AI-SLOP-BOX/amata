@@ -44,6 +44,8 @@ enum DragMode {
     PencilDraw,
     BrushDraw,
     EraserDrag,
+    /// Text tool drag: creates Illustrator-style area text on release.
+    CreateTextArea,
     MoveObject,
     Resize(HandleCorner),
     Rotate,
@@ -607,6 +609,8 @@ impl CanvasWidget {
         if let Some(ref drag) = self.drag {
             match drag.mode {
                 DragMode::CreateRect => self.draw_rect_preview(&painter, origin, state, drag),
+                // Text area box preview reuses the rect rubber-band.
+                DragMode::CreateTextArea => self.draw_rect_preview(&painter, origin, state, drag),
                 DragMode::CreateEllipse => self.draw_ellipse_preview(&painter, origin, state, drag),
                 DragMode::CreateStar => self.draw_star_preview(&painter, origin, state, drag),
                 DragMode::CreatePolygon => self.draw_polygon_preview(&painter, origin, state, drag),
@@ -927,6 +931,12 @@ impl CanvasWidget {
                         }
                         Tool::Eraser => {
                             self.drag = Some(DragState::new(DragMode::EraserDrag, wx, wy));
+                        }
+                        // Text tool: dragging out a box creates area text;
+                        // a plain click (no drag) falls through to
+                        // `handle_click`, which creates point text.
+                        Tool::Text => {
+                            self.drag = Some(DragState::new(DragMode::CreateTextArea, wx, wy));
                         }
                         Tool::Pen => {
                             // If drawing and drag starts, we're pulling bezier handles

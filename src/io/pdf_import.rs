@@ -706,6 +706,8 @@ impl<'a> Importer<'a> {
                 color: st.fill,
                 fill_type: crate::core::path::FillType::Solid(st.fill),
                 rule: if even_odd { FillRule::EvenOdd } else { FillRule::NonZero },
+                overprint: false,
+                spot: None,
             })
         } else {
             None

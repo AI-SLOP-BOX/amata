@@ -302,6 +302,14 @@ pub struct FillStyle {
     pub color: [f32; 4],
     pub fill_type: FillType,
     pub rule: FillRule,
+    /// Print overprint (knockout when false). Honored by print PDF export
+    /// and reported by preflight; canvas preview ignores it.
+    #[serde(default)]
+    pub overprint: bool,
+    /// Spot color name from the document's spot library. `None` = process
+    /// color. Resolved at export/preview time so renames stay live.
+    #[serde(default)]
+    pub spot: Option<String>,
 }
 
 impl Default for FillStyle {
@@ -310,6 +318,8 @@ impl Default for FillStyle {
             color: [0.0, 0.0, 0.0, 1.0],
             fill_type: FillType::Solid([0.0, 0.0, 0.0, 1.0]),
             rule: FillRule::NonZero,
+            overprint: false,
+            spot: None,
         }
     }
 }
@@ -320,6 +330,8 @@ impl FillStyle {
             color,
             fill_type: FillType::Solid(color),
             rule: FillRule::NonZero,
+            overprint: false,
+            spot: None,
         }
     }
 
@@ -333,6 +345,8 @@ impl FillStyle {
             color: first_color,
             fill_type: FillType::Linear(gradient),
             rule: FillRule::NonZero,
+            overprint: false,
+            spot: None,
         }
     }
 
@@ -346,6 +360,8 @@ impl FillStyle {
             color: first_color,
             fill_type: FillType::Radial(gradient),
             rule: FillRule::NonZero,
+            overprint: false,
+            spot: None,
         }
     }
 
@@ -358,6 +374,8 @@ impl FillStyle {
                 ..Default::default()
             }),
             rule: FillRule::NonZero,
+            overprint: false,
+            spot: None,
         }
     }
 
@@ -451,6 +469,12 @@ pub struct StrokeStyle {
     pub miter_limit: f64,
     pub arrow_start: ArrowHead,
     pub arrow_end: ArrowHead,
+    /// Print overprint for the stroke (see `FillStyle::overprint`).
+    #[serde(default)]
+    pub overprint: bool,
+    /// Spot color name from the document's spot library (`None` = process).
+    #[serde(default)]
+    pub spot: Option<String>,
 }
 
 impl Default for StrokeStyle {
@@ -464,6 +488,8 @@ impl Default for StrokeStyle {
             miter_limit: 4.0,
             arrow_start: ArrowHead::None,
             arrow_end: ArrowHead::None,
+            overprint: false,
+            spot: None,
         }
     }
 }

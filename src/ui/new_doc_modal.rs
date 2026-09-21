@@ -65,6 +65,8 @@ pub struct NewDocRequest {
     pub height: f64,
     pub color_mode: crate::core::document::ColorMode,
     pub artboard_count: usize,
+    /// Bleed in points (max of the four sides).
+    pub bleed: f64,
 }
 
 impl NewDocModal {
@@ -607,6 +609,13 @@ impl NewDocModal {
                                     height: h,
                                     color_mode,
                                     artboard_count: self.artboard_count,
+                                    bleed: crate::core::print::mm_to_pt(
+                                        self.bleed_top
+                                            .max(self.bleed_bottom)
+                                            .max(self.bleed_left)
+                                            .max(self.bleed_right)
+                                            .max(0.0),
+                                    ),
                                 });
                                 self.is_open = false;
                             }

@@ -96,6 +96,7 @@ impl IrasuApp {
             width: req.width,
             height: req.height,
             color_mode: req.color_mode,
+            bleed: req.bleed,
             ..Default::default()
         };
         // Create initial artboards based on the requested count.  The

@@ -976,6 +976,8 @@ fn parse_linear_gradient_tag(tag: &str, child_tags: &[String]) -> (String, FillS
             color: [0.0, 0.0, 0.0, 1.0],
             fill_type: FillType::Linear(grad),
             rule: crate::core::path::FillRule::NonZero,
+            overprint: false,
+            spot: None,
         },
     )
 }
@@ -1035,6 +1037,8 @@ fn parse_radial_gradient_tag(tag: &str, child_tags: &[String]) -> (String, FillS
             color: [0.0, 0.0, 0.0, 1.0],
             fill_type: FillType::Radial(grad),
             rule: crate::core::path::FillRule::NonZero,
+            overprint: false,
+            spot: None,
         },
     )
 }

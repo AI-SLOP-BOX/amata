@@ -214,6 +214,9 @@ pub struct AppState {
     pub brush_motif: String,
     pub brush_spacing: f64,
     pub brush_scale: f64,
+    // Print export switches.
+    pub print_marks: bool,
+    pub print_pdfx: bool,
     // In-progress panel transform gesture: (object id, transform at gesture
     // start). Committed as one undo step when the gesture ends.
     pub pending_transforms: Vec<(String, Transform)>,
@@ -360,6 +363,8 @@ impl Default for AppState {
             brush_motif: "arrow".to_string(),
             brush_spacing: 60.0,
             brush_scale: 1.0,
+            print_marks: true,
+            print_pdfx: true,
             pending_transforms: Vec::new(),
             pending_objects: Vec::new(),
             pending_layers: Vec::new(),

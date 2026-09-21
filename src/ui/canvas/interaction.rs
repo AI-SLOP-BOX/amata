@@ -64,11 +64,15 @@ impl CanvasWidget {
                 }
             }
             Tool::Text => {
-                let mut obj =
-                    Object::new_text("Text", &state.text_input_buf, wx, wy, state.font_size);
-                obj.fill = Some(FillStyle::solid(state.fill_color));
-                let cmd = Box::new(crate::core::history::AddObjectCommand::new(obj));
-                state.undo_manager.execute(cmd, &mut state.document);
+                // Plain click (no real drag — `drag_stopped` clears
+                // in-progress text drags first, see `handle_drag_stopped`).
+                if self.drag.is_none() {
+                    let mut obj =
+                        Object::new_text("Text", &state.text_input_buf, wx, wy, state.font_size);
+                    obj.fill = Some(FillStyle::solid(state.fill_color));
+                    let cmd = Box::new(crate::core::history::AddObjectCommand::new(obj));
+                    state.undo_manager.execute(cmd, &mut state.document);
+                }
             }
             Tool::Zoom => {
                 let zoom_mult = if shift { 0.5_f32 } else { 2.0_f32 };

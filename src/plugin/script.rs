@@ -517,6 +517,8 @@ fn parse_object_map(map: &rhai::Map) -> Option<Object> {
                         stops,
                     }),
                     rule: FillRule::NonZero,
+                    overprint: false,
+                    spot: None,
                 });
             }
         }
