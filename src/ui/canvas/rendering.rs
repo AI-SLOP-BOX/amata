@@ -457,6 +457,56 @@ impl CanvasWidget {
                     );
                 }
             }
+            ObjectType::GradientMesh(m) => {
+                // Vertex-colored triangles: smooth on canvas at any zoom.
+                // Fixed subdivision keeps frame cost bounded (a 16×16 mesh
+                // is 225 patches × 72 tris worst case).
+                let mut mesh = egui::epaint::Mesh::default();
+                for (tri, cols) in m.triangulate(6) {
+                    let base = mesh.vertices.len() as u32;
+                    for (p, c) in tri.iter().zip(cols.iter()) {
+                        mesh.vertices.push(egui::epaint::Vertex {
+                            pos: to_screen(p.x, p.y),
+                            uv: Pos2::ZERO,
+                            color: Color32::from_rgba_unmultiplied(
+                                (c[0] * 255.0).round().clamp(0.0, 255.0) as u8,
+                                (c[1] * 255.0).round().clamp(0.0, 255.0) as u8,
+                                (c[2] * 255.0).round().clamp(0.0, 255.0) as u8,
+                                (c[3] * opacity * 255.0).round().clamp(0.0, 255.0) as u8,
+                            ),
+                        });
+                    }
+                    mesh.indices.extend([base, base + 1, base + 2]);
+                }
+                if !mesh.indices.is_empty() {
+                    painter.add(mesh);
+                }
+                // Node markers for the selected mesh (panel edits values;
+                // direct dragging is a follow-up).
+                if state.selected_ids.contains(&obj.id) {
+                    for n in &m.nodes {
+                        let p = to_screen(n.x, n.y);
+                        painter.rect_filled(
+                            egui::Rect::from_center_size(p, egui::Vec2::splat(7.0)),
+                            1.0,
+                            Color32::from_rgb(20, 115, 230),
+                        );
+                        painter.rect_stroke(
+                            egui::Rect::from_center_size(p, egui::Vec2::splat(7.0)),
+                            1.0,
+                            Stroke::new(1.0_f32, Color32::WHITE),
+                            egui::StrokeKind::Outside,
+                        );
+                    }
+                }
+            }
+            ObjectType::Envelope { .. } => {
+                // Live deform renders through a plain-Path proxy (same
+                // paint, transform and ancestry).
+                if let Some(proxy) = obj.envelope_proxy() {
+                    self.draw_object(painter, &proxy, origin, state, parent, ancestor_opacity);
+                }
+            }
             ObjectType::Image { width, height, .. } => {
                 if let Some(tex) = self.image_textures.get(&obj.id) {
                     // UV-mapped quad so rotation/skew stay exact.

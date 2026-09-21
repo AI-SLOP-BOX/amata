@@ -879,6 +879,44 @@ fn render_object_to_svg(
                 ));
             }
         }
+        ObjectType::GradientMesh(m) => {
+            // No renderer supports meshgradient widely, so bake flat quads
+            // (compatible everywhere: browsers, resvg, print paths).
+            let mut subdiv = 6usize;
+            let mut quads = m.quads(subdiv);
+            while quads.len() > 20000 && subdiv > 1 {
+                subdiv /= 2;
+                quads = m.quads(subdiv);
+            }
+            let tm = obj.transform.matrix();
+            let map = |x: f64, y: f64| -> (f64, f64) {
+                (tm[0] * x + tm[2] * y + tm[4], tm[1] * x + tm[3] * y + tm[5])
+            };
+            // One group per mesh keeps the markup navigable.
+            svg.push_str(&format!("  <g{id_attr}{effect_attr}>\n"));
+            for (corners, color) in &quads {
+                let pts: Vec<(f64, f64)> =
+                    corners.iter().map(|p| map(p.x, p.y)).collect();
+                let opac = if (color[3] - 1.0).abs() > 1e-3 {
+                    format!(" fill-opacity=\"{:.3}\"", color[3].clamp(0.0, 1.0))
+                } else {
+                    String::new()
+                };
+                svg.push_str(&format!(
+                    "    <path d=\"M{:.2},{:.2}L{:.2},{:.2}L{:.2},{:.2}L{:.2},{:.2}Z\" fill=\"{}\"{} />\n",
+                    pts[0].0, pts[0].1, pts[1].0, pts[1].1,
+                    pts[2].0, pts[2].1, pts[3].0, pts[3].1,
+                    color_to_svg_str(color), opac
+                ));
+            }
+            svg.push_str("  </g>\n");
+        }
+        ObjectType::Envelope { .. } => {
+            // Same proxy recursion as canvas: deformed source as Path.
+            if let Some(proxy) = obj.envelope_proxy() {
+                render_object_to_svg(&proxy, doc, svg, defs, counter);
+            }
+        }
     }
 }
 

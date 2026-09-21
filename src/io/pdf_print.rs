@@ -523,6 +523,27 @@ fn render_obj(ctx: &mut Ctx, obj: &Object, parent: &[f64; 6], out: &mut String) 
         ObjectType::Image { width, height, png_bytes } => {
             emit_image(ctx, obj, *width, *height, png_bytes, &world, out);
         }
+        ObjectType::GradientMesh(m) => {
+            // Flat quads through the regular painter (CMYK/spots/opacity
+            // handled per quad like any solid fill).
+            let tm = obj.transform.matrix();
+            for (corners, color) in m.quads(6) {
+                let mut path = PathData::new();
+                for (i, p) in corners.iter().enumerate() {
+                    let x = tm[0] * p.x + tm[2] * p.y + tm[4];
+                    let y = tm[1] * p.x + tm[3] * p.y + tm[5];
+                    if i == 0 {
+                        path.push_move_to(x, y);
+                    } else {
+                        path.push_line_to(x, y);
+                    }
+                }
+                path.elements.push(PathElement::ClosePath);
+                path.fill = Some(FillStyle::solid(color));
+                path.transform(&world);
+                emit_painted_path(ctx, obj, &path, out);
+            }
+        }
         _ => {
             let mut path = obj.to_path_data();
             path.transform(&world);

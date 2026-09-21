@@ -1,5 +1,5 @@
 use crate::core::document::{Document, Object, ObjectType};
-use crate::core::path::{PathData, PathElement};
+use crate::core::path::{FillStyle, PathData, PathElement};
 use std::fmt::Write;
 
 fn affine_mul(m1: &[f64; 6], m2: &[f64; 6]) -> [f64; 6] {
@@ -115,6 +115,27 @@ fn render_obj_pdf(obj: &Object, parent: &[f64; 6], stream_content: &mut String) 
                 path.stroke = obj.stroke.clone();
             }
             emit_filled_path(stream_content, &path);
+        }
+        ObjectType::GradientMesh(m) => {
+            // Bake flat quads (same approach as the SVG exporter: mesh
+            // shadings don't exist in the PDF imaging model as such).
+            let tm = obj.transform.matrix();
+            for (corners, color) in m.quads(6) {
+                let mut path = PathData::new();
+                for (i, p) in corners.iter().enumerate() {
+                    let x = tm[0] * p.x + tm[2] * p.y + tm[4];
+                    let y = tm[1] * p.x + tm[3] * p.y + tm[5];
+                    if i == 0 {
+                        path.push_move_to(x, y);
+                    } else {
+                        path.push_line_to(x, y);
+                    }
+                }
+                path.elements.push(PathElement::ClosePath);
+                path.fill = Some(FillStyle::solid(color));
+                path.transform(&world);
+                emit_filled_path(stream_content, &path);
+            }
         }
         _ => {
             let mut path = obj.to_path_data();

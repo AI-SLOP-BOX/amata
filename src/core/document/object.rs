@@ -278,6 +278,17 @@ pub enum ObjectType {
     /// Pixel-art layer (dot絵): fixed grid of palette indices, 1 cell = 1
     /// local unit. See [`crate::core::pixel::PixelArt`].
     PixelArt(crate::core::pixel::PixelArt),
+    /// Gradient mesh: editable grid of colored nodes forming smooth
+    /// Hermite patches. See [`crate::core::gradient_mesh::MeshGradient`].
+    GradientMesh(crate::core::gradient_mesh::MeshGradient),
+    /// Live envelope: `source` (normalized to a Path with identity
+    /// transform at wrap time) deformed by kind/amount on every read.
+    /// Edit params or release to restore the source.
+    Envelope {
+        source: Box<Object>,
+        kind: crate::core::envelope::EnvelopeKind,
+        amount: f64,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -504,6 +515,56 @@ pub fn layout_text(text: &str, style: &TextStyle, area: Option<TextArea>) -> Tex
             }
         }
     }
+}
+
+/// Map every point of a path through a live envelope deform (bbox taken
+/// from the path itself). Curves keep their structure with mapped control
+/// points (exact on straight runs, approximate under strong bending —
+/// same convention as the brush mapper).
+pub fn deform_path_data(
+    path: &PathData,
+    kind: crate::core::envelope::EnvelopeKind,
+    amount: f64,
+) -> PathData {
+    use crate::core::path::PathElement;
+    let bb = path.bounding_box().unwrap_or((
+        crate::core::path::AnchorPoint::new(0.0, 0.0),
+        crate::core::path::AnchorPoint::new(1.0, 1.0),
+    ));
+    let map = |p: crate::core::path::AnchorPoint| {
+        crate::core::envelope::envelope_point(p, bb, kind, amount)
+    };
+    let mut out = PathData::new();
+    out.fill = path.fill.clone();
+    out.stroke = path.stroke.clone();
+    for el in &path.elements {
+        match el {
+            PathElement::MoveTo(p) => {
+                let q = map(*p);
+                out.push_move_to(q.x, q.y);
+            }
+            PathElement::LineTo(p) => {
+                let q = map(*p);
+                out.push_line_to(q.x, q.y);
+            }
+            PathElement::CurveTo(seg) => {
+                let s = map(seg.start);
+                let c1 = map(seg.control1);
+                let c2 = map(seg.control2);
+                let e = map(seg.end);
+                out.elements.push(PathElement::CurveTo(
+                    crate::core::path::BezierSegment {
+                        start: s,
+                        control1: c1,
+                        control2: c2,
+                        end: e,
+                    },
+                ));
+            }
+            PathElement::ClosePath => out.elements.push(PathElement::ClosePath),
+        }
+    }
+    out
 }
 /// the last allowed opportunity. Breaks happen at spaces and after CJK
 /// characters, subject to Japanese kinsoku rules: a line never starts with
@@ -907,6 +968,96 @@ impl Object {
             locked: false,
         }
     }
+
+    pub fn new_mesh(name: &str, x: f64, y: f64, mesh: crate::core::gradient_mesh::MeshGradient) -> Self {
+        Self {
+            id: Uuid::new_v4().to_string(),
+            name: name.to_string(),
+            object_type: ObjectType::GradientMesh(mesh),
+            transform: Transform {
+                x,
+                y,
+                ..Default::default()
+            },
+            fill: None,
+            stroke: None,
+            shadow: None,
+            glow: None,
+            appearance: AppearanceStack::default(),
+            opacity: 1.0,
+            width_profile: None,
+            blend_mode: BlendMode::Normal,
+            visible: true,
+            locked: false,
+        }
+    }
+
+    /// Wrap a vector shape/path in a live envelope. The source is baked to
+    /// a Path with identity transform (so the deform space stays sane);
+    /// release restores a plain path. Returns `None` for text, images and
+    /// other non-vector sources.
+    pub fn wrap_envelope(
+        name: &str,
+        source: &Object,
+        kind: crate::core::envelope::EnvelopeKind,
+        amount: f64,
+    ) -> Option<Self> {
+        match &source.object_type {
+            ObjectType::Path(_)
+            | ObjectType::Rectangle { .. }
+            | ObjectType::Ellipse { .. }
+            | ObjectType::Star { .. }
+            | ObjectType::Polygon { .. }
+            | ObjectType::Line { .. } => {}
+            _ => return None,
+        }
+        let mut path = source.to_path_data();
+        path.transform(&source.transform.matrix());
+        path.fill = source.fill.clone();
+        path.stroke = source.stroke.clone();
+        // Give the deform something to bend: sparse edges are subdivided
+        // shape-exactly (release stays lossless).
+        path = crate::core::envelope::subdivide_path(&path, 2);
+        let mut baked = Self::new_path(&format!("{} (Source)", source.name), path);
+        baked.transform = Transform::default();
+        baked.fill = None;
+        baked.stroke = None;
+        Some(Self {
+            id: Uuid::new_v4().to_string(),
+            name: name.to_string(),
+            object_type: ObjectType::Envelope {
+                source: Box::new(baked),
+                kind,
+                amount: amount.clamp(-1.0, 1.0),
+            },
+            transform: Transform::default(),
+            fill: source.fill.clone(),
+            stroke: source.stroke.clone(),
+            shadow: source.shadow.clone(),
+            glow: source.glow.clone(),
+            appearance: AppearanceStack::default(),
+            opacity: source.opacity,
+            width_profile: None,
+            blend_mode: source.blend_mode,
+            visible: true,
+            locked: false,
+        })
+    }
+
+    /// Render-ready proxy: the deformed source as a plain Path carrying
+    /// this object's paint/transform. Renderers recurse into it instead of
+    /// duplicating path-drawing code.
+    pub fn envelope_proxy(&self) -> Option<Object> {
+        if let ObjectType::Envelope { .. } = &self.object_type {
+            let mut proxy = self.clone();
+            proxy.object_type = ObjectType::Path(self.to_path_data());
+            Some(proxy)
+        } else {
+            None
+        }
+    }
+
+    /// Combine multiple objects into a single Compound Path (holes are created where subpaths overlap using EvenOdd rule)
     pub fn make_compound_path(objects: &[Object]) -> Option<Self> {
         if objects.is_empty() {
             return None;
@@ -1020,6 +1171,13 @@ impl Object {
             ObjectType::PixelArt(p) => {
                 PathData::from_rect(0.0, 0.0, p.width as f64, p.height as f64, 0.0)
             }
+            ObjectType::GradientMesh(m) => match m.node_bbox() {
+                Some((mn, mx)) => PathData::from_rect(mn.x, mn.y, mx.x - mn.x, mx.y - mn.y, 0.0),
+                None => PathData::new(),
+            },
+            ObjectType::Envelope { source, kind, amount } => {
+                deform_path_data(&source.to_path_data(), *kind, amount.clamp(-1.0, 1.0))
+            },
         }
     }
 
@@ -1097,6 +1255,14 @@ impl Object {
             ObjectType::PixelArt(p) => {
                 lx >= 0.0 && lx <= p.width as f64 && ly >= 0.0 && ly <= p.height as f64
             }
+            ObjectType::GradientMesh(m) => match m.node_bbox() {
+                Some((mn, mx)) => lx >= mn.x && lx <= mx.x && ly >= mn.y && ly <= mx.y,
+                None => false,
+            },
+            ObjectType::Envelope { .. } => {
+                let poly = self.to_path_data().to_polygon(8);
+                crate::core::geometry::point_in_polygon(lx, ly, &poly)
+            },
         }
     }
 

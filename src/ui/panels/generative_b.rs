@@ -267,57 +267,210 @@ impl MeshWarpPanel {
 
 pub struct GradientMeshPanel;
 
+fn preset_corners(preset: crate::core::gradient_mesh::GradientMeshPreset) -> [[f32; 4]; 4] {
+    match preset {
+        crate::core::gradient_mesh::GradientMeshPreset::Sunset => [
+            [1.0, 0.2, 0.4, 0.95],
+            [1.0, 0.6, 0.1, 0.95],
+            [0.4, 0.1, 0.6, 0.95],
+            [0.1, 0.05, 0.3, 0.95],
+        ],
+        crate::core::gradient_mesh::GradientMeshPreset::Cyberpunk => [
+            [0.0, 0.9, 1.0, 0.95],
+            [1.0, 0.1, 0.6, 0.95],
+            [0.1, 0.0, 0.4, 0.95],
+            [0.0, 1.0, 0.5, 0.95],
+        ],
+        crate::core::gradient_mesh::GradientMeshPreset::Aurora => [
+            [0.1, 0.9, 0.5, 0.95],
+            [0.1, 0.5, 0.9, 0.95],
+            [0.5, 0.1, 0.8, 0.95],
+            [0.05, 0.2, 0.4, 0.95],
+        ],
+        crate::core::gradient_mesh::GradientMeshPreset::Gold => [
+            [1.0, 0.9, 0.5, 0.95],
+            [0.9, 0.6, 0.2, 0.95],
+            [0.6, 0.4, 0.1, 0.95],
+            [0.3, 0.2, 0.05, 0.95],
+        ],
+    }
+}
+
+fn selected_mesh_id(state: &AppState) -> Option<String> {
+    for id in &state.selected_ids {
+        if let Some(obj) = state.document.find_object(id) {
+            if matches!(
+                obj.object_type,
+                crate::core::document::ObjectType::GradientMesh(_)
+            ) {
+                return Some(id.clone());
+            }
+        }
+    }
+    state
+        .document
+        .all_objects()
+        .find(|(_, o)| {
+            matches!(o.object_type, crate::core::document::ObjectType::GradientMesh(_))
+        })
+        .map(|(_, o)| o.id.clone())
+}
+
 impl GradientMeshPanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("🌈 Gradient Mesh Generator").strong());
+        ui.heading(RichText::new("🌈 Gradient Mesh").strong());
         ui.add_space(4.0);
 
-        let w = state.document.width;
-        let h = state.document.height;
-
+        // Create a new editable mesh from a preset.
+        ui.label(RichText::new("新規メッシュ").weak());
         ui.horizontal_wrapped(|ui| {
-            if ui.button("🌅 Sunset Mesh").clicked() {
-                let patches = crate::core::gradient_mesh::generate_gradient_mesh(
-                    crate::core::gradient_mesh::GradientMeshPreset::Sunset,
-                    w,
-                    h,
-                    3,
-                    3,
-                );
-                for patch in patches {
-                    let cmd = Box::new(crate::core::history::AddObjectCommand::new(patch));
+            for (label, preset) in [
+                ("🌅 Sunset", crate::core::gradient_mesh::GradientMeshPreset::Sunset),
+                ("🌆 Cyber", crate::core::gradient_mesh::GradientMeshPreset::Cyberpunk),
+                ("🌌 Aurora", crate::core::gradient_mesh::GradientMeshPreset::Aurora),
+                ("🥇 Gold", crate::core::gradient_mesh::GradientMeshPreset::Gold),
+            ] {
+                if ui.button(label).clicked() {
+                    let size = state.document.width.min(state.document.height) / 2.0;
+                    let mesh = crate::core::gradient_mesh::MeshGradient::new_rect(
+                        0.0,
+                        0.0,
+                        size,
+                        size,
+                        4,
+                        4,
+                        preset_corners(preset),
+                    );
+                    let obj = crate::core::document::Object::new_mesh(
+                        "Gradient Mesh",
+                        (state.document.width - size) / 2.0,
+                        (state.document.height - size) / 2.0,
+                        mesh,
+                    );
+                    let id = obj.id.clone();
+                    let cmd = Box::new(crate::core::history::AddObjectCommand::new(obj));
                     state.undo_manager.execute(cmd, &mut state.document);
-                }
-            }
-
-            if ui.button("🌆 Cyber Mesh").clicked() {
-                let patches = crate::core::gradient_mesh::generate_gradient_mesh(
-                    crate::core::gradient_mesh::GradientMeshPreset::Cyberpunk,
-                    w,
-                    h,
-                    3,
-                    3,
-                );
-                for patch in patches {
-                    let cmd = Box::new(crate::core::history::AddObjectCommand::new(patch));
-                    state.undo_manager.execute(cmd, &mut state.document);
-                }
-            }
-
-            if ui.button("🌌 Aurora Mesh").clicked() {
-                let patches = crate::core::gradient_mesh::generate_gradient_mesh(
-                    crate::core::gradient_mesh::GradientMeshPreset::Aurora,
-                    w,
-                    h,
-                    3,
-                    3,
-                );
-                for patch in patches {
-                    let cmd = Box::new(crate::core::history::AddObjectCommand::new(patch));
-                    state.undo_manager.execute(cmd, &mut state.document);
+                    state.selected_ids = vec![id];
+                    state.notify_success("グラデーションメッシュを作成しました");
                 }
             }
         });
+        ui.add_space(4.0);
+
+        // Edit the targeted mesh node by node.
+        let Some(id) = selected_mesh_id(state) else {
+            ui.label(
+                RichText::new("メッシュを選択するとノード編集できます。ノードはキャンバス上で■表示されます。")
+                    .weak()
+                    .size(11.0),
+            );
+            return;
+        };
+        let (rows, cols) = match state.document.find_object(&id) {
+            Some(obj) => {
+                if let crate::core::document::ObjectType::GradientMesh(m) = &obj.object_type {
+                    (m.rows, m.cols)
+                } else {
+                    return;
+                }
+            }
+            None => return,
+        };
+        ui.label(format!("編集中: {rows}×{cols} ノード"));
+        // Node picker.
+        let mut node_rc: Option<(usize, usize)> = None;
+        ui.horizontal(|ui| {
+            ui.label("Node:");
+            // Persist picker in egui memory (panel is stateless).
+            let mem_id = egui::Id::new(("mesh_node", id.clone()));
+            let (mut r, mut c): (usize, usize) = ui.memory_mut(|m| *m.data.get_temp_mut_or_default(mem_id));
+            r = r.min(rows - 1);
+            c = c.min(cols - 1);
+            egui::ComboBox::from_id_salt(("mesh_row", id.clone()))
+                .selected_text(format!("row {r}"))
+                .width(70.0)
+                .show_ui(ui, |ui| {
+                    for i in 0..rows {
+                        if ui.selectable_label(r == i, format!("row {i}")).clicked() {
+                            r = i;
+                        }
+                    }
+                });
+            egui::ComboBox::from_id_salt(("mesh_col", id.clone()))
+                .selected_text(format!("col {c}"))
+                .width(70.0)
+                .show_ui(ui, |ui| {
+                    for i in 0..cols {
+                        if ui.selectable_label(c == i, format!("col {i}")).clicked() {
+                            c = i;
+                        }
+                    }
+                });
+            ui.memory_mut(|m| m.data.insert_temp(mem_id, (r, c)));
+            node_rc = Some((r, c));
+        });
+        if let Some((r, c)) = node_rc {
+            let (mut nx, mut ny, ncol) = match state.document.find_object(&id) {
+                Some(obj) => {
+                    if let crate::core::document::ObjectType::GradientMesh(m) = &obj.object_type {
+                        let n = m.node(r, c);
+                        (n.x, n.y, n.color)
+                    } else {
+                        return;
+                    }
+                }
+                None => return,
+            };
+            let mut ncolor = [
+                (ncol[0] * 255.0) as u8,
+                (ncol[1] * 255.0) as u8,
+                (ncol[2] * 255.0) as u8,
+                (ncol[3] * 255.0) as u8,
+            ];
+            ui.horizontal(|ui| {
+                ui.label("X:");
+                let x_resp = ui.add(egui::DragValue::new(&mut nx).speed(1.0));
+                ui.label("Y:");
+                let y_resp = ui.add(egui::DragValue::new(&mut ny).speed(1.0));
+                if x_resp.changed() || y_resp.changed() {
+                    state.ensure_object_snapshot(&id);
+                    if let Some(o) = state.document.find_object_mut(&id) {
+                        if let crate::core::document::ObjectType::GradientMesh(m) = &mut o.object_type {
+                            let n = m.node_mut(r, c);
+                            n.x = nx;
+                            n.y = ny;
+                        }
+                    }
+                    if !x_resp.dragged() && !y_resp.dragged() {
+                        state.commit_object_edits("Edit Mesh Node");
+                    }
+                }
+                if x_resp.drag_stopped() || y_resp.drag_stopped() {
+                    state.commit_object_edits("Edit Mesh Node");
+                }
+            });
+            ui.horizontal(|ui| {
+                ui.label("Color:");
+                if ui
+                    .color_edit_button_srgba_unmultiplied(&mut ncolor)
+                    .changed()
+                {
+                    let col = [
+                        ncolor[0] as f32 / 255.0,
+                        ncolor[1] as f32 / 255.0,
+                        ncolor[2] as f32 / 255.0,
+                        ncolor[3] as f32 / 255.0,
+                    ];
+                    state.ensure_object_snapshot(&id);
+                    if let Some(o) = state.document.find_object_mut(&id) {
+                        if let crate::core::document::ObjectType::GradientMesh(m) = &mut o.object_type {
+                            m.node_mut(r, c).color = col;
+                        }
+                    }
+                    state.commit_object_edits("Edit Mesh Color");
+                }
+            });
+        }
     }
 }
 
@@ -493,6 +646,131 @@ impl EnvelopePanel {
                     .weak()
                     .size(11.0),
             );
+        }
+
+        ui.add_space(4.0);
+        ui.separator();
+        ui.label(RichText::new("🌀 Live Warp (non-destructive)").strong());
+
+        // If a live envelope is selected: edit kind/amount or release.
+        let live_id = state.selected_ids.iter().find_map(|id| {
+            state.document.find_object(id).and_then(|o| match &o.object_type {
+                crate::core::document::ObjectType::Envelope { .. } => Some(id.clone()),
+                _ => None,
+            })
+        });
+        if let Some(id) = live_id {
+            let (kind, amount) = match state.document.find_object(&id) {
+                Some(o) => match &o.object_type {
+                    crate::core::document::ObjectType::Envelope { kind, amount, .. } => (*kind, *amount),
+                    _ => return,
+                },
+                None => return,
+            };
+            ui.horizontal(|ui| {
+                for k in [
+                    crate::core::envelope::EnvelopeKind::Bulge,
+                    crate::core::envelope::EnvelopeKind::Pinch,
+                    crate::core::envelope::EnvelopeKind::Twist,
+                    crate::core::envelope::EnvelopeKind::Wave,
+                ] {
+                    if ui.selectable_label(kind == k, k.name()).clicked() {
+                        state.ensure_object_snapshot(&id);
+                        if let Some(o) = state.document.find_object_mut(&id) {
+                            if let crate::core::document::ObjectType::Envelope { kind: kk, .. } =
+                                &mut o.object_type
+                            {
+                                *kk = k;
+                            }
+                        }
+                        state.commit_object_edits("Edit Envelope");
+                    }
+                }
+            });
+            let mut amt = amount;
+            let amt_resp = ui.add(egui::Slider::new(&mut amt, -1.0..=1.0).text("Amount"));
+            if amt_resp.changed() {
+                state.ensure_object_snapshot(&id);
+                if let Some(o) = state.document.find_object_mut(&id) {
+                    if let crate::core::document::ObjectType::Envelope { amount: aa, .. } =
+                        &mut o.object_type
+                    {
+                        *aa = amt.clamp(-1.0, 1.0);
+                    }
+                }
+                if !amt_resp.dragged() {
+                    state.commit_object_edits("Edit Envelope");
+                }
+            }
+            if amt_resp.drag_stopped() {
+                state.commit_object_edits("Edit Envelope");
+            }
+            if ui.button("Release (restore source path)").clicked() {
+                let source = state.document.find_object(&id).and_then(|o| match &o.object_type {
+                    crate::core::document::ObjectType::Envelope { source, .. } => {
+                        Some(source.as_ref().clone())
+                    }
+                    _ => None,
+                });
+                if let Some(mut src) = source {
+                    state.ensure_object_snapshot(&id);
+                    // Swap in place: keep id/position, drop the deform.
+                    if let Some(o) = state.document.find_object_mut(&id) {
+                        src.id.clone_from(&o.id);
+                        src.name = format!("{} (Released)", o.name);
+                        *o = src;
+                    }
+                    state.commit_object_edits("Release Envelope");
+                }
+            }
+        } else {
+            // Wrap the selection in a new live envelope.
+            let wrappable = state.selected_ids.iter().any(|id| {
+                state.document.find_object(id).map(|o| {
+                    matches!(
+                        o.object_type,
+                        crate::core::document::ObjectType::Path(_)
+                            | crate::core::document::ObjectType::Rectangle { .. }
+                            | crate::core::document::ObjectType::Ellipse { .. }
+                            | crate::core::document::ObjectType::Star { .. }
+                            | crate::core::document::ObjectType::Polygon { .. }
+                            | crate::core::document::ObjectType::Line { .. }
+                    )
+                }).unwrap_or(false)
+            });
+            if ui
+                .add_enabled(wrappable, egui::Button::new("Wrap Selection in Live Warp"))
+                .clicked()
+            {
+                let ids: Vec<String> = state.selected_ids.clone();
+                for sid in ids {
+                    let src = state.document.find_object(&sid).cloned();
+                    if let Some(src) = src {
+                        if let Some(mut env) = crate::core::document::Object::wrap_envelope(
+                            &format!("{} (Warp)", src.name),
+                            &src,
+                            crate::core::envelope::EnvelopeKind::Bulge,
+                            0.5,
+                        ) {
+                            // Replace in place (same layer/index) so z-order
+                            // survives; one undo step restores the source.
+                            state.ensure_object_snapshot(&sid);
+                            if let Some(o) = state.document.find_object_mut(&sid) {
+                                env.id.clone_from(&o.id);
+                                *o = env;
+                            }
+                            state.commit_object_edits("Wrap Envelope");
+                        }
+                    }
+                }
+            }
+            if !wrappable {
+                ui.label(
+                    RichText::new("Select a path/shape to warp live (text & images unsupported).")
+                        .weak()
+                        .size(11.0),
+                );
+            }
         }
     }
 }
