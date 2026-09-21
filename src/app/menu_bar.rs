@@ -124,6 +124,56 @@ impl IrasuApp {
                         }
                         ui.close_menu();
                     }
+                    if ui.button("Open PDF...").clicked() {
+                        if let Some(path) = rfd::FileDialog::new()
+                            .add_filter("PDF", &["pdf"])
+                            .pick_file()
+                        {
+                            match std::fs::read(&path) {
+                                Err(e) => {
+                                    self.state
+                                        .notify_error(format!("PDFの読み込みに失敗しました: {e}"));
+                                }
+                                Ok(bytes) => {
+                                    match crate::io::pdf_import::parse_pdf_bytes(&bytes) {
+                                        Err(e) => {
+                                            self.state.notify_error(format!(
+                                                "PDFの解析に失敗しました: {e}"
+                                            ));
+                                        }
+                                        Ok((document, warnings)) => {
+                                            let obj_count = document.all_objects().count();
+                                            let w = document.width;
+                                            let h = document.height;
+                                            self.state.document = document;
+                                            self.state.adopt_doc_extras();
+                                            self.state.document.name = path
+                                                .file_stem()
+                                                .and_then(|s| s.to_str())
+                                                .unwrap_or("Untitled")
+                                                .to_string();
+                                            self.state.undo_manager.clear();
+                                            self.state.selected_ids.clear();
+                                            crate::io::recent::push_recent(&path, w, h);
+                                            let mut msg = format!(
+                                                "PDFをインポートしました ({} 個のオブジェクト)",
+                                                obj_count
+                                            );
+                                            if !warnings.is_empty() {
+                                                msg.push_str(&format!(
+                                                    " — {}件スキップ: {}",
+                                                    warnings.len(),
+                                                    warnings.join(" / ")
+                                                ));
+                                            }
+                                            self.state.notify_info(msg);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        ui.close_menu();
+                    }
                     if ui.button("画像を配置... (Place Image)").clicked() {
                         if let Some(path) = rfd::FileDialog::new()
                             .add_filter("Images", &["png", "jpg", "jpeg", "webp", "gif", "bmp"])

@@ -104,11 +104,11 @@ fn render_obj_pdf(obj: &Object, parent: &[f64; 6], stream_content: &mut String) 
             let mut path =
                 crate::core::text_path::text_to_outline_path_with_style(text, style);
             path.transform(&world);
-            if path.fill.is_none() {
-                path.fill = obj
-                    .fill
-                    .clone()
-                    .or_else(|| Some(FillStyle::solid([0.0, 0.0, 0.0, 1.0])));
+            // Object fill wins (canvas renders obj.fill); path fill is the
+            // fallback. (PathData::new defaults to black, so testing
+            // is_none() here would ignore every object-level fill edit.)
+            if let Some(f) = obj.fill.clone().or(path.fill.clone()) {
+                path.fill = Some(f);
             }
             // Outlines carry no stroke; keep an explicit text stroke if set.
             if path.stroke.is_none() {
@@ -119,8 +119,8 @@ fn render_obj_pdf(obj: &Object, parent: &[f64; 6], stream_content: &mut String) 
         _ => {
             let mut path = obj.to_path_data();
             path.transform(&world);
-            if path.fill.is_none() {
-                path.fill = obj.fill.clone();
+            if let Some(f) = obj.fill.clone().or(path.fill.clone()) {
+                path.fill = Some(f);
             }
             if path.stroke.is_none() {
                 path.stroke = obj.stroke.clone();

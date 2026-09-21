@@ -1,6 +1,7 @@
 pub mod atomic;
 pub mod git;
 pub mod pdf;
+pub mod pdf_import;
 pub mod project;
 pub mod raster;
 pub mod recent;

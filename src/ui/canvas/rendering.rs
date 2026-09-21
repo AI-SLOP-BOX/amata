@@ -1,5 +1,5 @@
 use super::CanvasWidget;
-use crate::core::document::{BlendMode, Object, ObjectType, TextAnchor, TextArea, TextStyle};
+use crate::core::document::{BlendMode, Object, ObjectType, TextArea, TextStyle};
 use crate::core::path::{
     AnchorPoint, FillStyle, FillType, ImageFill, ImageTileMode, LinearGradient, PathData,
     PatternFill, RadialGradient,
@@ -1218,7 +1218,7 @@ impl CanvasWidget {
         &self,
         painter: &egui::Painter,
         obj: &Object,
-        text: &str,
+        _text: &str,
         style: &TextStyle,
         fill: Option<Color32>,
         to_screen: &dyn Fn(f64, f64) -> Pos2,

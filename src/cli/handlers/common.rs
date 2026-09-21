@@ -11,6 +11,11 @@ pub fn load_any_document(
     if ext == "svg" {
         let content = std::fs::read_to_string(path)?;
         Ok(crate::io::svg::parse_svg_document(&content))
+    } else if ext == "pdf" {
+        let bytes = std::fs::read(path)?;
+        crate::io::pdf_import::parse_pdf_bytes(&bytes)
+            .map(|(doc, _)| doc)
+            .map_err(|e| e.into())
     } else {
         crate::io::project::load_project(path).map_err(|e| e.into())
     }
