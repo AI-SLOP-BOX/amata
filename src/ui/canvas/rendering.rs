@@ -1,5 +1,5 @@
 use super::CanvasWidget;
-use crate::core::document::{BlendMode, Object, ObjectType, TextAnchor, TextStyle};
+use crate::core::document::{BlendMode, Object, ObjectType, TextAnchor, TextArea, TextStyle};
 use crate::core::path::{
     AnchorPoint, FillStyle, FillType, ImageFill, ImageTileMode, LinearGradient, PathData,
     PatternFill, RadialGradient,
@@ -66,12 +66,32 @@ pub const IDENTITY_AFFINE: [f64; 6] = [1.0, 0.0, 0.0, 1.0, 0.0, 0.0];
 pub(super) struct CachedTextLine {
     pub tris: Vec<[AnchorPoint; 3]>,
     pub width: f64,
+    /// Local x shift aligning the line to its anchor (precomputed at bake:
+    /// point text anchors on the origin, area text on the box edges/center).
+    pub x_off: f64,
+}
+
+/// Baked outlines for one text object. `origin` is the first-baseline origin
+/// in local coordinates (area text starts at the box's top-left em-box, point
+/// text at 0,0) and `visible` is how many lines fit inside an area box —
+/// the remainder overflows and is clipped on canvas and in export.
+pub(super) struct CachedText {
+    pub lines: Vec<CachedTextLine>,
+    pub origin: (f64, f64),
+    pub visible: usize,
+}
+
+impl CachedText {
+    /// Lines that should actually be painted.
+    pub fn drawable(&self) -> usize {
+        self.visible.min(self.lines.len())
+    }
 }
 
 /// Cache key for a text object's baked outlines. Any shaping input change
-/// (text, face, size, spacing, wrap) re-bakes; transforms do not (they
-/// apply per-frame to the cached local triangles).
-pub fn text_shape_key(text: &str, style: &TextStyle) -> u64 {
+/// (text, face, size, spacing, wrap, **area box**) re-bakes; transforms do
+/// not (they apply per-frame to the cached local triangles).
+pub fn text_shape_key(text: &str, style: &TextStyle, area: Option<TextArea>) -> u64 {
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};
     let mut h = DefaultHasher::new();
@@ -92,21 +112,22 @@ pub fn text_shape_key(text: &str, style: &TextStyle) -> u64 {
         .hash(&mut h);
     style.max_width.map(f64::to_bits).hash(&mut h);
     style.word_wrap.hash(&mut h);
+    // Area box is a shaping input: resizing the box rewraps the text.
+    area.map(|a| (a.x.to_bits(), a.y.to_bits(), a.width.to_bits(), a.height.to_bits()))
+        .hash(&mut h);
     h.finish()
 }
 
 /// Split a text object into drawable lines, mirroring the legacy egui path
-/// and the SVG exporter so all three agree.
-pub(super) fn text_draw_lines(text: &str, style: &TextStyle) -> Vec<String> {
-    if style.word_wrap {
-        if let Some(max_w) = style.max_width {
-            crate::core::document::compute_wrapped_lines(text, style, max_w)
-        } else {
-            text.split('\n').map(String::from).collect()
-        }
-    } else {
-        text.split('\n').map(String::from).collect()
-    }
+/// and the SVG exporter so all three agree. Area text wraps to the box
+/// width; `layout_text` also reports how many lines fit (overflow is
+/// clipped on canvas and in export).
+pub(super) fn text_draw_lines(
+    text: &str,
+    style: &TextStyle,
+    area: Option<TextArea>,
+) -> Vec<String> {
+    crate::core::document::layout_text(text, style, area).lines
 }
 
 impl CanvasWidget {
@@ -490,6 +511,7 @@ impl CanvasWidget {
                 text,
                 font_size,
                 style,
+                area,
             } => {
                 // Real typeface first (cached outline triangles); missing
                 // fonts fall through to the legacy egui-font path below.
@@ -530,17 +552,25 @@ impl CanvasWidget {
                 let bold_dx = (scaled_size * 0.035).clamp(0.5, 1.5);
                 // Line height from style (default 1.2em)
                 let line_height = (style.effective_line_height() * state.zoom as f64) as f32;
-                // Use word-wrapped lines when enabled
-                let lines: Vec<String> = if style.word_wrap {
-                    if let Some(max_w) = style.max_width {
-                        crate::core::document::object::compute_wrapped_lines(text, style, max_w)
-                    } else {
-                        text.split('\n').map(String::from).collect()
-                    }
-                } else {
-                    text.split('\n').map(String::from).collect()
-                };
+                // Area text wraps to the box and starts at the box origin;
+                // overflow past the box bottom is dropped (same as the baked
+                // outline path and the SVG exporter).
+                let layout = crate::core::document::layout_text(text, style, *area);
+                let lines: Vec<String> = layout.lines.clone();
                 let lines: Vec<&str> = lines.iter().map(|s| s.as_str()).collect();
+                let (origin_x, origin_y) = layout.origin;
+                let base_pos = to_screen(origin_x, origin_y);
+                // Anchor reference in local coords: point text anchors on
+                // the origin, area text on the box edges/center.
+                let anchor_lx = match style.text_anchor {
+                    crate::core::document::TextAnchor::Start => origin_x,
+                    crate::core::document::TextAnchor::Middle => {
+                        area.map(|a| a.x + a.width / 2.0).unwrap_or(origin_x)
+                    }
+                    crate::core::document::TextAnchor::End => {
+                        area.map(|a| a.x + a.width).unwrap_or(origin_x)
+                    }
+                };
                 let mut widest: f32 = 0.0;
                 // Faux-italic block shear: egui draws glyphs axis-aligned,
                 // so single lines can't slant (a real oblique needs glyph
@@ -551,15 +581,20 @@ impl CanvasWidget {
                     style.font_style,
                     crate::core::document::FontStyle::Normal
                 );
-                for (li, line) in lines.iter().enumerate() {
+                for (li, line) in lines.iter().take(layout.visible).enumerate() {
                     let shear_dx = if italic {
                         -(crate::core::text_path::FAUX_ITALIC_SHEAR as f32)
                             * (li as f32 * line_height)
                     } else {
                         0.0
                     };
-                    let line_pos =
-                        egui::pos2(pos.x + shear_dx, pos.y + li as f32 * line_height);
+                    // Anchor in local space first (rotation-safe), then the
+                    // screen-space italic shear.
+                    let baseline_ly = origin_y + li as f64 * style.effective_line_height();
+                    let line_pos = egui::pos2(
+                        to_screen(anchor_lx, baseline_ly).x + shear_dx,
+                        base_pos.y + li as f32 * line_height,
+                    );
                     if style.letter_spacing != 0.0 {
                         let letter_space_screen =
                             (style.letter_spacing * state.zoom as f64) as f32;
@@ -1189,10 +1224,10 @@ impl CanvasWidget {
         to_screen: &dyn Fn(f64, f64) -> Pos2,
         state: &AppState,
     ) -> bool {
-        let Some((_, lines)) = self.text_meshes.get(&obj.id) else {
+        let Some((_, cached)) = self.text_meshes.get(&obj.id) else {
             return false;
         };
-        let Some(clines) = lines else {
+        let Some(cached) = cached else {
             return false;
         };
         // `fill` already carries opacity (same as the legacy path).
@@ -1202,22 +1237,20 @@ impl CanvasWidget {
         // Match the legacy faux-bold weight (screen-space doubling).
         let scaled_size = (style.font_size * state.zoom as f64) as f32;
         let bold_dx = (scaled_size * 0.035).clamp(0.5, 1.5);
-        for (li, cl) in clines.iter().enumerate() {
+        // Area text starts at the box's em-box origin and clips lines that
+        // overflow the bottom; point text keeps origin (0,0).
+        let (origin_x, origin_y) = cached.origin;
+        for (li, cl) in cached.lines.iter().take(cached.drawable()).enumerate() {
             if cl.tris.is_empty() {
                 continue;
             }
-            let base_y = li as f64 * line_h;
-            let x_off = match style.text_anchor {
-                TextAnchor::Start => 0.0,
-                TextAnchor::Middle => -cl.width / 2.0,
-                TextAnchor::End => -cl.width,
-            };
+            let base_y = origin_y + li as f64 * line_h;
             let mut mesh = egui::epaint::Mesh::default();
             for tri in &cl.tris {
                 let base = mesh.vertices.len() as u32;
                 for p in tri {
                     mesh.vertices.push(egui::epaint::Vertex {
-                        pos: to_screen(p.x + x_off, p.y + base_y),
+                        pos: to_screen(p.x + cl.x_off + origin_x, p.y + base_y),
                         uv: Pos2::ZERO,
                         color,
                     });
@@ -1899,8 +1932,9 @@ mod real_text_tests {
         let mut w = CanvasWidget::new();
         w.ensure_text_meshes(&state);
         let (k1, n_tris, width, min_lx) = {
-            let (k, lines) = w.text_meshes.get(&id).expect("text cached");
-            let clines = lines.as_ref().expect("bundled Inter resolves");
+            let (k, cached) = w.text_meshes.get(&id).expect("text cached");
+            let cached = cached.as_ref().expect("bundled Inter resolves");
+            let clines = &cached.lines;
             assert_eq!(clines.len(), 1);
             assert!(!clines[0].tris.is_empty(), "glyphs triangulate");
             assert!(clines[0].width > 0.0);
@@ -1957,11 +1991,11 @@ mod real_text_tests {
     #[test]
     fn draw_lines_mirror_wrap_settings() {
         let plain = TextStyle::new("Inter", 10.0);
-        assert_eq!(text_draw_lines("a\nb", &plain), vec!["a", "b"]);
+        assert_eq!(text_draw_lines("a\nb", &plain, None), vec!["a", "b"]);
         let mut wrapped = TextStyle::new("Inter", 10.0);
         wrapped.word_wrap = true;
         wrapped.max_width = Some(5.0);
-        let lines = text_draw_lines("AAAA", &wrapped);
+        let lines = text_draw_lines("AAAA", &wrapped, None);
         assert!(lines.len() > 1, "narrow width wraps: {lines:?}");
         assert_eq!(lines.concat(), "AAAA");
     }

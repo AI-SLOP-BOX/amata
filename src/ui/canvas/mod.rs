@@ -89,7 +89,7 @@ pub struct CanvasWidget {
     /// Baked text outlines: object id → (shape key, per-line meshes).
     /// `None` meshes mean "no real face" (legacy egui-font path draws).
     text_meshes:
-        std::collections::HashMap<String, (u64, Option<Vec<rendering::CachedTextLine>>)>,
+        std::collections::HashMap<String, (u64, Option<rendering::CachedText>)>,
 }
 
 struct NodeEditState {
@@ -259,9 +259,11 @@ impl CanvasWidget {
             .collect();
         while let Some(obj) = stack.pop() {
             match &obj.object_type {
-                crate::core::document::ObjectType::Text { text, style, .. } => {
+                crate::core::document::ObjectType::Text {
+                    text, style, area, ..
+                } => {
                     live.insert(obj.id.clone());
-                    let key = rendering::text_shape_key(text, style);
+                    let key = rendering::text_shape_key(text, style, *area);
                     let stale = self
                         .text_meshes
                         .get(&obj.id)
@@ -270,9 +272,10 @@ impl CanvasWidget {
                     if !stale {
                         continue;
                     }
+                    let layout = crate::core::document::layout_text(text, style, *area);
                     let mut real = true;
                     let mut lines = Vec::new();
-                    for line in rendering::text_draw_lines(text, style) {
+                    for line in rendering::text_draw_lines(text, style, *area) {
                         match crate::core::text_path::try_text_to_outline_path_with_style(
                             &line, style,
                         ) {
@@ -281,9 +284,25 @@ impl CanvasWidget {
                                     .bounding_box()
                                     .map(|(mn, mx)| mx.x - mn.x)
                                     .unwrap_or(0.0);
+                                // Anchor shift in local coords, baked once:
+                                // point text anchors on the origin, area
+                                // text on the box edges/center.
+                                let ox = layout.origin.0;
+                                let x_off = match style.text_anchor {
+                                    crate::core::document::TextAnchor::Start => 0.0,
+                                    crate::core::document::TextAnchor::Middle => {
+                                        area.map(|a| a.x + a.width / 2.0).unwrap_or(ox)
+                                            - (ox + width / 2.0)
+                                    }
+                                    crate::core::document::TextAnchor::End => {
+                                        area.map(|a| a.x + a.width).unwrap_or(ox)
+                                            - (ox + width)
+                                    }
+                                };
                                 lines.push(rendering::CachedTextLine {
                                     tris: ol.to_triangles(12),
                                     width,
+                                    x_off,
                                 });
                             }
                             None => {
@@ -292,10 +311,12 @@ impl CanvasWidget {
                             }
                         }
                     }
-                    self.text_meshes.insert(
-                        obj.id.clone(),
-                        (key, real.then_some(lines)),
-                    );
+                    let cached = real.then_some(rendering::CachedText {
+                        lines,
+                        origin: layout.origin,
+                        visible: layout.visible,
+                    });
+                    self.text_meshes.insert(obj.id.clone(), (key, cached));
                 }
                 crate::core::document::ObjectType::Group(children)
                 | crate::core::document::ObjectType::ClippingMask { children } => {

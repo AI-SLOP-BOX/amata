@@ -116,6 +116,29 @@ pub enum TextAnchor {
     End,
 }
 
+/// Rectangular text container (Illustrator area-type) in the object's local
+/// coordinates: `x`/`y` is the top-left, `width`/`height` the box size.
+/// The first baseline sits at `y + font_size` (em-box convention shared by
+/// canvas, export and measurement).
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct TextArea {
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+}
+
+impl TextArea {
+    pub fn new(x: f64, y: f64, width: f64, height: f64) -> Self {
+        Self {
+            x,
+            y,
+            width: width.max(1.0),
+            height: height.max(1.0),
+        }
+    }
+}
+
 impl TextAnchor {
     pub fn as_svg_str(&self) -> &'static str {
         match self {
@@ -232,6 +255,9 @@ pub enum ObjectType {
         font_size: f64,
         #[serde(default)]
         style: TextStyle,
+        /// Area-type container. `None` = point text (legacy behaviour).
+        #[serde(default)]
+        area: Option<TextArea>,
     },
     Group(Vec<Object>),
     ClippingMask {
@@ -425,7 +451,60 @@ fn kinsoku_cannot_end_line(ch: char) -> bool {
     )
 }
 
-/// Compute soft-wrapped lines by filling up to `max_width` and breaking at
+/// Laid-out text: drawable lines, how many fit, and the first baseline
+/// origin in local coordinates.
+pub struct TextLayout {
+    pub lines: Vec<String>,
+    /// Lines that fit (prefix of `lines`); the rest overflows.
+    pub visible: usize,
+    /// First-baseline origin (start-anchor x, baseline y) in local coords.
+    pub origin: (f64, f64),
+}
+
+impl TextLayout {
+    pub fn overflow(&self) -> usize {
+        self.lines.len().saturating_sub(self.visible)
+    }
+}
+
+/// Lay out point or area text. Area text wraps to the box width; lines
+/// whose baseline falls below the box bottom overflow (still returned —
+/// exporters clip them visually but keep them in markup for round-trip).
+pub fn layout_text(text: &str, style: &TextStyle, area: Option<TextArea>) -> TextLayout {
+    match area {
+        None => {
+            let lines = if style.word_wrap {
+                if let Some(max_w) = style.max_width {
+                    compute_wrapped_lines(text, style, max_w)
+                } else {
+                    text.split('\n').map(String::from).collect()
+                }
+            } else {
+                text.split('\n').map(String::from).collect()
+            };
+            let visible = lines.len();
+            TextLayout {
+                lines,
+                visible,
+                origin: (0.0, 0.0),
+            }
+        }
+        Some(a) => {
+            let lines = compute_wrapped_lines(text, style, a.width);
+            let line_h = style.effective_line_height().max(1e-6);
+            // First baseline at the em-box top + font_size; a line fits
+            // while its baseline stays inside the box.
+            let capacity =
+                ((((a.height - style.font_size) / line_h).floor() as isize) + 1).max(0) as usize;
+            let visible = lines.len().min(capacity);
+            TextLayout {
+                lines,
+                visible,
+                origin: (a.x, a.y + style.font_size),
+            }
+        }
+    }
+}
 /// the last allowed opportunity. Breaks happen at spaces and after CJK
 /// characters, subject to Japanese kinsoku rules: a line never starts with
 /// a closing mark and never ends with an opening mark (the offending
@@ -695,6 +774,7 @@ impl Object {
                 text: text.to_string(),
                 font_size,
                 style,
+                area: None,
             },
             transform: Transform {
                 x,
@@ -901,11 +981,14 @@ impl Object {
             }
             ObjectType::Line { x2, y2 } => PathData::from_line(0.0, 0.0, *x2, *y2),
             ObjectType::Text {
-                text, font_size, ..
+                text, font_size, style, area,
             } => {
-                // Approximate bounding rect as a path (multi-line aware:
-                // first baseline at y=0, 1.2em line advance).
-                let (width, height) = text_block_size(text, *font_size);
+                // Area text selects by its box; point text by the measured
+                // block (first baseline at y=0, 1.2em line advance).
+                if let Some(a) = area {
+                    return PathData::from_rect(a.x, a.y, a.width, a.height, 0.0);
+                }
+                let (width, height) = text_block_size_with_style(text, style);
                 PathData::from_rect(0.0, -font_size, width, height, 0.0)
             }
             ObjectType::Group(children) => {
@@ -993,9 +1076,12 @@ impl Object {
                 dist <= (stroke_w / 2.0).max(4.0)
             }
             ObjectType::Text {
-                text, font_size, ..
+                text, font_size, style, area,
             } => {
-                let (width, height) = text_block_size(text, *font_size);
+                if let Some(a) = area {
+                    return lx >= a.x && lx <= a.x + a.width && ly >= a.y && ly <= a.y + a.height;
+                }
+                let (width, height) = text_block_size_with_style(text, style);
                 lx >= 0.0 && lx <= width && ly >= -font_size && ly <= -font_size + height
             }
             ObjectType::Group(children) => children.iter().any(|c| c.hit_test(lx, ly)),

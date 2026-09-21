@@ -227,6 +227,9 @@ impl IrasuApp {
                         ScatterBrushPanel::show(ui, &mut self.state);
                         ui.add_space(8.0);
                         ui.separator();
+                        BrushPanel::show(ui, &mut self.state);
+                        ui.add_space(8.0);
+                        ui.separator();
                         MeshWarpPanel::show(ui, &mut self.state);
                         ui.add_space(8.0);
                         ui.separator();

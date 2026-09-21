@@ -206,6 +206,14 @@ pub struct AppState {
     pub pixel_show_grid: bool,
     /// Edge length for newly created square pixel canvases.
     pub pixel_new_size: u32,
+    // Brush panel settings (calligraphy / art / pattern).
+    pub brush_kind_idx: usize,
+    pub brush_angle: f64,
+    pub brush_roundness: f64,
+    pub brush_size: f64,
+    pub brush_motif: String,
+    pub brush_spacing: f64,
+    pub brush_scale: f64,
     // In-progress panel transform gesture: (object id, transform at gesture
     // start). Committed as one undo step when the gesture ends.
     pub pending_transforms: Vec<(String, Transform)>,
@@ -345,6 +353,13 @@ impl Default for AppState {
             pixel_palette_index: 0,
             pixel_show_grid: true,
             pixel_new_size: 32,
+            brush_kind_idx: 0,
+            brush_angle: 30.0,
+            brush_roundness: 50.0,
+            brush_size: 10.0,
+            brush_motif: "arrow".to_string(),
+            brush_spacing: 60.0,
+            brush_scale: 1.0,
             pending_transforms: Vec::new(),
             pending_objects: Vec::new(),
             pending_layers: Vec::new(),

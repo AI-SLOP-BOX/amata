@@ -736,20 +736,32 @@ impl ModifyTextCommand {
 impl Command for ModifyTextCommand {
     fn execute(&mut self, doc: &mut Document) {
         if let Some(obj) = doc.find_object_mut(&self.object_id) {
+            // Preserve the area container: this command only edits text
+            // content and style (area edits use whole-object snapshots).
+            let area = match &obj.object_type {
+                crate::core::document::ObjectType::Text { area, .. } => *area,
+                _ => None,
+            };
             obj.object_type = crate::core::document::ObjectType::Text {
                 text: self.new_text.clone(),
                 font_size: self.new_style.font_size,
                 style: self.new_style.clone(),
+                area,
             };
         }
     }
 
     fn undo(&mut self, doc: &mut Document) {
         if let Some(obj) = doc.find_object_mut(&self.object_id) {
+            let area = match &obj.object_type {
+                crate::core::document::ObjectType::Text { area, .. } => *area,
+                _ => None,
+            };
             obj.object_type = crate::core::document::ObjectType::Text {
                 text: self.old_text.clone(),
                 font_size: self.old_style.font_size,
                 style: self.old_style.clone(),
+                area,
             };
         }
     }

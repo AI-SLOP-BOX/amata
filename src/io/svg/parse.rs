@@ -2,7 +2,7 @@ use super::attrs::*;
 use super::tokenize::*;
 use super::util::*;
 use crate::core::document::{
-    Document, FontStyle, Object, TextAnchor, TextStyle,
+    Document, FontStyle, Object, ObjectType, TextAnchor, TextStyle,
 };
 use crate::core::path::{
     AnchorPoint, BezierSegment, FillStyle, FillType, PathData, PathElement,
@@ -824,6 +824,25 @@ pub fn parse_svg_document(svg_text: &str) -> Document {
                 } else {
                     obj.transform.x = x + total_tx;
                     obj.transform.y = y + total_ty;
+                }
+                // Area-type box round-trip (`data-text-area="x y w h"`).
+                if let Some(area_str) = extract_attr_str(trimmed, "data-text-area") {
+                    let parts: Vec<f64> = area_str
+                        .split(|c: char| c.is_whitespace() || c == ',')
+                        .filter(|s| !s.is_empty())
+                        .filter_map(|s| s.parse().ok())
+                        .collect();
+                    if parts.len() == 4
+                        && parts.iter().all(|v| v.is_finite())
+                        && parts[2] > 0.0
+                        && parts[3] > 0.0
+                    {
+                        if let ObjectType::Text { area, .. } = &mut obj.object_type {
+                            *area = Some(crate::core::document::TextArea::new(
+                                parts[0], parts[1], parts[2], parts[3],
+                            ));
+                        }
+                    }
                 }
                 obj.id = extract_attr_str(trimmed, "id")
                     .map(|s| s.to_string())

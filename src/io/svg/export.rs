@@ -619,6 +619,7 @@ fn render_object_to_svg(
             text,
             font_size,
             style,
+            area,
         } => {
             let fill = if fill_attr.is_empty() || fill_attr == " fill=\"none\"" {
                 " fill=\"#000000\"".to_string()
@@ -634,6 +635,14 @@ fn render_object_to_svg(
             };
 
             let mut extra_attrs = String::new();
+            // Area text round-trips through a private attribute: the box is a
+            // layout input that plain `x`/`y`/tspans cannot express.
+            if let Some(a) = *area {
+                extra_attrs.push_str(&format!(
+                    " data-text-area=\"{} {} {} {}\"",
+                    a.x, a.y, a.width, a.height
+                ));
+            }
             if style.font_weight != 400 {
                 extra_attrs.push_str(&format!(" font-weight=\"{}\"", style.font_weight));
             }
@@ -668,22 +677,48 @@ fn render_object_to_svg(
             } else {
                 (obj.transform.x, obj.transform.y)
             };
-            // Compute lines to emit: word-wrapped or hard-break-split
-            let emit_lines: Vec<String> = if style.word_wrap {
-                if let Some(max_w) = style.max_width {
-                    crate::core::document::object::compute_wrapped_lines(text, style, max_w)
+            // Area text lays out inside its box: lines wrap to the box width,
+            // the first baseline sits at the em-box origin, and lines past the
+            // box bottom are clipped (drawn in a clipPath) so raster export
+            // matches the canvas.
+            let layout = crate::core::document::layout_text(text, style, *area);
+            let emit_lines = layout.lines.clone();
+            let (area_tx, area_ty) = layout.origin;
+            // Text position: local layout origin, plus the object offset in
+            // the non-linear (plain x/y) case.
+            let (base_x, base_y) = if transform_has_linear_part(&obj.transform) {
+                (area_tx, area_ty)
+            } else {
+                (tx + area_tx, ty + area_ty)
+            };
+            // Clip rect must live in the same space as the positioned text:
+            // local when the object transform applies, absolute otherwise.
+            let clip_id = if layout.overflow() > 0 {
+                if let Some(a) = *area {
+                    *counter += 1;
+                    let cid = format!("text_clip_{}", *counter);
+                    let (cx, cy) = if transform_has_linear_part(&obj.transform) {
+                        (a.x, a.y)
+                    } else {
+                        (tx + a.x, ty + a.y)
+                    };
+                    defs.push_str(&format!(
+                        "  <clipPath id=\"{}\">\n    <rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" />\n  </clipPath>\n",
+                        cid, cx, cy, a.width, a.height
+                    ));
+                    Some(cid)
                 } else {
-                    text.split('\n').map(String::from).collect()
+                    None
                 }
             } else {
-                text.split('\n').map(String::from).collect()
+                None
             };
             let body = if emit_lines.len() > 1 {
                 let mut spans = String::new();
                 for (i, ln) in emit_lines.iter().enumerate() {
                     if i == 0 {
                         spans.push_str(&format!(
-                            "<tspan x=\"{tx}\">{}</tspan>",
+                            "<tspan x=\"{base_x}\">{}</tspan>",
                             xml_escape(ln)
                         ));
                     } else {
@@ -694,7 +729,7 @@ fn render_object_to_svg(
                             format!("{:.2}em", ratio)
                         };
                         spans.push_str(&format!(
-                            "<tspan x=\"{tx}\" dy=\"{dy_str}\">{}</tspan>",
+                            "<tspan x=\"{base_x}\" dy=\"{dy_str}\">{}</tspan>",
                             xml_escape(ln)
                         ));
                     }
@@ -703,14 +738,30 @@ fn render_object_to_svg(
             } else {
                 escaped_text
             };
-            if transform_has_linear_part(&obj.transform) {
-                let transform_attr = svg_transform_attr(&obj.transform);
+            let transform_attr = if transform_has_linear_part(&obj.transform) {
+                svg_transform_attr(&obj.transform)
+            } else {
+                String::new()
+            };
+            let clip_attr = clip_id
+                .as_ref()
+                .map(|c| format!(" clip-path=\"url(#{c})\""))
+                .unwrap_or_default();
+            // The clip rect lives in local coordinates, so in the linear
+            // case the object transform moves onto the wrapping `<g>` (with
+            // the clip) and the text itself stays untransformed — otherwise
+            // the clip would apply in outer space and misalign.
+            if transform_has_linear_part(&obj.transform) && !clip_attr.is_empty() {
                 svg.push_str(&format!(
-                    "  <text{id_attr} x=\"{tx}\" y=\"{ty}\" font-size=\"{font_size}\" font-family=\"{font_fam}\"{extra_attrs}{fill}{transform_attr}{effect_attr}>{body}</text>\n",
+                    "  <g{clip_attr}{transform_attr}>\n  <text{id_attr} x=\"{base_x}\" y=\"{base_y}\" font-size=\"{font_size}\" font-family=\"{font_fam}\"{extra_attrs}{fill}{effect_attr}>{body}</text>\n  </g>\n",
+                ));
+            } else if clip_attr.is_empty() {
+                svg.push_str(&format!(
+                    "  <text{id_attr} x=\"{base_x}\" y=\"{base_y}\" font-size=\"{font_size}\" font-family=\"{font_fam}\"{extra_attrs}{fill}{transform_attr}{effect_attr}>{body}</text>\n",
                 ));
             } else {
                 svg.push_str(&format!(
-                    "  <text{id_attr} x=\"{tx}\" y=\"{ty}\" font-size=\"{font_size}\" font-family=\"{font_fam}\"{extra_attrs}{fill}{effect_attr}>{body}</text>\n",
+                    "  <g{clip_attr}>\n  <text{id_attr} x=\"{base_x}\" y=\"{base_y}\" font-size=\"{font_size}\" font-family=\"{font_fam}\"{extra_attrs}{fill}{transform_attr}{effect_attr}>{body}</text>\n  </g>\n",
                 ));
             }
         }

@@ -20,6 +20,7 @@ fn test_font_model_backward_compatibility() {
         text,
         font_size,
         style,
+        ..
     } = parsed
     {
         assert_eq!(text, "Legacy Header");
@@ -50,6 +51,7 @@ fn test_svg_import_export_font_attributes_round_trip() {
         text,
         font_size,
         style,
+        ..
     } = &obj.object_type
     {
         assert_eq!(text, "Amata Typography");

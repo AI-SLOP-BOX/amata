@@ -1,4 +1,4 @@
-use crate::core::document::{FontStyle, ObjectType, TextAnchor, TextStyle};
+use crate::core::document::{FontStyle, ObjectType, TextAnchor, TextArea, TextStyle};
 use crate::core::font::FontRegistry;
 use crate::core::history::ModifyTextCommand;
 use crate::core::path::{FillStyle, FillType};
@@ -20,16 +20,21 @@ impl TextPanel {
         let id = state.selected_ids[0].clone();
         let mut current_text = String::new();
         let mut current_style = TextStyle::default();
+        let mut current_area: Option<TextArea> = None;
         let mut found = false;
 
         for (_, obj) in state.document.all_objects() {
             if obj.id == id {
                 if let ObjectType::Text {
-                    text: t, style: s, ..
+                    text: t,
+                    style: s,
+                    area: a,
+                    ..
                 } = &obj.object_type
                 {
                     current_text = t.clone();
                     current_style = s.clone();
+                    current_area = *a;
                     found = true;
                 }
                 break;
@@ -381,6 +386,93 @@ impl TextPanel {
             }
             if mw_resp.drag_stopped() {
                 state.commit_object_edits("Edit Object");
+            }
+        }
+
+        // Area text (rect container with overflow).
+        ui.add_space(4.0);
+        ui.separator();
+        ui.label(RichText::new("エリアテキスト").strong());
+        match current_area {
+            None => {
+                if ui.button("ポイントテキストをエリア化").clicked() {
+                    state.ensure_object_snapshot(&id);
+                    if let Some(o) = state.document.find_object_mut(&id) {
+                        if let ObjectType::Text {
+                            text, style, area, ..
+                        } = &mut o.object_type
+                        {
+                            // Box the measured block so nothing visibly moves:
+                            // first baseline stays at y=0.
+                            let (w, h) =
+                                crate::core::document::object::text_block_size_with_style(
+                                    text, style,
+                                );
+                            *area = Some(TextArea::new(
+                                0.0,
+                                -style.font_size,
+                                w.max(20.0),
+                                h.max(style.font_size),
+                            ));
+                        }
+                    }
+                    state.commit_object_edits("Convert to Area Text");
+                }
+            }
+            Some(a) => {
+                let overflow = crate::core::document::layout_text(
+                    &current_text,
+                    &current_style,
+                    Some(a),
+                )
+                .overflow();
+                if overflow > 0 {
+                    ui.label(
+                        RichText::new(format!("⚠ {overflow}行あふれています"))
+                            .color(Color32::from_rgb(255, 160, 40)),
+                    );
+                } else {
+                    ui.label(RichText::new("ボックスに収まっています").weak().size(11.0));
+                }
+                let mut box_vals = [a.x, a.y, a.width, a.height];
+                let labels = ["X", "Y", "W", "H"];
+                let mut stopped = false;
+                ui.horizontal(|ui| {
+                    for (i, lab) in labels.iter().enumerate() {
+                        ui.label(*lab);
+                        let resp = ui.add(
+                            egui::DragValue::new(&mut box_vals[i])
+                                .speed(1.0)
+                                .range(if i < 2 { -5000.0..=5000.0 } else { 1.0..=5000.0 }),
+                        );
+                        if resp.changed() {
+                            state.object_edit(&id, &resp, |o| {
+                                if let ObjectType::Text { area, .. } = &mut o.object_type {
+                                    *area = Some(TextArea::new(
+                                        box_vals[0],
+                                        box_vals[1],
+                                        box_vals[2],
+                                        box_vals[3],
+                                    ));
+                                }
+                            });
+                        }
+                        stopped |= resp.drag_stopped();
+                    }
+                });
+                if stopped {
+                    // Drags coalesce into one undo step on release.
+                    state.commit_object_edits("Edit Text Area");
+                }
+                if ui.button("エリアを解除（ポイントに戻す）").clicked() {
+                    state.ensure_object_snapshot(&id);
+                    if let Some(o) = state.document.find_object_mut(&id) {
+                        if let ObjectType::Text { area, .. } = &mut o.object_type {
+                            *area = None;
+                        }
+                    }
+                    state.commit_object_edits("Release Area Text");
+                }
             }
         }
     }

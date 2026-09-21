@@ -657,11 +657,13 @@ fn compare_objects(a: &Object, b: &Object) -> Vec<FieldDiff> {
                 text: t_a,
                 font_size: s_a,
                 style: style_a,
+                area: area_a,
             },
             ObjectType::Text {
                 text: t_b,
                 font_size: s_b,
                 style: style_b,
+                area: area_b,
             },
         ) => {
             if t_a != t_b {
@@ -711,6 +713,17 @@ fn compare_objects(a: &Object, b: &Object) -> Vec<FieldDiff> {
                     field: "text-anchor".to_string(),
                     old_value: style_a.text_anchor.as_svg_str().to_string(),
                     new_value: style_b.text_anchor.as_svg_str().to_string(),
+                });
+            }
+            if area_a != area_b {
+                let fmt = |a: &Option<crate::core::document::TextArea>| match a {
+                    Some(r) => format!("{:.0}x{:.0}@{:.0},{:.0}", r.width, r.height, r.x, r.y),
+                    None => "point".to_string(),
+                };
+                changes.push(FieldDiff {
+                    field: "text-area".to_string(),
+                    old_value: fmt(area_a),
+                    new_value: fmt(area_b),
                 });
             }
         }

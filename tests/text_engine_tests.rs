@@ -2,7 +2,7 @@
 #![allow(clippy::field_reassign_with_default)]
 
 use irasu_illustrator::core::document::{
-    char_advance_estimate, compute_wrapped_lines, Object, TextStyle,
+    char_advance_estimate, compute_wrapped_lines, layout_text, Object, TextArea, TextStyle,
 };
 use irasu_illustrator::core::font::FontRegistry;
 
@@ -287,4 +287,93 @@ fn test_last_chars_helper_sanity() {
     // Guards the test helper itself against silent rot.
     let lines = vec!["あい".to_string(), "う".to_string()];
     assert_eq!(last_chars(&lines), vec!['い', 'う']);
+}
+
+#[test]
+fn test_area_layout_wraps_and_overflows() {
+    let st = style(10.0, 1000.0);
+    let area = TextArea::new(5.0, 7.0, 25.0, 30.0);
+    let layout = layout_text("あいうえお", &st, Some(area));
+    // 10px CJK chars, 25px box: 2 per line -> 3 lines; baselines at 17,
+    // 29, 41 against a box bottom of 37 -> 2 visible.
+    assert_eq!(layout.lines.len(), 3, "wraps to box width");
+    assert_eq!(layout.visible, 2, "third line overflows");
+    assert_eq!(layout.overflow(), 1);
+    assert_eq!(layout.origin, (5.0, 17.0), "first baseline at em-box top");
+    assert_eq!(layout.lines.concat(), "あいうえお", "no text lost");
+}
+
+#[test]
+fn test_area_tiny_box_hides_all() {
+    let st = style(10.0, 1000.0);
+    let layout = layout_text("あ", &st, Some(TextArea::new(0.0, 0.0, 50.0, 5.0)));
+    assert_eq!(layout.visible, 0);
+    assert_eq!(layout.overflow(), 1);
+}
+
+#[test]
+fn test_point_layout_is_passthrough() {
+    let st = style(10.0, 1000.0);
+    let layout = layout_text("a\nb", &st, None);
+    assert_eq!(layout.origin, (0.0, 0.0));
+    assert_eq!(layout.visible, 2);
+    assert_eq!(layout.overflow(), 0);
+}
+
+#[test]
+fn test_area_export_clips_and_round_trips() {
+    use irasu_illustrator::core::document::Document;
+    use irasu_illustrator::io::svg::{export_svg, parse_svg_document};
+    let mut doc = Document::default();
+    doc.width = 400.0;
+    doc.height = 300.0;
+    let mut obj = Object::new_text("T", "あいうえお", 10.0, 20.0, 10.0);
+    if let irasu_illustrator::core::document::ObjectType::Text { area, .. } =
+        &mut obj.object_type
+    {
+        *area = Some(TextArea::new(0.0, 0.0, 25.0, 30.0));
+    }
+    doc.add_object(obj);
+    let svg = export_svg(&doc);
+    assert!(svg.contains("data-text-area=\"0 0 25 30\""), "box preserved");
+    assert!(svg.contains("<clipPath"), "overflow is clipped, not dropped");
+    // Position composes: object at (10,20), box at local (0,0).
+    assert!(svg.contains("x=\"10\""), "text x includes object offset");
+    let doc2 = parse_svg_document(&svg);
+    let back = doc2
+        .all_objects()
+        .map(|(_, o)| o)
+        .find(|o| matches!(o.object_type, irasu_illustrator::core::document::ObjectType::Text { .. }))
+        .expect("text reimports");
+    if let irasu_illustrator::core::document::ObjectType::Text { area, text, .. } =
+        &back.object_type
+    {
+        assert_eq!(text, "あい\nうえ\nお", "lines survive as breaks, overflow kept");
+        let a = area.expect("area round-trips");
+        assert_eq!((a.x, a.y, a.width, a.height), (0.0, 0.0, 25.0, 30.0));
+    } else {
+        unreachable!();
+    }
+}
+
+#[test]
+fn test_area_diff_detected() {
+    use irasu_illustrator::core::document::Document;
+    let mut a = Document::default();
+    let mut b = Document::default();
+    a.add_object(Object::new_text("T", "hi", 0.0, 0.0, 12.0));
+    let mut obj = Object::new_text("T", "hi", 0.0, 0.0, 12.0);
+    if let irasu_illustrator::core::document::ObjectType::Text { area, .. } =
+        &mut obj.object_type
+    {
+        *area = Some(TextArea::new(0.0, 0.0, 100.0, 50.0));
+    }
+    b.add_object(obj);
+    let diff = irasu_illustrator::core::diff::compute_semantic_diff(&a, &b);
+    let changed: Vec<_> = diff
+        .objects
+        .iter()
+        .filter(|d| matches!(d.status, irasu_illustrator::core::diff::ObjectDiffStatus::Modified { .. }))
+        .collect();
+    assert_eq!(changed.len(), 1, "boxing the text is a modification");
 }
