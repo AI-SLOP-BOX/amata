@@ -1086,6 +1086,157 @@ impl CanvasWidget {
         }
     }
 
+    /// Figma-style measurement overlay (Inspect): while Alt is held, show
+    /// W/H size badges for the selection and distance lines from its bbox
+    /// edges to the nearest overlapping object / artboard edges.
+    pub(super) fn draw_measurements(
+        &self,
+        painter: &egui::Painter,
+        _rect: Rect,
+        origin: Pos2,
+        state: &AppState,
+        alt_down: bool,
+    ) {
+        if !alt_down || state.selected_ids.is_empty() {
+            return;
+        }
+        let mut s_min: Option<(f64, f64)> = None;
+        let mut s_max: Option<(f64, f64)> = None;
+        for id in &state.selected_ids {
+            if let Some((_, obj)) = state.document.all_objects().find(|(_, o)| &o.id == id) {
+                if let Some((mn, mx)) = obj.bounding_box() {
+                    s_min = Some(match s_min {
+                        None => (mn.x, mn.y),
+                        Some(c) => (c.0.min(mn.x), c.1.min(mn.y)),
+                    });
+                    s_max = Some(match s_max {
+                        None => (mx.x, mx.y),
+                        Some(c) => (c.0.max(mx.x), c.1.max(mx.y)),
+                    });
+                }
+            }
+        }
+        let (Some(s_min), Some(s_max)) = (s_min, s_max) else {
+            return;
+        };
+        let w2s = |wx: f64, wy: f64| -> Pos2 {
+            Pos2::new(origin.x + wx as f32 * state.zoom, origin.y + wy as f32 * state.zoom)
+        };
+        let mcol = Color32::from_rgb(242, 72, 34);
+        let stroke = Stroke::new(1.0_f32, mcol);
+
+        // Size badges: W under the bbox, H to its right.
+        let w = s_max.0 - s_min.0;
+        let h = s_max.1 - s_min.1;
+        let cb = w2s((s_min.0 + s_max.0) * 0.5, s_max.1);
+        measure_badge(painter, Pos2::new(cb.x, cb.y + 10.0), &fmt_measure(w), mcol);
+        let cr = w2s(s_max.0, (s_min.1 + s_max.1) * 0.5);
+        measure_badge(painter, Pos2::new(cr.x + 10.0, cr.y), &fmt_measure(h), mcol);
+
+        // Candidate targets: other visible objects + artboard rects.
+        let mut cands: Vec<((f64, f64), (f64, f64))> = Vec::new();
+        for (_, other) in state.document.all_objects() {
+            if state.selected_ids.contains(&other.id) || !other.visible {
+                continue;
+            }
+            if let Some((mn, mx)) = other.bounding_box() {
+                cands.push(((mn.x, mn.y), (mx.x, mx.y)));
+            }
+        }
+        for ab in state.document.effective_artboards().iter() {
+            cands.push(((ab.x, ab.y), (ab.x + ab.width, ab.y + ab.height)));
+        }
+
+        // Nearest gap on each side where the perpendicular ranges overlap.
+        let mut left: Option<(f64, f64, f64)> = None;
+        let mut right: Option<(f64, f64, f64)> = None;
+        let mut top: Option<(f64, f64, f64)> = None;
+        let mut bottom: Option<(f64, f64, f64)> = None;
+        for &(cmin, cmax) in &cands {
+            let oy0 = s_min.1.max(cmin.1);
+            let oy1 = s_max.1.min(cmax.1);
+            if oy1 > oy0 + 0.01 {
+                if cmax.0 <= s_min.0 {
+                    let gap = s_min.0 - cmax.0;
+                    if gap > 0.5 && left.map_or(true, |(g, _, _)| gap < g) {
+                        left = Some((gap, oy0, oy1));
+                    }
+                }
+                if cmin.0 >= s_max.0 {
+                    let gap = cmin.0 - s_max.0;
+                    if gap > 0.5 && right.map_or(true, |(g, _, _)| gap < g) {
+                        right = Some((gap, oy0, oy1));
+                    }
+                }
+            }
+            let ox0 = s_min.0.max(cmin.0);
+            let ox1 = s_max.0.min(cmax.0);
+            if ox1 > ox0 + 0.01 {
+                if cmax.1 <= s_min.1 {
+                    let gap = s_min.1 - cmax.1;
+                    if gap > 0.5 && top.map_or(true, |(g, _, _)| gap < g) {
+                        top = Some((gap, ox0, ox1));
+                    }
+                }
+                if cmin.1 >= s_max.1 {
+                    let gap = cmin.1 - s_max.1;
+                    if gap > 0.5 && bottom.map_or(true, |(g, _, _)| gap < g) {
+                        bottom = Some((gap, ox0, ox1));
+                    }
+                }
+            }
+        }
+
+        // Horizontal (left/right) dimension lines at the y-overlap midpoint.
+        for (side, info) in [
+            ("left", left),
+            ("right", right),
+        ] {
+            let Some((gap, y0, y1)) = info else { continue };
+            let my = (y0 + y1) * 0.5;
+            let (x0, x1) = if side == "left" {
+                (s_min.0 - gap, s_min.0)
+            } else {
+                (s_max.0, s_max.0 + gap)
+            };
+            let a = w2s(x0, my);
+            let b = w2s(x1, my);
+            painter.line_segment([a, b], stroke);
+            for p in [a, b] {
+                painter.line_segment([Pos2::new(p.x, p.y - 3.5), Pos2::new(p.x, p.y + 3.5)], stroke);
+            }
+            measure_badge(
+                painter,
+                Pos2::new((a.x + b.x) * 0.5, (a.y + b.y) * 0.5 - 9.0),
+                &fmt_measure(gap),
+                mcol,
+            );
+        }
+
+        // Vertical (top/bottom) dimension lines at the x-overlap midpoint.
+        for (side, info) in [("top", top), ("bottom", bottom)] {
+            let Some((gap, x0, x1)) = info else { continue };
+            let mx = (x0 + x1) * 0.5;
+            let (y0w, y1w) = if side == "top" {
+                (s_min.1 - gap, s_min.1)
+            } else {
+                (s_max.1, s_max.1 + gap)
+            };
+            let a = w2s(mx, y0w);
+            let b = w2s(mx, y1w);
+            painter.line_segment([a, b], stroke);
+            for p in [a, b] {
+                painter.line_segment([Pos2::new(p.x - 3.5, p.y), Pos2::new(p.x + 3.5, p.y)], stroke);
+            }
+            measure_badge(
+                painter,
+                Pos2::new((a.x + b.x) * 0.5 + 9.0, (a.y + b.y) * 0.5),
+                &fmt_measure(gap),
+                mcol,
+            );
+        }
+    }
+
     pub(super) fn draw_diff_overlays(
         &self,
         painter: &egui::Painter,
@@ -1183,4 +1334,25 @@ impl CanvasWidget {
 
 fn outer_radius_to_f64(r: f64) -> f64 {
     r
+}
+
+fn fmt_measure(v: f64) -> String {
+    if (v - v.round()).abs() < 0.05 {
+        format!("{}", v.round() as i64)
+    } else {
+        format!("{v:.1}")
+    }
+}
+
+fn measure_badge(painter: &egui::Painter, center: Pos2, text: &str, color: Color32) {
+    let bw = text.chars().count() as f32 * 6.5 + 10.0;
+    let r = Rect::from_center_size(center, Vec2::new(bw, 15.0));
+    painter.rect_filled(r, 2.0, color);
+    painter.text(
+        r.center(),
+        egui::Align2::CENTER_CENTER,
+        text,
+        FontId::proportional(10.0),
+        Color32::WHITE,
+    );
 }

@@ -659,6 +659,11 @@ impl CanvasWidget {
         // Smart Guides (Magenta alignment overlays)
         self.draw_smart_guides(&painter, artboard, rect, origin, state);
 
+        // Figma-style measurements while Alt is held (must read input here:
+        // the later alt_down at the interaction phase comes after drawing).
+        let alt_down = ui.input(|i| i.modifiers.alt);
+        self.draw_measurements(&painter, rect, origin, state, alt_down);
+
         // Rulers (drawn above artboard and guidelines)
         if state.show_rulers {
             self.draw_rulers(&painter, rect, origin, state);
