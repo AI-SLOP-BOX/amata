@@ -147,7 +147,7 @@ impl PixelPanel {
                             p.rect_stroke(
                                 rect.expand(2.0),
                                 3.0,
-                                egui::Stroke::new(2.0, Color32::WHITE),
+                                egui::Stroke::new(2.0_f32, Color32::WHITE),
                                 egui::StrokeKind::Outside,
                             );
                         }

@@ -11,12 +11,10 @@ use crate::core::document::{Object, ObjectType};
 use crate::core::path::AnchorPoint;
 use crate::core::state::{AppState, HandleCorner, Tool};
 
-use crate::gpu::GpuRenderer;
 use crate::tools::pen::PenState;
 use crate::tools::pixel::PixelStroke;
 use crate::tools::select::SelectState;
 use egui::{Color32, FontId, Pos2, Rect, Sense, Stroke, StrokeKind, Ui, Vec2};
-use std::sync::Arc;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NodeTarget {
@@ -85,7 +83,6 @@ pub struct CanvasWidget {
     pub select_state: SelectState,
     drag: Option<DragState>,
     node_edit_state: NodeEditState,
-    pub gpu_renderer: Option<GpuRenderer>,
     image_textures: std::collections::HashMap<String, egui::TextureHandle>,
     pixel_textures: std::collections::HashMap<String, (egui::TextureHandle, u64)>,
     /// Baked text outlines: object id → (shape key, per-line meshes).
@@ -127,7 +124,6 @@ impl CanvasWidget {
             select_state: SelectState::new(),
             drag: None,
             node_edit_state: NodeEditState::new(),
-            gpu_renderer: None,
             image_textures: std::collections::HashMap::new(),
             pixel_textures: std::collections::HashMap::new(),
             text_meshes: std::collections::HashMap::new(),
@@ -401,21 +397,10 @@ impl CanvasWidget {
         }
     }
 
-    /// Lazily initialize the GPU renderer from eframe's wgpu context
-    pub fn ensure_gpu_renderer(&mut self, device: Arc<wgpu::Device>, queue: Arc<wgpu::Queue>) {
-        if self.gpu_renderer.is_some() {
-            return;
-        }
-        self.gpu_renderer = Some(GpuRenderer::new(device, queue));
-        log::info!("GPU renderer initialized via eframe wgpu backend");
-    }
-
     pub fn show(
         &mut self,
         ui: &mut Ui,
         state: &mut AppState,
-        _device: Option<Arc<wgpu::Device>>,
-        _queue: Option<Arc<wgpu::Queue>>,
     ) {
         let (response, painter) = ui.allocate_painter(
             Vec2::new(ui.available_width(), ui.available_height()),
@@ -596,10 +581,6 @@ impl CanvasWidget {
                 layer_op,
             );
         }
-
-        // GPU-Accelerated Rendering Pass removed: output texture was
-        // never composited back onto the canvas (submit only).
-        // Effects are rendered via CPU approximation in draw_object().
 
         // Smart Guides
         if state.show_smart_guides {

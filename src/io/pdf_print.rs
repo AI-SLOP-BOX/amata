@@ -241,7 +241,7 @@ pub fn export_pdf_print(doc: &Document, opts: &PrintPdfOptions) -> (Vec<u8>, Vec
     pdf.extend_from_slice(b"%PDF-1.4\n%\xE2\xE3\xCF\xD3\n");
     let mut offsets: Vec<usize> = Vec::new();
     let mut obj_no: usize = 0;
-    let mut begin = |pdf: &mut Vec<u8>, offsets: &mut Vec<usize>, obj_no: &mut usize| -> usize {
+    let begin = |pdf: &mut Vec<u8>, offsets: &mut Vec<usize>, obj_no: &mut usize| -> usize {
         *obj_no += 1;
         offsets.push(pdf.len());
         *obj_no
@@ -898,7 +898,7 @@ fn emit_image(
     {
         use image::codecs::jpeg::JpegEncoder;
         use image::ImageEncoder;
-        let mut enc = JpegEncoder::new_with_quality(&mut jpeg, 90);
+        let enc = JpegEncoder::new_with_quality(&mut jpeg, 90);
         if enc
             .write_image(&rgb, iw, ih, image::ExtendedColorType::Rgb8)
             .is_err()

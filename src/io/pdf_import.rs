@@ -330,8 +330,6 @@ impl<'a> Importer<'a> {
         // First pass: boxes for vertical stacking.
         struct Box_ {
             id: lopdf::ObjectId,
-            w: f64,
-            h: f64,
             y_off: f64,
         }
         let mut boxes = Vec::new();
@@ -344,8 +342,6 @@ impl<'a> Importer<'a> {
             }
             boxes.push(Box_ {
                 id: *id,
-                w,
-                h,
                 y_off: total_h,
             });
             total_h += h;

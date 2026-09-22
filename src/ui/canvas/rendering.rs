@@ -65,6 +65,7 @@ pub const IDENTITY_AFFINE: [f64; 6] = [1.0, 0.0, 0.0, 1.0, 0.0, 0.0];
 /// used for middle/end anchoring.
 pub(super) struct CachedTextLine {
     pub tris: Vec<[AnchorPoint; 3]>,
+    #[allow(dead_code)]
     pub width: f64,
     /// Local x shift aligning the line to its anchor (precomputed at bake:
     /// point text anchors on the origin, area text on the box edges/center).

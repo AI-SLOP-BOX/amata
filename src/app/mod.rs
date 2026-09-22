@@ -213,7 +213,7 @@ impl Default for IrasuApp {
 }
 
 impl eframe::App for IrasuApp {
-    fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // Apply Adobe Charcoal Theme
         apply_adobe_theme(ctx);
 
@@ -514,17 +514,7 @@ impl eframe::App for IrasuApp {
 
         // Central Drawing Canvas
         egui::CentralPanel::default().show(ctx, |ui| {
-            let device_queue = frame.wgpu_render_state().map(|s| {
-                (
-                    std::sync::Arc::new(s.device.clone()),
-                    std::sync::Arc::new(s.queue.clone()),
-                )
-            });
-            let (device, queue) = match device_queue {
-                Some((d, q)) => (Some(d), Some(q)),
-                None => (None, None),
-            };
-            self.canvas.show(ui, &mut self.state, device, queue);
+            self.canvas.show(ui, &mut self.state);
         });
 
         // Interactive Tour Overlay & Lesson Guide (Image 3)

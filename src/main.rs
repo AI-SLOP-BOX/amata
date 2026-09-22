@@ -3,7 +3,6 @@
 mod app;
 mod cli;
 mod core;
-mod gpu;
 mod io;
 mod plugin;
 mod tools;

@@ -1,8 +1,10 @@
 pub mod object;
 pub use object::{
     BlendMode, FontStyle, Object, ObjectType, TextAnchor, TextArea, TextStyle, Transform,
-    VariationSetting, char_advance_estimate, compute_wrapped_lines, layout_text,
+    VariationSetting, char_advance_estimate, layout_text,
 };
+#[allow(unused_imports)]
+pub use object::compute_wrapped_lines;
 
 /// Canvas guide (moved here from AppState so guides persist with the
 /// document instead of evaporating on every save/reload).
