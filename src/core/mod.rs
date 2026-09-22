@@ -26,6 +26,7 @@ pub mod neon_glow;
 pub mod noise;
 pub mod offset;
 pub mod path;
+pub mod perspective;
 pub mod pixel;
 pub mod polar;
 pub mod presets;

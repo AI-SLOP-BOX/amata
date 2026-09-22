@@ -5,6 +5,68 @@ use crate::core::state::AppState;
 use egui::{Color32, FontId, Pos2, Rect, Stroke, StrokeKind, Vec2};
 
 impl CanvasWidget {
+    /// Perspective guide overlay: horizon, fan rays clipped to the view,
+    /// and VP markers. No-op unless a grid exists and `show` is set.
+    pub(super) fn draw_perspective(
+        &self,
+        painter: &egui::Painter,
+        rect: Rect,
+        _origin: Pos2,
+        state: &AppState,
+    ) {
+        let grid = match state.document.perspective.as_ref() {
+            Some(g) if g.show => g,
+            _ => return,
+        };
+        // Visible world rect for clipping.
+        let w0 = state.screen_to_world(rect.min.x, rect.min.y);
+        let w1 = state.screen_to_world(rect.max.x, rect.max.y);
+        let view = (w0.0, w0.1, w1.0, w1.1);
+        let canvas = (0.0, 0.0, state.document.width, state.document.height);
+        let to_screen = |wx: f64, wy: f64| -> Pos2 {
+            let (sx, sy) = state.world_to_screen(wx, wy);
+            Pos2::new(sx, sy)
+        };
+        let ray_stroke = Stroke::new(0.75_f32, Color32::from_rgba_unmultiplied(90, 160, 220, 110));
+        for (a, b) in grid.ray_segments(canvas) {
+            if let Some(((x0, y0), (x1, y1))) =
+                crate::core::perspective::clip_seg_to_rect(a, b, view)
+            {
+                painter.line_segment([to_screen(x0, y0), to_screen(x1, y1)], ray_stroke);
+            }
+        }
+        // Horizon across the view.
+        let hz = Stroke::new(1.0_f32, Color32::from_rgba_unmultiplied(120, 200, 255, 160));
+        if let Some(((x0, y0), (x1, y1))) = crate::core::perspective::clip_seg_to_rect(
+            (view.0 - 10.0, grid.horizon_y),
+            (view.2 + 10.0, grid.horizon_y),
+            view,
+        ) {
+            painter.line_segment([to_screen(x0, y0), to_screen(x1, y1)], hz);
+        }
+        // VP diamonds (may sit outside the view; draw when visible).
+        for (vx, vy) in grid.two_point
+            .then(|| vec![grid.left_vp, grid.right_vp])
+            .unwrap_or_else(|| vec![grid.left_vp])
+        {
+            let (sx, sy) = state.world_to_screen(vx, vy);
+            let p = Pos2::new(sx, sy);
+            if rect.contains(p) {
+                painter.rect_filled(
+                    Rect::from_center_size(p, Vec2::splat(9.0)),
+                    1.0,
+                    Color32::from_rgb(255, 170, 40),
+                );
+                painter.rect_stroke(
+                    Rect::from_center_size(p, Vec2::splat(9.0)),
+                    1.0,
+                    Stroke::new(1.0_f32, Color32::WHITE),
+                    egui::StrokeKind::Outside,
+                );
+            }
+        }
+    }
+
     pub(super) fn draw_grid(
         &self,
         painter: &egui::Painter,

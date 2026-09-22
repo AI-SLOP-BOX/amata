@@ -1007,6 +1007,7 @@ fn test_stress_save_reload_round_trip_fidelity() {
         color_mode: Default::default(),
         spots: Vec::new(),
         bleed: 0.0,
+        perspective: None,
         artboards: Vec::new(),
     };
 

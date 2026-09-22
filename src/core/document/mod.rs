@@ -1,7 +1,7 @@
 pub mod object;
 pub use object::{
-    BlendMode, FontStyle, Object, ObjectType, TextAnchor, TextArea, TextLayout, TextStyle,
-    Transform, char_advance_estimate, compute_wrapped_lines, layout_text,
+    BlendMode, FontStyle, Object, ObjectType, TextAnchor, TextArea, TextStyle, Transform,
+    VariationSetting, char_advance_estimate, compute_wrapped_lines, layout_text,
 };
 
 /// Canvas guide (moved here from AppState so guides persist with the
@@ -124,6 +124,9 @@ pub struct Document {
     /// Bleed in points (3mm ≈ 8.5pt is the Japanese offset standard).
     #[serde(default)]
     pub bleed: f64,
+    /// Perspective guide set (`None` = never set up).
+    #[serde(default)]
+    pub perspective: Option<super::perspective::PerspectiveGrid>,
     /// Artboards owned by this document. Empty means a single implicit
     /// artboard using `width`/`height`.
     #[serde(default)]
@@ -144,6 +147,7 @@ impl Default for Document {
             color_mode: ColorMode::Rgb,
             spots: super::print::default_spots(),
             bleed: 0.0,
+            perspective: None,
             artboards: Vec::new(),
         };
         doc.layers.push(Layer::new("Layer 1"));

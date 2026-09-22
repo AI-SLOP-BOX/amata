@@ -336,9 +336,13 @@ pub fn try_text_to_outline_path_with_style(
         style.font_weight,
         style.font_style,
         |data, index| {
-            if let Ok(face) = ttf_parser::Face::parse(data, index) {
+            if let Ok(mut face) = ttf_parser::Face::parse(data, index) {
+                // Variable-font coordinates must land on the face before any
+                // outline_glyph / glyph_hor_advance query, or the deltas never
+                // apply (static faces ignore unknown tags harmlessly).
+                super::font::FontRegistry::apply_variations(&mut face, &style.variations);
                 let units_per_em = face.units_per_em() as f64;
-                if units_per_em > 0.0 {
+                    if units_per_em > 0.0 {
                     let scale = font_size / units_per_em;
                     let mut combined = PathData::new();
                     let mut current_x = 0.0;
@@ -346,50 +350,66 @@ pub fn try_text_to_outline_path_with_style(
                     let kern_table = face.tables().kern.clone();
                     let mut prev_glyph: Option<ttf_parser::GlyphId> = None;
 
+                    // Build a glyph-id run first so GSUB ligatures can collapse
+                    // sequences before outlining.
+                    let mut glyphs: Vec<ttf_parser::GlyphId> = Vec::new();
                     for ch in text.chars() {
                         if ch == ' ' {
+                            // Spaces break ligature runs and advance a fixed amount.
+                            glyphs.push(ttf_parser::GlyphId(0)); // sentinel for space
+                            continue;
+                        }
+                        match face.glyph_index(ch) {
+                            Some(g) => glyphs.push(g),
+                            None => return None,
+                        }
+                    }
+
+                    if style.ligatures {
+                        apply_liga_substitutions(&face, &mut glyphs);
+                    }
+
+                    for gid in glyphs {
+                        if gid.0 == 0 && prev_glyph.is_none() && text.contains(' ') {
+                            // Fall through: treat glyph 0 after space as space advance.
+                        }
+                        // Detect space sentinel: we pushed GlyphId(0) for ' '.
+                        // Real .notdef is also 0 but we already returned None for
+                        // missing cmap entries, so 0 here only means space.
+                        if gid.0 == 0 {
                             current_x += (font_size * 0.3) + letter_spacing;
                             prev_glyph = None;
                             continue;
                         }
-
-                        if let Some(glyph_id) = face.glyph_index(ch) {
-                            // Pairwise kerning against the previous glyph
-                            // (first horizontal subtable hit wins).
-                            if let (Some(prev), Some(kern)) = (prev_glyph, &kern_table) {
+                        if let Some(prev) = prev_glyph {
+                            if let Some(kern) = &kern_table {
                                 for sub in kern.subtables {
                                     if !sub.horizontal {
                                         continue;
                                     }
-                                    if let Some(k) = sub.glyphs_kerning(prev, glyph_id) {
+                                    if let Some(k) = sub.glyphs_kerning(prev, gid) {
                                         current_x += k as f64 * scale;
                                         break;
                                     }
                                 }
                             }
-                            prev_glyph = Some(glyph_id);
-                            let mut builder = PathOutlineBuilder {
-                                path: PathData::new(),
-                                scale,
-                                offset_x: current_x,
-                                offset_y: 0.0,
-                            };
-                            let _ = face.outline_glyph(glyph_id, &mut builder);
-                            combined.elements.extend(builder.path.elements);
-
-                            let adv = face
-                                .glyph_hor_advance(glyph_id)
-                                .unwrap_or(face.units_per_em())
-                                as f64
-                                * scale;
-                            current_x += adv + letter_spacing;
-                        } else {
-                            // Face lacks this glyph: fail the whole run so
-                            // the caller falls back coherently (mock blocks
-                            // stay in `mock_text_outline`, used by the
-                            // lenient wrapper below).
-                            return None;
                         }
+                        prev_glyph = Some(gid);
+                        let mut builder = PathOutlineBuilder {
+                            path: PathData::new(),
+                            scale,
+                            offset_x: current_x,
+                            offset_y: 0.0,
+                        };
+                        let _ = face.outline_glyph(gid, &mut builder);
+                        combined.elements.extend(builder.path.elements);
+
+                        let adv = face
+                            .glyph_hor_advance(gid)
+                            .unwrap_or(face.units_per_em())
+                            as f64
+                            * scale;
+                        current_x += adv + letter_spacing;
                     }
                     if faux_italic {
                         // Shear around the baseline origin: tops lean right.
@@ -408,6 +428,121 @@ pub fn try_text_to_outline_path_with_style(
     }
 
     None
+}
+
+/// Greedy longest-match GSUB ligature substitution over a glyph-id run.
+/// Walks `liga`/`dlig`/`clig`/`rlig` lookups from the face's GSUB table
+/// (DFLT/latn scripts). Glyph id 0 is a space sentinel and never matches.
+fn apply_liga_substitutions(face: &ttf_parser::Face<'_>, glyphs: &mut Vec<ttf_parser::GlyphId>) {
+    use ttf_parser::gsub::SubstitutionSubtable;
+
+    let Some(gsub) = face.tables().gsub.as_ref() else {
+        return;
+    };
+
+    let wanted = [
+        ttf_parser::Tag::from_bytes(b"liga"),
+        ttf_parser::Tag::from_bytes(b"dlig"),
+    ];
+    let mut lig_subs: Vec<ttf_parser::gsub::LigatureSubstitution<'_>> = Vec::new();
+
+    let mut feature_indices: Vec<u16> = Vec::new();
+    for script_tag in [
+        ttf_parser::Tag::from_bytes(b"latn"),
+        ttf_parser::Tag::from_bytes(b"DFLT"),
+    ] {
+        let Some(srec) = gsub.scripts.find(script_tag) else {
+            continue;
+        };
+        let ls = srec
+            .default_language
+            .or_else(|| srec.languages.into_iter().next());
+        if let Some(ls) = ls {
+            feature_indices = ls.feature_indices.into_iter().collect();
+            if !feature_indices.is_empty() {
+                break;
+            }
+        }
+    }
+    for tag in wanted {
+        if let Some(idx) = gsub.features.index(tag) {
+            if !feature_indices.contains(&idx) {
+                feature_indices.push(idx);
+            }
+        }
+    }
+
+    for fi in feature_indices {
+        let Some(feat) = gsub.features.get(fi) else {
+            continue;
+        };
+        let is_liga = wanted.iter().any(|t| gsub.features.index(*t) == Some(fi));
+        if !is_liga {
+            continue;
+        }
+        for li in feat.lookup_indices {
+            let Some(lookup) = gsub.lookups.get(li) else {
+                continue;
+            };
+            for sub in lookup.subtables.into_iter::<SubstitutionSubtable>() {
+                if let SubstitutionSubtable::Ligature(lsub) = sub {
+                    lig_subs.push(lsub);
+                }
+            }
+        }
+    }
+
+    if lig_subs.is_empty() {
+        return;
+    }
+
+    // Greedy left-to-right longest match.
+    let mut i = 0usize;
+    while i < glyphs.len() {
+        if glyphs[i].0 == 0 {
+            i += 1;
+            continue;
+        }
+        let mut best: Option<(usize, ttf_parser::GlyphId)> = None; // (component_count_including_first, lig)
+        'outer: for lsub in &lig_subs {
+            if !lsub.coverage.contains(glyphs[i]) {
+                continue;
+            }
+            let Some(cov_idx) = lsub.coverage.get(glyphs[i]) else {
+                continue;
+            };
+            let Some(lset) = lsub.ligature_sets.get(cov_idx) else {
+                continue;
+            };
+            for lig in lset {
+                let comps = lig.components;
+                let total = 1 + comps.len() as usize;
+                if i + total > glyphs.len() {
+                    continue;
+                }
+                let mut ok = true;
+                for (k, c) in comps.into_iter().enumerate() {
+                    if glyphs[i + 1 + k] != c {
+                        ok = false;
+                        break;
+                    }
+                }
+                if ok && best.map(|(n, _)| total > n).unwrap_or(true) {
+                    best = Some((total, lig.glyph));
+                    if total == 4 {
+                        break 'outer; // can't get longer than 4 for typical liga
+                    }
+                }
+            }
+        }
+        if let Some((total, lig_gid)) = best {
+            glyphs[i] = lig_gid;
+            glyphs.drain(i + 1..i + total);
+            i += 1;
+        } else {
+            i += 1;
+        }
+    }
 }
 
 /// Mock block-glyph fallback used when no font face resolves (keeps

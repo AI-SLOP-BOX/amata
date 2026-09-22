@@ -436,6 +436,7 @@ impl CanvasWidget {
         // Grid
         if state.show_grid {
             self.draw_grid(&painter, rect, origin, state);
+            self.draw_perspective(&painter, rect, origin, state);
         }
 
         // Artboard(s): draw all artboards owned by the document.

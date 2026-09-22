@@ -396,7 +396,6 @@ pub fn export_pdf_print(doc: &Document, opts: &PrintPdfOptions) -> (Vec<u8>, Vec
     }
 
     // Info dict.
-    let info_no = next_no;
     offsets.push(pdf.len());
     let info_no = next_no;
     pdf.extend_from_slice(

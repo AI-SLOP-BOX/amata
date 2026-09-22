@@ -17,6 +17,9 @@ fn style(size: f64, max_w: f64) -> TextStyle {
         line_height: None,
         max_width: Some(max_w),
         word_wrap: true,
+        variations: Vec::new(),
+        vertical: false,
+        ligatures: true,
     }
 }
 

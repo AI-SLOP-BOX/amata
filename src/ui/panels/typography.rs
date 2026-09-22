@@ -269,6 +269,54 @@ impl TextPanel {
 
         ui.add_space(6.0);
 
+        // 4b. Variable-font axes (only when the resolved face has an fvar table).
+        let axes = registry.variation_axes(
+            &current_style.font_family,
+            current_style.font_weight,
+            current_style.font_style,
+        );
+        if !axes.is_empty() {
+            ui.label(RichText::new("可変フォント軸").strong().size(11.0));
+            for axis in axes {
+                let current = current_style
+                    .variation(&axis.tag)
+                    .unwrap_or(axis.default as f64);
+                ui.horizontal(|ui| {
+                    ui.label(axis.label());
+                    let mut val = current;
+                    let resp = ui.add(
+                        egui::DragValue::new(&mut val)
+                            .speed(0.5)
+                            .range(axis.min as f64..=axis.max as f64),
+                    );
+                    if resp.changed() {
+                        state.object_edit(&id, &resp, |o| {
+                            if let ObjectType::Text { style, .. } = &mut o.object_type {
+                                // Reset-to-default drops the entry so documents
+                                // stay clean and match the face's own default.
+                                if (val - axis.default as f64).abs() < 1e-4 {
+                                    style.clear_variation(&axis.tag);
+                                } else {
+                                    style.set_variation(&axis.tag, val);
+                                }
+                            }
+                        });
+                        if (val - axis.default as f64).abs() < 1e-4 {
+                            current_style.clear_variation(&axis.tag);
+                        } else {
+                            current_style.set_variation(&axis.tag, val);
+                        }
+                    }
+                    if resp.drag_stopped() {
+                        state.commit_object_edits("Edit Variation Axis");
+                    }
+                });
+            }
+            ui.add_space(4.0);
+        }
+
+        ui.add_space(6.0);
+
         // 5. Alignment (TextAnchor)
         ui.label("行揃え (Text Anchor):");
         ui.horizontal(|ui| {
@@ -293,6 +341,58 @@ impl TextPanel {
                     state.undo_manager.execute(cmd, &mut state.document);
                     current_style = new_style;
                 }
+            }
+        });
+
+        ui.add_space(6.0);
+
+        // Writing direction (横/縦) + ligatures
+        ui.horizontal(|ui| {
+            ui.label("組み:");
+            let vert = current_style.vertical;
+            if ui.selectable_label(!vert, "横組み").clicked() && vert {
+                state.ensure_object_snapshot(&id);
+                if let Some(o) = state.document.find_object_mut(&id) {
+                    if let ObjectType::Text { style, .. } = &mut o.object_type {
+                        style.vertical = false;
+                    }
+                }
+                state.commit_object_edits("Horizontal Text");
+                current_style.vertical = false;
+            }
+            if ui.selectable_label(vert, "縦組み").clicked() && !vert {
+                state.ensure_object_snapshot(&id);
+                if let Some(o) = state.document.find_object_mut(&id) {
+                    if let ObjectType::Text { style, .. } = &mut o.object_type {
+                        style.vertical = true;
+                    }
+                }
+                state.commit_object_edits("Vertical Text");
+                current_style.vertical = true;
+            }
+        });
+        ui.horizontal(|ui| {
+            ui.label("合字 (liga):");
+            let lig = current_style.ligatures;
+            if ui.selectable_label(lig, "ON").clicked() && !lig {
+                state.ensure_object_snapshot(&id);
+                if let Some(o) = state.document.find_object_mut(&id) {
+                    if let ObjectType::Text { style, .. } = &mut o.object_type {
+                        style.ligatures = true;
+                    }
+                }
+                state.commit_object_edits("Enable Ligatures");
+                current_style.ligatures = true;
+            }
+            if ui.selectable_label(!lig, "OFF").clicked() && lig {
+                state.ensure_object_snapshot(&id);
+                if let Some(o) = state.document.find_object_mut(&id) {
+                    if let ObjectType::Text { style, .. } = &mut o.object_type {
+                        style.ligatures = false;
+                    }
+                }
+                state.commit_object_edits("Disable Ligatures");
+                current_style.ligatures = false;
             }
         });
 
@@ -472,6 +572,48 @@ impl TextPanel {
                         }
                     }
                     state.commit_object_edits("Release Area Text");
+                }
+                // Thread (linked frames): select exactly two area texts, link
+                // the first's overflow to the second.
+                if state.selected_ids.len() >= 2 {
+                    let a_id = state.selected_ids[0].clone();
+                    let b_id = state.selected_ids[1].clone();
+                    if ui.button("次のエリアにテキストを流し込む（スレッド）").clicked() {
+                        let mut ok = false;
+                        if let (Some(oa), Some(ob)) = (
+                            state.document.find_object(&a_id),
+                            state.document.find_object(&b_id),
+                        ) {
+                            let is_area = |o: &crate::core::document::Object| {
+                                matches!(
+                                    o.object_type,
+                                    ObjectType::Text {
+                                        area: Some(_),
+                                        ..
+                                    }
+                                )
+                            };
+                            ok = is_area(oa) && is_area(ob) && oa.id != ob.id;
+                        }
+                        if ok {
+                            state.ensure_object_snapshot(&a_id);
+                            if let Some(o) = state.document.find_object_mut(&a_id) {
+                                if let ObjectType::Text { next_frame, .. } = &mut o.object_type {
+                                    *next_frame = Some(b_id.clone());
+                                }
+                            }
+                            state.commit_object_edits("Link Text Thread");
+                        }
+                    }
+                    if ui.button("スレッド解除").clicked() {
+                        state.ensure_object_snapshot(&a_id);
+                        if let Some(o) = state.document.find_object_mut(&a_id) {
+                            if let ObjectType::Text { next_frame, .. } = &mut o.object_type {
+                                *next_frame = None;
+                            }
+                        }
+                        state.commit_object_edits("Unlink Text Thread");
+                    }
                 }
             }
         }

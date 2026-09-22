@@ -2,7 +2,7 @@ use fontdb::{Database, Family, Query};
 use std::path::Path;
 use std::sync::OnceLock;
 
-use super::document::FontStyle;
+use super::document::{FontStyle, VariationSetting};
 
 /// Central Font Registry for Amata.
 /// Manages system and bundled fonts, family resolution, fallback, and raw glyph data access.
@@ -238,5 +238,85 @@ impl FontRegistry {
         }
         // No resolvable family at all: synthesize deterministically.
         true
+    }
+
+    /// Variation axes exposed by the face that would resolve for this family.
+    /// Empty when the face is static or no face resolves.
+    ///
+    /// `weight`/`style` select the face the same way outline extraction does,
+    /// so the axes reported here are the ones `set_variation` will apply to.
+    pub fn variation_axes(
+        &self,
+        family: &str,
+        weight: u16,
+        style: FontStyle,
+    ) -> Vec<AxisDescriptor> {
+        self.query_face_data(family, weight, style, |data, index| {
+            let Ok(face) = ttf_parser::Face::parse(data, index) else {
+                return Vec::new();
+            };
+            let mut axes = Vec::new();
+            for ax in face.variation_axes() {
+                // Prefer a Unicode name record for the axis; fall back to the tag.
+                let name = face
+                    .names()
+                    .into_iter()
+                    .filter(|n| n.name_id == ax.name_id)
+                    .find_map(|n| n.to_string())
+                    .unwrap_or_else(|| ax.tag.to_string());
+                axes.push(AxisDescriptor {
+                    tag: ax.tag.to_string(),
+                    name,
+                    min: ax.min_value,
+                    max: ax.max_value,
+                    default: ax.def_value,
+                });
+            }
+            axes
+        })
+        .unwrap_or_default()
+    }
+
+    /// Convenience: axes for a style's family (weight/style from the style).
+    pub fn variation_axes_for_style(
+        &self,
+        family: &str,
+        weight: u16,
+        style: FontStyle,
+    ) -> Vec<AxisDescriptor> {
+        self.variation_axes(family, weight, style)
+    }
+
+    /// Apply a style's `variations` list to a parsed face (in place).
+    /// Unknown tags / static faces are ignored (no error — the outline still
+    /// renders at default coordinates).
+    pub fn apply_variations(face: &mut ttf_parser::Face<'_>, variations: &[VariationSetting]) {
+        for v in variations {
+            if v.axis.len() != 4 {
+                continue;
+            }
+            let mut tag = [0u8; 4];
+            tag.copy_from_slice(v.axis.as_bytes());
+            let _ = face.set_variation(ttf_parser::Tag::from_bytes(&tag), v.value as f32);
+        }
+    }
+}
+
+/// A single `fvar` axis as seen by the UI (tag + human name + range).
+#[derive(Debug, Clone, PartialEq)]
+pub struct AxisDescriptor {
+    /// 4-char OpenType tag (`wght`, `wdth`, `opsz`, …).
+    pub tag: String,
+    /// Display name from the `name` table (falls back to the tag).
+    pub name: String,
+    pub min: f32,
+    pub max: f32,
+    pub default: f32,
+}
+
+impl AxisDescriptor {
+    /// CSS/OpenType-friendly label, e.g. `Weight (wght)`.
+    pub fn label(&self) -> String {
+        format!("{} ({})", self.name, self.tag)
     }
 }

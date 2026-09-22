@@ -1,7 +1,7 @@
 //! Print pipeline: press-PDF structure and preflight logic.
 #![allow(clippy::field_reassign_with_default)]
 
-use irasu_illustrator::core::document::{ColorMode, Document, Object, ObjectType};
+use irasu_illustrator::core::document::{ColorMode, Document, Object};
 use irasu_illustrator::core::path::{FillRule, FillStyle, FillType, LinearGradient};
 use irasu_illustrator::core::print::{preflight, PreflightLevel};
 use irasu_illustrator::io::pdf_print::{export_pdf_print, PrintPdfOptions};

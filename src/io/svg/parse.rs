@@ -788,6 +788,20 @@ pub fn parse_svg_document(svg_text: &str) -> Document {
             let text_anchor = extract_prop_str(trimmed, "text-anchor")
                 .map(|ta| parse_text_anchor(&ta))
                 .unwrap_or(TextAnchor::Start);
+            let variations = extract_prop_str(trimmed, "font-variation-settings")
+                .map(|s| TextStyle::parse_variation_settings_css(&s))
+                .unwrap_or_default();
+            let vertical = extract_prop_str(trimmed, "writing-mode")
+                .map(|m| m.contains("vertical"))
+                .unwrap_or(false)
+                || extract_attr_str(trimmed, "writing-mode")
+                    .map(|m| m.contains("vertical"))
+                    .unwrap_or(false);
+            let ligatures = extract_prop_str(trimmed, "font-variant-ligatures")
+                .map(|v| !v.contains("none"))
+                .unwrap_or(true);
+            let next_frame = extract_attr_str(trimmed, "data-text-thread").map(|s| s.to_string());
+            let next_frame_from_attr = next_frame.clone();
 
             let style = TextStyle {
                 font_family,
@@ -796,6 +810,9 @@ pub fn parse_svg_document(svg_text: &str) -> Document {
                 font_style,
                 letter_spacing,
                 text_anchor,
+                variations,
+                vertical,
+                ligatures,
                 ..Default::default()
             };
 
@@ -837,10 +854,11 @@ pub fn parse_svg_document(svg_text: &str) -> Document {
                         && parts[2] > 0.0
                         && parts[3] > 0.0
                     {
-                        if let ObjectType::Text { area, .. } = &mut obj.object_type {
+                        if let ObjectType::Text { area, next_frame, .. } = &mut obj.object_type {
                             *area = Some(crate::core::document::TextArea::new(
                                 parts[0], parts[1], parts[2], parts[3],
                             ));
+                            *next_frame = next_frame_from_attr;
                         }
                     }
                 }

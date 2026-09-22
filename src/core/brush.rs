@@ -125,6 +125,18 @@ pub enum BrushKind {
         /// Uniform artwork scale.
         scale: f64,
     },
+    /// Bristle brush: many dry streaks fanning around the spine (sumi /
+    /// marker feel). Applied as a group of translucent ribbons.
+    Bristle {
+        /// Bristle count (1..=64).
+        count: usize,
+        /// Perpendicular scatter as a fraction of `size` (0..1).
+        scatter: f64,
+        /// Overall diameter in document units.
+        size: f64,
+        /// Peak streak opacity (0..1); individual streaks vary below it.
+        opacity: f64,
+    },
 }
 
 impl BrushDefinition {
@@ -290,6 +302,27 @@ pub fn apply_brush_to_polyline(
         return None;
     }
     match &def.kind {
+        BrushKind::Bristle { count, scatter, size, opacity } => {
+            // Single-path fallback (per-streak alpha needs the multi
+            // entry point `apply_bristle`): merge all streaks.
+            let mut spine_only = PathData::new();
+            for p in poly {
+                if spine_only.elements.is_empty() {
+                    spine_only.push_move_to(p.x, p.y);
+                } else {
+                    spine_only.push_line_to(p.x, p.y);
+                }
+            }
+            let mut merged = PathData::new();
+            for (band, _) in apply_bristle(&spine_only, *count, *scatter, *size, *opacity as f64) {
+                merged.elements.extend(band.elements);
+            }
+            if merged.elements.is_empty() {
+                return None;
+            }
+            merged.fill = Some(super::path::FillStyle::default());
+            Some(merged)
+        }
         BrushKind::Calligraphy {
             angle_deg,
             roundness,
@@ -389,6 +422,69 @@ pub fn apply_brush_to_polyline(
             Some(out)
         }
     }
+}
+
+/// Deterministic 0..1 hash (splitmix64 half) — stable bristles, no RNG dep.
+fn hash01(n: u64) -> f64 {
+    let mut x = n.wrapping_add(0x9E3779B97F4A7C15);
+    x = (x ^ (x >> 30)).wrapping_mul(0xBF58476D1CE4E5B9);
+    x = (x ^ (x >> 27)).wrapping_mul(0x94D049BB133111EB);
+    ((x ^ (x >> 31)) as f64) / (u64::MAX as f64)
+}
+
+/// Apply a bristle brush: `count` dry streaks fanning around the spine.
+/// Returns outlined ribbons with per-streak alpha (caller assigns color).
+pub fn apply_bristle(
+    spine: &PathData,
+    count: usize,
+    scatter: f64,
+    size: f64,
+    opacity: f64,
+) -> Vec<(PathData, f32)> {
+    let count = count.clamp(1, 64);
+    let size = size.max(0.5);
+    let scatter = scatter.clamp(0.0, 1.0);
+    let opacity = (opacity as f64).clamp(0.0, 1.0);
+    let mut out = Vec::new();
+    for (run_idx, (flat, closed)) in spine_runs(spine).iter().enumerate() {
+        if flat.len() < 2 {
+            continue;
+        }
+        let (pts, tangents) = resample_spine(flat, 64);
+        for k in 0..count {
+            let seed = (run_idx as u64) * 131 + (k as u64) * 17 + 7;
+            let off = (hash01(seed) - 0.5) * 2.0 * scatter * size;
+            let w = size * (0.2 + 0.5 * hash01(seed ^ 0x5DEECE66D));
+            let alpha = (opacity * (0.3 + 0.7 * hash01(seed ^ 0xB5297A4D))) as f32;
+            let shifted: Vec<AnchorPoint> = pts
+                .iter()
+                .zip(tangents.iter())
+                .map(|(p, (tx, ty))| AnchorPoint::new(p.x - ty * off, p.y + tx * off))
+                .collect();
+            let profile = crate::core::document::WidthProfile {
+                points: vec![
+                    crate::core::document::WidthPoint {
+                        position: 0.0,
+                        width: w.max(0.05),
+                        side: crate::core::document::WidthSide::Both,
+                    },
+                    crate::core::document::WidthPoint {
+                        position: 1.0,
+                        width: w.max(0.05),
+                        side: crate::core::document::WidthSide::Both,
+                    },
+                ],
+            };
+            let band = crate::core::offset::variable_width_outline(&shifted, &profile, 1.0, *closed);
+            if band.len() < 3 {
+                continue;
+            }
+            let mut path = PathData::from_polygon_points(&band, true);
+            path.fill = Some(super::path::FillStyle::default());
+            out.push((path, alpha));
+        }
+    }
+    out
 }
 
 /// Apply a brush to a whole spine path (each subpath brushed, results
@@ -570,5 +666,30 @@ mod tests {
         let mut p = PathData::new();
         p.push_move_to(5.0, 5.0);
         assert!(apply_brush(&p, &BrushDefinition::calligraphy(0.0, 0.5, 10.0), 2.0).is_none());
+    }
+
+    #[test]
+    fn bristle_yields_counted_streaks() {
+        let mut spine = PathData::new();
+        spine.push_move_to(0.0, 0.0);
+        spine.push_line_to(100.0, 0.0);
+        let streaks = apply_bristle(&spine, 8, 0.5, 10.0, 0.8);
+        assert_eq!(streaks.len(), 8);
+        for (band, alpha) in &streaks {
+            assert!(!band.elements.is_empty());
+            assert!(*alpha > 0.0 && *alpha <= 0.8, "alpha varies under peak: {alpha}");
+        }
+        // Deterministic: same input, same output.
+        let again = apply_bristle(&spine, 8, 0.5, 10.0, 0.8);
+        assert_eq!(streaks, again);
+        // Scatter spreads ribbons around the spine.
+        let ys: Vec<f64> = streaks
+            .iter()
+            .flat_map(|(b, _)| b.bounding_box())
+            .flat_map(|(mn, mx)| [mn.y, mx.y])
+            .collect();
+        let span = ys.iter().cloned().fold(f64::MIN, f64::max)
+            - ys.iter().cloned().fold(f64::MAX, f64::min);
+        assert!(span > 2.0, "bristles fan out: {span}");
     }
 }

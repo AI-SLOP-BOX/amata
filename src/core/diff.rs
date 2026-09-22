@@ -660,12 +660,14 @@ fn compare_objects(a: &Object, b: &Object) -> Vec<FieldDiff> {
                 font_size: s_a,
                 style: style_a,
                 area: area_a,
+                next_frame: nf_a,
             },
             ObjectType::Text {
                 text: t_b,
                 font_size: s_b,
                 style: style_b,
                 area: area_b,
+                next_frame: nf_b,
             },
         ) => {
             if t_a != t_b {
@@ -680,6 +682,13 @@ fn compare_objects(a: &Object, b: &Object) -> Vec<FieldDiff> {
                     field: "font-size".to_string(),
                     old_value: format!("{s_a:.0}"),
                     new_value: format!("{s_b:.0}"),
+                });
+            }
+            if nf_a != nf_b {
+                changes.push(FieldDiff {
+                    field: "text-thread".to_string(),
+                    old_value: nf_a.clone().unwrap_or_default(),
+                    new_value: nf_b.clone().unwrap_or_default(),
                 });
             }
             if style_a.font_family != style_b.font_family {
@@ -701,6 +710,13 @@ fn compare_objects(a: &Object, b: &Object) -> Vec<FieldDiff> {
                     field: "font-style".to_string(),
                     old_value: style_a.font_style.as_svg_str().to_string(),
                     new_value: style_b.font_style.as_svg_str().to_string(),
+                });
+            }
+            if style_a.variations != style_b.variations {
+                changes.push(FieldDiff {
+                    field: "font-variation-settings".to_string(),
+                    old_value: style_a.variation_settings_css(),
+                    new_value: style_b.variation_settings_css(),
                 });
             }
             if (style_a.letter_spacing - style_b.letter_spacing).abs() > 0.01 {

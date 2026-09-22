@@ -620,6 +620,7 @@ fn render_object_to_svg(
             font_size,
             style,
             area,
+            next_frame,
         } => {
             let fill = if fill_attr.is_empty() || fill_attr == " fill=\"none\"" {
                 " fill=\"#000000\"".to_string()
@@ -661,11 +662,28 @@ fn render_object_to_svg(
             if style.letter_spacing != 0.0 {
                 extra_attrs.push_str(&format!(" letter-spacing=\"{}\"", style.letter_spacing));
             }
+            if !style.variations.is_empty() {
+                // Standard CSS property; also our round-trip channel (parse
+                // reads font-variation-settings back into TextStyle.variations).
+                extra_attrs.push_str(&format!(
+                    " font-variation-settings=\"{}\"",
+                    style.variation_settings_css()
+                ));
+            }
             if style.text_anchor != TextAnchor::Start {
                 extra_attrs.push_str(&format!(
                     " text-anchor=\"{}\"",
                     style.text_anchor.as_svg_str()
                 ));
+            }
+            if style.vertical {
+                extra_attrs.push_str(" writing-mode=\"vertical-rl\"");
+            }
+            if !style.ligatures {
+                extra_attrs.push_str(" font-variant-ligatures=\"none\"");
+            }
+            if let Some(nf) = next_frame {
+                extra_attrs.push_str(&format!(" data-text-thread=\"{nf}\""));
             }
 
             // Explicit line breaks become positioned tspans (line-height advance,

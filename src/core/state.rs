@@ -214,6 +214,13 @@ pub struct AppState {
     pub brush_motif: String,
     pub brush_spacing: f64,
     pub brush_scale: f64,
+    // Bristle brush params + custom artwork + library name buffer.
+    pub brush_bristles: f64,
+    pub brush_scatter: f64,
+    pub brush_opacity: f64,
+    pub brush_artwork: Option<crate::core::path::PathData>,
+    pub brush_custom_art: bool,
+    pub brush_lib_name: String,
     // Print export switches.
     pub print_marks: bool,
     pub print_pdfx: bool,
@@ -363,6 +370,12 @@ impl Default for AppState {
             brush_motif: "arrow".to_string(),
             brush_spacing: 60.0,
             brush_scale: 1.0,
+            brush_bristles: 12.0,
+            brush_scatter: 0.4,
+            brush_opacity: 0.8,
+            brush_artwork: None,
+            brush_custom_art: false,
+            brush_lib_name: "My Brush".to_string(),
             print_marks: true,
             print_pdfx: true,
             pending_transforms: Vec::new(),
@@ -754,6 +767,20 @@ impl AppState {
             if obj_dist < grid_dist {
                 sx = osx;
                 sy = osy;
+            }
+        }
+
+        if let Some(grid) = self.document.perspective.as_ref() {
+            if grid.snap {
+                let canvas = (0.0, 0.0, self.document.width, self.document.height);
+                if let Some((px, py)) = grid.snap_point(x, y, canvas, 5.0) {
+                    let persp_dist = ((px - x).powi(2) + (py - y).powi(2)).sqrt();
+                    let cur_dist = ((sx - x).powi(2) + (sy - y).powi(2)).sqrt();
+                    if persp_dist < cur_dist {
+                        sx = px;
+                        sy = py;
+                    }
+                }
             }
         }
 

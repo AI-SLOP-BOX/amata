@@ -161,6 +161,30 @@ fn default_font_weight() -> u16 {
     400
 }
 
+/// One OpenType variation axis coordinate (variable fonts).
+/// `axis` is the 4-char tag (`wght`, `wdth`, `opsz`, …); `value` is in the
+/// axis's design space (e.g. 100..=900 for `wght`).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct VariationSetting {
+    pub axis: String,
+    pub value: f64,
+}
+
+impl VariationSetting {
+    pub fn new(axis: impl Into<String>, value: f64) -> Self {
+        Self {
+            axis: axis.into(),
+            value,
+        }
+    }
+
+    /// True when this entry differs from the axis default (so we can skip
+    /// no-op coordinates when applying to a face).
+    pub fn is_non_default(&self, def: f64) -> bool {
+        (self.value - def).abs() > f64::EPSILON
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TextStyle {
     #[serde(default = "default_font_family")]
@@ -185,6 +209,17 @@ pub struct TextStyle {
     /// Enable soft word wrapping at `max_width`.
     #[serde(default)]
     pub word_wrap: bool,
+    /// Variable-font axis coordinates. Empty for static faces.
+    #[serde(default)]
+    pub variations: Vec<VariationSetting>,
+    /// `true` = vertical writing (縦組み): columns advance right→left,
+    /// each "line" is a column stacked on X instead of Y.
+    #[serde(default)]
+    pub vertical: bool,
+    /// Enable GSUB `liga`/`dlig`/`clig`/`rlig` ligature substitution
+    /// when the face provides them (outline path only; SVG keeps raw text).
+    #[serde(default)]
+    pub ligatures: bool,
 }
 
 impl Default for TextStyle {
@@ -199,6 +234,9 @@ impl Default for TextStyle {
             line_height: None,
             max_width: None,
             word_wrap: false,
+            variations: Vec::new(),
+            vertical: false,
+            ligatures: true,
         }
     }
 }
@@ -215,7 +253,66 @@ impl TextStyle {
             line_height: None,
             max_width: None,
             word_wrap: false,
+            variations: Vec::new(),
+            vertical: false,
+            ligatures: true,
         }
+    }
+
+    /// Look up a stored variation coordinate by 4-char axis tag.
+    pub fn variation(&self, axis: &str) -> Option<f64> {
+        self.variations
+            .iter()
+            .find(|v| v.axis.eq_ignore_ascii_case(axis))
+            .map(|v| v.value)
+    }
+
+    /// Insert or replace a variation coordinate (undo is the caller's job).
+    pub fn set_variation(&mut self, axis: impl Into<String>, value: f64) {
+        let axis = axis.into();
+        if let Some(entry) = self
+            .variations
+            .iter_mut()
+            .find(|v| v.axis.eq_ignore_ascii_case(&axis))
+        {
+            entry.value = value;
+        } else {
+            self.variations.push(VariationSetting::new(axis, value));
+        }
+    }
+
+    /// Remove a variation coordinate if present.
+    pub fn clear_variation(&mut self, axis: &str) {
+        self.variations
+            .retain(|v| !v.axis.eq_ignore_ascii_case(axis));
+    }
+
+    /// Serialize for SVG `font-variation-settings` / CSS round-trip.
+    pub fn variation_settings_css(&self) -> String {
+        self.variations
+            .iter()
+            .map(|v| format!("\"{}\" {}", v.axis, v.value))
+            .collect::<Vec<_>>()
+            .join(", ")
+    }
+
+    /// Parse `font-variation-settings` content (`"wght" 700, "wdth" 100`).
+    pub fn parse_variation_settings_css(s: &str) -> Vec<VariationSetting> {
+        let mut out = Vec::new();
+        for part in s.split(',') {
+            let tokens: Vec<&str> = part.split_whitespace().collect();
+            if tokens.len() < 2 {
+                continue;
+            }
+            let tag = tokens[0].trim_matches(|c| c == '"' || c == '\'');
+            if tag.len() != 4 {
+                continue;
+            }
+            if let Ok(value) = tokens[1].parse::<f64>() {
+                out.push(VariationSetting::new(tag, value));
+            }
+        }
+        out
     }
 
     /// Effective line height in document units.
@@ -258,6 +355,10 @@ pub enum ObjectType {
         /// Area-type container. `None` = point text (legacy behaviour).
         #[serde(default)]
         area: Option<TextArea>,
+        /// Next frame in a threaded text story (`None` = unthreaded).
+        /// Only meaningful when `area` is `Some`.
+        #[serde(default)]
+        next_frame: Option<String>,
     },
     Group(Vec<Object>),
     ClippingMask {
@@ -482,6 +583,9 @@ impl TextLayout {
 /// whose baseline falls below the box bottom overflow (still returned —
 /// exporters clip them visually but keep them in markup for round-trip).
 pub fn layout_text(text: &str, style: &TextStyle, area: Option<TextArea>) -> TextLayout {
+    if style.vertical {
+        return layout_text_vertical(text, style, area);
+    }
     match area {
         None => {
             let lines = if style.word_wrap {
@@ -515,6 +619,132 @@ pub fn layout_text(text: &str, style: &TextStyle, area: Option<TextArea>) -> Tex
             }
         }
     }
+}
+
+/// Vertical (縦組み) layout: each source line becomes a column that advances
+/// downward; columns advance right→left (vertical-rl). Wrapping uses box
+/// *height* as the line budget (chars ≈ height / advance), capacity uses
+/// box *width* / column width. Point text (no area) just splits on `\n`.
+fn layout_text_vertical(text: &str, style: &TextStyle, area: Option<TextArea>) -> TextLayout {
+    let col_advance = style.effective_line_height().max(1e-6); // horizontal distance between columns
+    let char_adv = |ch: char| char_advance_estimate(ch) * style.font_size + style.letter_spacing;
+
+    // Split into source lines, optionally wrapping each to the box height.
+    let mut columns: Vec<String> = Vec::new();
+    match area {
+        None => {
+            for para in text.split('\n') {
+                if style.word_wrap {
+                    if let Some(max_h) = style.max_width {
+                        // Wrap by character count fitting in max_h.
+                        let mut col = String::new();
+                        let mut w = 0.0;
+                        for ch in para.chars() {
+                            let cw = char_adv(ch);
+                            if !col.is_empty() && w + cw > max_h {
+                                columns.push(std::mem::take(&mut col));
+                                w = 0.0;
+                            }
+                            col.push(ch);
+                            w += cw;
+                        }
+                        columns.push(col);
+                    } else {
+                        columns.push(para.to_string());
+                    }
+                } else {
+                    columns.push(para.to_string());
+                }
+            }
+        }
+        Some(a) => {
+            // Available height for one column (em-box top to first baseline budget).
+            let max_h = (a.height - style.font_size).max(style.font_size).max(1.0);
+            for para in text.split('\n') {
+                let mut col = String::new();
+                let mut w = 0.0;
+                for ch in para.chars() {
+                    let cw = char_adv(ch);
+                    if !col.is_empty() && w + cw > max_h {
+                        columns.push(std::mem::take(&mut col));
+                        w = 0.0;
+                    }
+                    col.push(ch);
+                    w += cw;
+                }
+                columns.push(col);
+            }
+        }
+    }
+
+    // Capacity: how many columns fit in the box width (right edge starts at a.x + a.width).
+    let (visible, origin) = match area {
+        None => (columns.len(), (0.0, 0.0)),
+        Some(a) => {
+            let capacity = ((((a.width - style.font_size) / col_advance).floor() as isize) + 1)
+                .max(0) as usize;
+            // First column's baseline sits near the right edge of the box (vertical-rl).
+            let origin_x = a.x + a.width - style.font_size;
+            (columns.len().min(capacity), (origin_x, a.y + style.font_size))
+        }
+    };
+
+    TextLayout {
+        lines: columns,
+        visible,
+        origin,
+    }
+}
+
+/// Distribute `text` across linked area-text frames (`frames` in link order).
+/// Each frame receives as many laid-out lines/columns as it can hold; the
+/// remainder overflows into the next frame. Returns one `TextLayout` per frame.
+///
+/// This is the core of threaded text stories (テキストスレッド). Callers resolve
+/// the `next_frame` chain and pass areas in order.
+pub fn layout_text_thread(
+    text: &str,
+    style: &TextStyle,
+    frames: &[TextArea],
+) -> Vec<TextLayout> {
+    if frames.is_empty() {
+        return vec![layout_text(text, style, None)];
+    }
+    // Lay out once as if the first frame owns everything, then slice lines.
+    let full = layout_text(text, style, Some(frames[0]));
+    let mut out = Vec::with_capacity(frames.len());
+    let mut consumed = 0usize;
+    for (i, frame) in frames.iter().enumerate() {
+        let per_frame = if i + 1 == frames.len() {
+            // Last frame keeps whatever is left (may overflow for display).
+            full.lines.len().saturating_sub(consumed)
+        } else {
+            // Capacity of this frame (same formula as layout_text).
+            let col_or_line = style.effective_line_height().max(1e-6);
+            let capacity = if style.vertical {
+                ((((frame.width - style.font_size) / col_or_line).floor() as isize) + 1)
+                    .max(0) as usize
+            } else {
+                ((((frame.height - style.font_size) / col_or_line).floor() as isize) + 1)
+                    .max(0) as usize
+            };
+            capacity.min(full.lines.len().saturating_sub(consumed))
+        };
+        let end = (consumed + per_frame).min(full.lines.len());
+        let slice: Vec<String> = full.lines[consumed..end].to_vec();
+        let origin = if style.vertical {
+            (frame.x + frame.width - style.font_size, frame.y + style.font_size)
+        } else {
+            (frame.x, frame.y + style.font_size)
+        };
+        out.push(TextLayout {
+            visible: slice.len(),
+            lines: slice,
+            origin,
+        });
+        consumed = end;
+    }
+    out
 }
 
 /// Map every point of a path through a live envelope deform (bbox taken
@@ -836,6 +1066,7 @@ impl Object {
                 font_size,
                 style,
                 area: None,
+                next_frame: None,
             },
             transform: Transform {
                 x,
@@ -1132,7 +1363,7 @@ impl Object {
             }
             ObjectType::Line { x2, y2 } => PathData::from_line(0.0, 0.0, *x2, *y2),
             ObjectType::Text {
-                text, font_size, style, area,
+                text, font_size, style, area, ..
             } => {
                 // Area text selects by its box; point text by the measured
                 // block (first baseline at y=0, 1.2em line advance).
@@ -1140,6 +1371,11 @@ impl Object {
                     return PathData::from_rect(a.x, a.y, a.width, a.height, 0.0);
                 }
                 let (width, height) = text_block_size_with_style(text, style);
+                if style.vertical {
+                    // Bounding box for vertical text: height along X, width along Y
+                    // is approximate (char_advance uses horizontal widths).
+                    return PathData::from_rect(0.0, -font_size, height.max(width), width, 0.0);
+                }
                 PathData::from_rect(0.0, -font_size, width, height, 0.0)
             }
             ObjectType::Group(children) => {
@@ -1234,12 +1470,17 @@ impl Object {
                 dist <= (stroke_w / 2.0).max(4.0)
             }
             ObjectType::Text {
-                text, font_size, style, area,
+                text, font_size, style, area, ..
             } => {
                 if let Some(a) = area {
                     return lx >= a.x && lx <= a.x + a.width && ly >= a.y && ly <= a.y + a.height;
                 }
                 let (width, height) = text_block_size_with_style(text, style);
+                if style.vertical {
+                    let h = height.max(width);
+                    let w = width;
+                    return lx >= 0.0 && lx <= h && ly >= -font_size && ly <= -font_size + w;
+                }
                 lx >= 0.0 && lx <= width && ly >= -font_size && ly <= -font_size + height
             }
             ObjectType::Group(children) => children.iter().any(|c| c.hit_test(lx, ly)),

@@ -112,6 +112,14 @@ pub fn text_shape_key(text: &str, style: &TextStyle, area: Option<TextArea>) -> 
         .hash(&mut h);
     style.max_width.map(f64::to_bits).hash(&mut h);
     style.word_wrap.hash(&mut h);
+    style.vertical.hash(&mut h);
+    style.ligatures.hash(&mut h);
+    // Variable-font axes reshape glyph outlines; include them in the key.
+    style.variations.len().hash(&mut h);
+    for v in &style.variations {
+        v.axis.hash(&mut h);
+        v.value.to_bits().hash(&mut h);
+    }
     // Area box is a shaping input: resizing the box rewraps the text.
     area.map(|a| (a.x.to_bits(), a.y.to_bits(), a.width.to_bits(), a.height.to_bits()))
         .hash(&mut h);
@@ -562,6 +570,7 @@ impl CanvasWidget {
                 font_size,
                 style,
                 area,
+                ..
             } => {
                 // Real typeface first (cached outline triangles); missing
                 // fonts fall through to the legacy egui-font path below.
