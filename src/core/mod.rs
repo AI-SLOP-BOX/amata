@@ -18,6 +18,7 @@ pub mod halftone;
 pub mod history;
 pub mod isometric;
 pub mod knife;
+pub mod layout_grid;
 pub mod lsystem;
 pub mod mesh3d;
 pub mod mesh_warp;

@@ -1237,6 +1237,84 @@ impl CanvasWidget {
         }
     }
 
+    /// Figma-style layout grid overlay on artboards that own one.
+    /// Drawn after content so it reads as an editing aid, not artwork.
+    pub(super) fn draw_layout_grid(
+        &self,
+        painter: &egui::Painter,
+        origin: Pos2,
+        state: &AppState,
+    ) {
+        use crate::core::layout_grid::LayoutGridKind;
+        for ab in state.document.effective_artboards().iter() {
+            let Some(grid) = ab.layout_grid.as_ref().filter(|g| g.show) else {
+                continue;
+            };
+            let to_screen = |wx: f64, wy: f64| -> Pos2 {
+                Pos2::new(origin.x + wx as f32 * state.zoom, origin.y + wy as f32 * state.zoom)
+            };
+            let alpha = (grid.opacity * 255.0) as u8;
+            match grid.kind {
+                LayoutGridKind::Columns | LayoutGridKind::Rows => {
+                    let along = if grid.kind == LayoutGridKind::Columns {
+                        ab.width
+                    } else {
+                        ab.height
+                    };
+                    let col = if grid.kind == LayoutGridKind::Columns {
+                        Color32::from_rgba_unmultiplied(242, 72, 34, alpha)
+                    } else {
+                        Color32::from_rgba_unmultiplied(160, 48, 240, alpha)
+                    };
+                    for (t0, t1) in grid.tracks(along) {
+                        let r = if grid.kind == LayoutGridKind::Columns {
+                            Rect::from_min_max(
+                                to_screen(ab.x + t0, ab.y),
+                                to_screen(ab.x + t1, ab.y + ab.height),
+                            )
+                        } else {
+                            Rect::from_min_max(
+                                to_screen(ab.x, ab.y + t0),
+                                to_screen(ab.x + ab.width, ab.y + t1),
+                            )
+                        };
+                        painter.rect_filled(r, 0.0_f32, col);
+                    }
+                }
+                LayoutGridKind::Grid => {
+                    let cell = grid.size as f32 * state.zoom;
+                    if cell < 4.0_f32 {
+                        continue;
+                    }
+                    let rect = Rect::from_min_max(
+                        to_screen(ab.x, ab.y),
+                        to_screen(ab.x + ab.width, ab.y + ab.height),
+                    );
+                    let line = Stroke::new(
+                        1.0_f32,
+                        Color32::from_rgba_unmultiplied(242, 72, 34, alpha.max(80)),
+                    );
+                    let mut x = rect.min.x;
+                    while x <= rect.max.x {
+                        painter.line_segment(
+                            [Pos2::new(x, rect.min.y), Pos2::new(x, rect.max.y)],
+                            line,
+                        );
+                        x += cell;
+                    }
+                    let mut y = rect.min.y;
+                    while y <= rect.max.y {
+                        painter.line_segment(
+                            [Pos2::new(rect.min.x, y), Pos2::new(rect.max.x, y)],
+                            line,
+                        );
+                        y += cell;
+                    }
+                }
+            }
+        }
+    }
+
     pub(super) fn draw_diff_overlays(
         &self,
         painter: &egui::Painter,

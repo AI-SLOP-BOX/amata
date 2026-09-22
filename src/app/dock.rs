@@ -281,6 +281,9 @@ impl IrasuApp {
                         SmartGuidesPanel::show(ui, &mut self.state);
                         ui.add_space(8.0);
                         ui.separator();
+                        LayoutGridPanel::show(ui, &mut self.state);
+                        ui.add_space(8.0);
+                        ui.separator();
                         PerspectivePanel::show(ui, &mut self.state);
                         ui.add_space(8.0);
                         ui.separator();

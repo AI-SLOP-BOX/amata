@@ -664,6 +664,9 @@ impl CanvasWidget {
         let alt_down = ui.input(|i| i.modifiers.alt);
         self.draw_measurements(&painter, rect, origin, state, alt_down);
 
+        // Layout grid (columns/rows/cell) on artboards that have one.
+        self.draw_layout_grid(&painter, origin, state);
+
         // Rulers (drawn above artboard and guidelines)
         if state.show_rulers {
             self.draw_rulers(&painter, rect, origin, state);

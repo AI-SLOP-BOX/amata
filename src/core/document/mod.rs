@@ -41,6 +41,9 @@ pub struct Artboard {
     pub y: f64,
     pub width: f64,
     pub height: f64,
+    /// Figma-style layout grid (columns / rows / square grid).
+    #[serde(default)]
+    pub layout_grid: Option<crate::core::layout_grid::LayoutGrid>,
 }
 
 impl Artboard {
@@ -52,6 +55,7 @@ impl Artboard {
             y,
             width,
             height,
+            layout_grid: None,
         }
     }
 }
