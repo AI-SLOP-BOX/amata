@@ -389,6 +389,35 @@ fn test_raster_export_png_and_jpeg() {
 }
 
 #[test]
+fn test_raster_export_webp_and_avif() {
+    let mut doc = Document::default();
+    doc.width = 400.0;
+    doc.height = 300.0;
+    let mut r = Object::new_rect("Box", 50.0, 50.0, 200.0, 150.0, 10.0);
+    r.fill = Some(FillStyle::solid([0.1, 0.5, 0.9, 1.0]));
+    doc.add_object(r);
+
+    // WebP Export
+    let webp_res = irasu_illustrator::io::raster::export_webp(&doc, 1.0, true);
+    assert!(webp_res.is_ok(), "WebP export failed: {:?}", webp_res.err());
+    let webp_bytes = webp_res.unwrap();
+    assert!(webp_bytes.len() > 100);
+    // WebP magic: "RIFF" .... "WEBP"
+    assert_eq!(&webp_bytes[0..4], b"RIFF");
+    assert_eq!(&webp_bytes[8..12], b"WEBP");
+
+    // AVIF Export
+    let avif_res = irasu_illustrator::io::raster::export_avif(&doc, 1.0, true);
+    assert!(avif_res.is_ok(), "AVIF export failed: {:?}", avif_res.err());
+    let avif_bytes = avif_res.unwrap();
+    assert!(avif_bytes.len() > 100);
+    // ISO-BMFF container: size(4) + "ftyp"(4) + major brand "avif"/"avis"
+    assert_eq!(&avif_bytes[4..8], b"ftyp");
+    let brand = &avif_bytes[8..12];
+    assert!(brand == b"avif" || brand == b"avis", "unexpected AVIF brand: {:?}", brand);
+}
+
+#[test]
 fn test_modify_path_command_undo_redo() {
     use irasu_illustrator::core::history::ModifyPathCommand;
     use irasu_illustrator::core::path::PathElement;

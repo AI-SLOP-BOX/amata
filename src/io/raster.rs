@@ -115,3 +115,34 @@ pub fn export_jpeg(doc: &Document, scale: f32) -> Result<Vec<u8>, String> {
 
     Ok(jpeg_bytes)
 }
+
+/// Export the vector document to WebP byte buffer at given scale factor.
+/// Uses lossless WebP (via `image`'s WebP encoder), so alpha from
+/// `transparent = true` is preserved.
+pub fn export_webp(doc: &Document, scale: f32, transparent: bool) -> Result<Vec<u8>, String> {
+    let png_bytes = export_png(doc, scale, transparent)?;
+    let img = image::load_from_memory(&png_bytes)
+        .map_err(|e| format!("Failed to load image for WebP encoding: {}", e))?;
+
+    let mut webp_bytes = Vec::new();
+    let mut cursor = std::io::Cursor::new(&mut webp_bytes);
+    img.write_to(&mut cursor, image::ImageFormat::WebP)
+        .map_err(|e| format!("Failed to encode WebP: {}", e))?;
+
+    Ok(webp_bytes)
+}
+
+/// Export the vector document to AVIF byte buffer at given scale factor.
+/// Alpha from `transparent = true` is preserved.
+pub fn export_avif(doc: &Document, scale: f32, transparent: bool) -> Result<Vec<u8>, String> {
+    let png_bytes = export_png(doc, scale, transparent)?;
+    let img = image::load_from_memory(&png_bytes)
+        .map_err(|e| format!("Failed to load image for AVIF encoding: {}", e))?;
+
+    let mut avif_bytes = Vec::new();
+    let mut cursor = std::io::Cursor::new(&mut avif_bytes);
+    img.write_to(&mut cursor, image::ImageFormat::Avif)
+        .map_err(|e| format!("Failed to encode AVIF: {}", e))?;
+
+    Ok(avif_bytes)
+}

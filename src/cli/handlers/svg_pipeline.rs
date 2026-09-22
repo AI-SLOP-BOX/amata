@@ -123,6 +123,22 @@ pub fn handle_render(
             .write_to(&mut cursor, image::ImageFormat::Jpeg)
             .map_err(|e| format!("Failed to encode JPEG: {e}"))?;
         std::fs::write(output, jpeg_bytes)?;
+    } else if out_ext == "webp" || out_ext == "avif" {
+        let png_bytes = pixmap
+            .encode_png()
+            .map_err(|e| format!("Failed to encode intermediary PNG: {e}"))?;
+        let img = image::load_from_memory(&png_bytes)
+            .map_err(|e| format!("Failed to load image for {out_ext} encoding: {e}"))?;
+        let image_format = if out_ext == "webp" {
+            image::ImageFormat::WebP
+        } else {
+            image::ImageFormat::Avif
+        };
+        let mut encoded = Vec::new();
+        let mut cursor = std::io::Cursor::new(&mut encoded);
+        img.write_to(&mut cursor, image_format)
+            .map_err(|e| format!("Failed to encode {out_ext}: {e}"))?;
+        std::fs::write(output, encoded)?;
     } else if out_ext == "pdf" {
         let doc = crate::io::svg::parse_svg_document(&svg_content);
         let pdf_bytes = crate::io::pdf::export_pdf(&doc);

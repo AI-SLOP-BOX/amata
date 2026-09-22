@@ -75,6 +75,18 @@ pub fn save_any_document_scaled(
             crate::io::atomic::atomic_write_bytes(path, &jpeg_bytes)?;
             Ok(())
         }
+        "webp" => {
+            let webp_bytes = crate::io::raster::export_webp(doc, scale, true)
+                .map_err(|e| format!("Raster export failed: {e}"))?;
+            crate::io::atomic::atomic_write_bytes(path, &webp_bytes)?;
+            Ok(())
+        }
+        "avif" => {
+            let avif_bytes = crate::io::raster::export_avif(doc, scale, true)
+                .map_err(|e| format!("Raster export failed: {e}"))?;
+            crate::io::atomic::atomic_write_bytes(path, &avif_bytes)?;
+            Ok(())
+        }
         "pdf" => {
             let pdf_bytes = crate::io::pdf::export_pdf(doc);
             crate::io::atomic::atomic_write_bytes(path, &pdf_bytes)?;

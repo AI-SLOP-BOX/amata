@@ -30,6 +30,8 @@ pub enum ExportFormatTab {
     Pdf,
     Png,
     Jpeg,
+    Webp,
+    Avif,
 }
 
 pub struct ExportAssetItem {
@@ -194,6 +196,8 @@ impl ExportModal {
                 ("印刷用 (PDF)", ExportFormatTab::Pdf),
                 ("スクリーン用 (PNG)", ExportFormatTab::Png),
                 ("ソーシャル投稿 (JPEG)", ExportFormatTab::Jpeg),
+                ("Web 最適化 (WebP)", ExportFormatTab::Webp),
+                ("次世代 Web (AVIF)", ExportFormatTab::Avif),
             ];
             for (p_name, fmt) in presets {
                 let is_active = self.active_format == fmt;
@@ -382,6 +386,8 @@ impl ExportModal {
                     ExportFormatTab::Pdf => "PDF",
                     ExportFormatTab::Png => "PNG",
                     ExportFormatTab::Jpeg => "JPEG",
+                    ExportFormatTab::Webp => "WebP",
+                    ExportFormatTab::Avif => "AVIF",
                 };
                 ui.painter().text(
                     Pos2::new(row_rect.min.x + 205.0, row_rect.center().y),
@@ -435,13 +441,15 @@ impl ExportModal {
             );
             ui.add_space(6.0);
 
-            // Format Toggle Pill Bar: [SVG] [PDF] [PNG] [JPEG]
-            ui.horizontal(|ui| {
+            // Format Toggle Pill Bar: [SVG] [PDF] [PNG] [JPEG] [WebP] [AVIF]
+            ui.horizontal_wrapped(|ui| {
                 let fmts = [
                     (ExportFormatTab::Svg, "SVG"),
                     (ExportFormatTab::Pdf, "PDF"),
                     (ExportFormatTab::Png, "PNG"),
                     (ExportFormatTab::Jpeg, "JPEG"),
+                    (ExportFormatTab::Webp, "WebP"),
+                    (ExportFormatTab::Avif, "AVIF"),
                 ];
                 for (f, name) in fmts {
                     let is_active = self.active_format == f;
@@ -453,7 +461,7 @@ impl ExportModal {
                                 .color(Color32::WHITE),
                         )
                         .fill(Color32::from_rgb(20, 115, 230))
-                        .min_size(Vec2::new(52.0, 24.0))
+                        .min_size(Vec2::new(48.0, 24.0))
                     } else {
                         egui::Button::new(
                             RichText::new(name)
@@ -461,7 +469,7 @@ impl ExportModal {
                                 .color(Color32::from_rgb(180, 180, 180)),
                         )
                         .fill(Color32::from_rgb(44, 44, 48))
-                        .min_size(Vec2::new(52.0, 24.0))
+                        .min_size(Vec2::new(48.0, 24.0))
                     };
                     if ui.add(btn).clicked() {
                         self.active_format = f;
@@ -708,6 +716,88 @@ impl ExportModal {
                                     }
                                     Err(e) => state.notify_error(format!(
                                         "JPEGラスタライズに失敗しました: {e}"
+                                    )),
+                                }
+                            }
+                        }
+                        ExportFormatTab::Webp => {
+                            if let Some(path) = rfd::FileDialog::new()
+                                .add_filter("WebP", &["webp"])
+                                .set_file_name(format!("{}.webp", self.file_name))
+                                .save_file()
+                            {
+                                let scale = match self.scale_factor.as_str() {
+                                    "2x" => 2.0_f32,
+                                    "3x" => 3.0_f32,
+                                    "4x" => 4.0_f32,
+                                    "0.5x" => 0.5_f32,
+                                    _ => 1.0_f32,
+                                };
+                                match crate::io::raster::export_webp(
+                                    &state.document,
+                                    scale,
+                                    true,
+                                ) {
+                                    Ok(webp_bytes) => {
+                                        match crate::io::atomic::atomic_write_bytes(
+                                            &path,
+                                            &webp_bytes,
+                                        ) {
+                                            Ok(_) => state.notify_info(format!(
+                                                "WebPを書き出しました ({}): {}",
+                                                self.scale_factor,
+                                                path.file_name()
+                                                    .and_then(|n| n.to_str())
+                                                    .unwrap_or("file")
+                                            )),
+                                            Err(e) => {
+                                                state.notify_error(format!("保存に失敗しました: {e}"))
+                                            }
+                                        }
+                                    }
+                                    Err(e) => state.notify_error(format!(
+                                        "WebPラスタライズに失敗しました: {e}"
+                                    )),
+                                }
+                            }
+                        }
+                        ExportFormatTab::Avif => {
+                            if let Some(path) = rfd::FileDialog::new()
+                                .add_filter("AVIF", &["avif"])
+                                .set_file_name(format!("{}.avif", self.file_name))
+                                .save_file()
+                            {
+                                let scale = match self.scale_factor.as_str() {
+                                    "2x" => 2.0_f32,
+                                    "3x" => 3.0_f32,
+                                    "4x" => 4.0_f32,
+                                    "0.5x" => 0.5_f32,
+                                    _ => 1.0_f32,
+                                };
+                                match crate::io::raster::export_avif(
+                                    &state.document,
+                                    scale,
+                                    true,
+                                ) {
+                                    Ok(avif_bytes) => {
+                                        match crate::io::atomic::atomic_write_bytes(
+                                            &path,
+                                            &avif_bytes,
+                                        ) {
+                                            Ok(_) => state.notify_info(format!(
+                                                "AVIFを書き出しました ({}): {}",
+                                                self.scale_factor,
+                                                path.file_name()
+                                                    .and_then(|n| n.to_str())
+                                                    .unwrap_or("file")
+                                            )),
+                                            Err(e) => {
+                                                state.notify_error(format!("保存に失敗しました: {e}"))
+                                            }
+                                        }
+                                    }
+                                    Err(e) => state.notify_error(format!(
+                                        "AVIFラスタライズに失敗しました: {e}"
                                     )),
                                 }
                             }

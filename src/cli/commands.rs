@@ -14,7 +14,7 @@ pub enum Commands {
         input: PathBuf,
     },
 
-    /// Directly render an SVG or Amata document to PNG or JPEG with high fidelity
+    /// Directly render an SVG or Amata document to PNG, JPEG, WebP, or AVIF with high fidelity
     Render {
         #[arg(value_name = "INPUT")]
         input: PathBuf,
@@ -56,7 +56,7 @@ pub enum Commands {
         precision: usize,
     },
 
-    /// Convert between SVG, PNG, PDF, and Amata Project formats
+    /// Convert between SVG, PNG, JPEG, WebP, AVIF, PDF, and Amata Project formats
     Convert {
         #[arg(value_name = "INPUT")]
         input: PathBuf,

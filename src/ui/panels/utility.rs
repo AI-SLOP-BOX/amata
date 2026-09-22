@@ -158,7 +158,7 @@ impl SmartGuidesPanel {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// ExportPanel: Export to PNG/SVG/PDF
+// ExportPanel: Export to PNG/SVG/WebP/AVIF/JSON
 // ═══════════════════════════════════════════════════════════════════
 
 pub struct ExportPanel;
@@ -173,7 +173,7 @@ impl ExportPanel {
         let mut format = state.export_format.clone();
 
         ui.horizontal_wrapped(|ui| {
-            for f in ["SVG", "PNG", "JSON"] {
+            for f in ["SVG", "PNG", "WEBP", "AVIF", "JSON"] {
                 if ui.selectable_label(format == f, f).clicked() {
                     format = f.into();
                     state.export_format = format.clone();
@@ -232,6 +232,8 @@ impl ExportPanel {
             let filter = match format.as_str() {
                 "JSON" => &["json"][..],
                 "PNG" => &["png"][..],
+                "WEBP" => &["webp"][..],
+                "AVIF" => &["avif"][..],
                 _ => &["svg"][..],
             };
             if let Some(path) = rfd::FileDialog::new()
@@ -273,6 +275,38 @@ impl ExportPanel {
                                 Ok(_) => state.notify_info("PNGを書き出しました"),
                                 Err(e) => {
                                     state.notify_error(format!("PNG保存に失敗しました: {e}"))
+                                }
+                            }
+                        }
+                        Err(e) => state.notify_error(format!("ラスタライズに失敗しました: {e}")),
+                    }
+                } else if format == "WEBP" {
+                    match crate::io::raster::export_webp(
+                        doc_ref,
+                        state.export_scale,
+                        state.export_transparent,
+                    ) {
+                        Ok(webp_bytes) => {
+                            match crate::io::atomic::atomic_write_bytes(&path, &webp_bytes) {
+                                Ok(_) => state.notify_info("WebPを書き出しました"),
+                                Err(e) => {
+                                    state.notify_error(format!("WebP保存に失敗しました: {e}"))
+                                }
+                            }
+                        }
+                        Err(e) => state.notify_error(format!("ラスタライズに失敗しました: {e}")),
+                    }
+                } else if format == "AVIF" {
+                    match crate::io::raster::export_avif(
+                        doc_ref,
+                        state.export_scale,
+                        state.export_transparent,
+                    ) {
+                        Ok(avif_bytes) => {
+                            match crate::io::atomic::atomic_write_bytes(&path, &avif_bytes) {
+                                Ok(_) => state.notify_info("AVIFを書き出しました"),
+                                Err(e) => {
+                                    state.notify_error(format!("AVIF保存に失敗しました: {e}"))
                                 }
                             }
                         }
