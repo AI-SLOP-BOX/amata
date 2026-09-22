@@ -788,6 +788,7 @@ fn test_adversarial_stress_50k_objects() {
             width_profile: None,
             visible: true,
             locked: false,
+            auto_layout: None,
         };
         let mut obj_b = obj_a.clone();
         if i == count / 2 {

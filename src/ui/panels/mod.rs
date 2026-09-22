@@ -1,3 +1,4 @@
+pub mod auto_layout;
 pub mod color_utils;
 pub mod grid_repeat;
 pub use grid_repeat::GridRepeatPanel;
@@ -17,6 +18,7 @@ pub mod style;
 pub mod transform;
 pub mod typography;
 pub mod utility;
+pub use auto_layout::AutoLayoutPanel;
 pub use components::ComponentPanel;
 pub use brush::BrushPanel;
 pub use generative_a::DeformPanel;

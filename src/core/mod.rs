@@ -1,4 +1,5 @@
 pub mod audio_curve;
+pub mod auto_layout;
 pub mod axonometric;
 pub mod barcode;
 pub mod blend;
