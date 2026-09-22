@@ -231,6 +231,11 @@ pub struct AppState {
     pub pending_objects: Vec<(String, Object)>,
     // Same for whole-layer edits (opacity).
     pub pending_layers: Vec<(String, Layer)>,
+    /// Layer-tree collapsed group ids (open when absent from this set).
+    pub tree_collapsed: std::collections::HashSet<String>,
+    /// Inline rename in the layer tree: (object id, text buffer).
+    pub tree_rename: Option<(String, String)>,
+    pub tree_rename_focused: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -381,6 +386,9 @@ impl Default for AppState {
             pending_transforms: Vec::new(),
             pending_objects: Vec::new(),
             pending_layers: Vec::new(),
+            tree_collapsed: std::collections::HashSet::new(),
+            tree_rename: None,
+            tree_rename_focused: false,
         }
     }
 }

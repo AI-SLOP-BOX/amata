@@ -607,6 +607,68 @@ impl Command for ReorderObjectCommand {
     }
 }
 
+/// Move an object between layers / group children / z-positions as one
+/// undoable step (layer-tree drag & drop). Indices are insertion indices
+/// in the target container *after* the object has been removed from its
+/// source (same-container moves adjust `new_index` at construction time).
+pub struct ReparentObjectCommand {
+    pub object_id: String,
+    pub old_parent: Option<String>,
+    pub old_layer: usize,
+    pub old_index: usize,
+    pub new_parent: Option<String>,
+    pub new_layer: usize,
+    pub new_index: usize,
+}
+
+impl ReparentObjectCommand {
+    fn insert(
+        doc: &mut Document,
+        parent: &Option<String>,
+        layer_idx: usize,
+        index: usize,
+        obj: super::document::Object,
+    ) {
+        if let Some(pid) = parent {
+            if let Some(p) = doc.find_object_mut(pid) {
+                match &mut p.object_type {
+                    super::document::ObjectType::Group(children)
+                    | super::document::ObjectType::ClippingMask { children } => {
+                        let idx = index.min(children.len());
+                        children.insert(idx, obj);
+                        return;
+                    }
+                    _ => {}
+                }
+            }
+        }
+        if let Some(layer) = doc.layers.get_mut(layer_idx) {
+            let idx = index.min(layer.objects.len());
+            layer.objects.insert(idx, obj);
+        } else if let Some(layer) = doc.layers.last_mut() {
+            layer.objects.push(obj);
+        }
+    }
+}
+
+impl Command for ReparentObjectCommand {
+    fn execute(&mut self, doc: &mut Document) {
+        if let Some(obj) = doc.remove_object(&self.object_id) {
+            Self::insert(doc, &self.new_parent, self.new_layer, self.new_index, obj);
+        }
+    }
+
+    fn undo(&mut self, doc: &mut Document) {
+        if let Some(obj) = doc.remove_object(&self.object_id) {
+            Self::insert(doc, &self.old_parent, self.old_layer, self.old_index, obj);
+        }
+    }
+
+    fn name(&self) -> &str {
+        "Move Object in Tree"
+    }
+}
+
 /// Whole-layer edit (currently opacity). Layers live outside objects,
 /// so they get their own command type with the same coalescing pattern.
 pub struct LayerCommand {

@@ -390,6 +390,61 @@ impl Document {
             self.layers[to_layer].objects.push(obj);
         }
     }
+
+    /// True when `maybe_child` is a strict descendant of `ancestor`
+    /// (Group / ClippingMask children, any depth). Used to reject layer-tree
+    /// drops that would create a cycle (dropping a group into itself).
+    pub fn is_descendant_of(&self, maybe_child: &str, ancestor: &str) -> bool {
+        if maybe_child == ancestor {
+            return false;
+        }
+        self.find_object(ancestor)
+            .map(|a| find_in_objects(Self::children_of(a), maybe_child).is_some())
+            .unwrap_or(false)
+    }
+
+    /// Immutable view of a Group / ClippingMask child list.
+    pub fn children_of(obj: &Object) -> &[Object] {
+        match &obj.object_type {
+            ObjectType::Group(children) | ObjectType::ClippingMask { children } => children,
+            _ => &[],
+        }
+    }
+
+    /// Mutable view of a Group / ClippingMask child list.
+    pub fn children_of_mut(obj: &mut Object) -> Option<&mut Vec<Object>> {
+        match &mut obj.object_type {
+            ObjectType::Group(children) | ObjectType::ClippingMask { children } => Some(children),
+            _ => None,
+        }
+    }
+
+    /// Insert `obj` at `index` under `parent` (`None` = layer top level).
+    /// Clamps out-of-range indices. Falls back to the layer when the parent
+    /// id is missing so a dangling drop never loses the object.
+    pub fn insert_object_at(
+        &mut self,
+        parent: Option<&str>,
+        layer_idx: usize,
+        index: usize,
+        obj: Object,
+    ) {
+        if let Some(pid) = parent {
+            if let Some(p) = self.find_object_mut(pid) {
+                if let Some(children) = Self::children_of_mut(p) {
+                    let idx = index.min(children.len());
+                    children.insert(idx, obj);
+                    return;
+                }
+            }
+        }
+        if let Some(layer) = self.layers.get_mut(layer_idx) {
+            let idx = index.min(layer.objects.len());
+            layer.objects.insert(idx, obj);
+        } else if let Some(layer) = self.layers.last_mut() {
+            layer.objects.push(obj);
+        }
+    }
 }
 
 /// Maximum recursion depth when descending into Group / ClippingMask
