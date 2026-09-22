@@ -176,7 +176,10 @@ impl IrasuApp {
                     }
                     if ui.button("画像を配置... (Place Image)").clicked() {
                         if let Some(path) = rfd::FileDialog::new()
-                            .add_filter("Images", &["png", "jpg", "jpeg", "webp", "gif", "bmp"])
+                            .add_filter(
+                                "Images",
+                                &["png", "jpg", "jpeg", "webp", "avif", "gif", "bmp"],
+                            )
                             .pick_file()
                         {
                             let name = path

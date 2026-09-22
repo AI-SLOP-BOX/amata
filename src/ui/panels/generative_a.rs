@@ -14,9 +14,12 @@ impl TracePanel {
         );
         ui.add_space(4.0);
 
-        if ui.button("Open Image to Trace (PNG/JPG)...").clicked() {
+        if ui
+            .button("Open Image to Trace (PNG/JPG/WebP/AVIF)...")
+            .clicked()
+        {
             if let Some(path) = rfd::FileDialog::new()
-                .add_filter("Image", &["png", "jpg", "jpeg", "bmp"])
+                .add_filter("Image", &["png", "jpg", "jpeg", "webp", "avif", "gif", "bmp"])
                 .pick_file()
             {
                 if let Ok(img) = image::open(&path) {

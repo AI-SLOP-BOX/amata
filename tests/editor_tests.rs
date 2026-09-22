@@ -415,6 +415,17 @@ fn test_raster_export_webp_and_avif() {
     assert_eq!(&avif_bytes[4..8], b"ftyp");
     let brand = &avif_bytes[8..12];
     assert!(brand == b"avif" || brand == b"avis", "unexpected AVIF brand: {:?}", brand);
+
+    // Round-trip: WebP/AVIF bytes must decode back into placeable images
+    let (w, h, png) = irasu_illustrator::io::raster::decode_placed_image(&webp_bytes)
+        .expect("WebP decode failed");
+    assert_eq!((w, h), (400.0, 300.0));
+    assert_eq!(&png[0..4], &[0x89, 0x50, 0x4E, 0x47]);
+
+    let (w, h, png) = irasu_illustrator::io::raster::decode_placed_image(&avif_bytes)
+        .expect("AVIF decode failed");
+    assert_eq!((w, h), (400.0, 300.0));
+    assert_eq!(&png[0..4], &[0x89, 0x50, 0x4E, 0x47]);
 }
 
 #[test]

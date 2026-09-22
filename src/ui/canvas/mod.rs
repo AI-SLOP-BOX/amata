@@ -375,8 +375,11 @@ impl CanvasWidget {
                 .and_then(|s| s.to_str())
                 .unwrap_or("")
                 .to_lowercase();
-            let is_raster = matches!(ext.as_str(), "png" | "jpg" | "jpeg" | "webp" | "gif" | "bmp")
-                || f.bytes.is_some() && ext.is_empty();
+            let is_raster = matches!(
+                ext.as_str(),
+                "png" | "jpg" | "jpeg" | "webp" | "avif" | "gif" | "bmp"
+            ) || f.bytes.is_some()
+                && ext.is_empty();
             if !is_raster {
                 continue;
             }

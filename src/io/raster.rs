@@ -66,9 +66,10 @@ pub fn export_png_with_limit(
         .map_err(|e| format!("Failed to encode PNG: {}", e))
 }
 
-/// Decode user-supplied raster bytes (PNG/JPEG) into a placeable image:
-/// returns document-unit size plus re-encoded PNG bytes. Images are capped
-/// at 2048px per side so a photo cannot blow up project files or textures.
+/// Decode user-supplied raster bytes (PNG/JPEG/WebP/AVIF/GIF/BMP) into a
+/// placeable image: returns document-unit size plus re-encoded PNG bytes.
+/// Images are capped at 2048px per side so a photo cannot blow up project
+/// files or textures.
 pub fn decode_placed_image(bytes: &[u8]) -> Result<(f64, f64, Vec<u8>), String> {
     const MAX_DIM: u32 = 2048;
     if bytes.len() > 64 * 1024 * 1024 {
