@@ -421,6 +421,11 @@ impl CanvasWidget {
                     // the handle was clicked without moving).
                     state.commit_object_edits("Slide Text on Path");
                 }
+                DragMode::AdjustCorner(_) => {
+                    // Commits the snapshot taken at pointer-down (no-op when
+                    // the widget was clicked without moving).
+                    state.commit_object_edits("Adjust Corner Radius");
+                }
                 DragMode::MoveNode(_) => {
                     if let Some(initial) = drag.initial_elements {
                         if let Some(ref obj_id) = self.node_edit_state.selected_object_id {

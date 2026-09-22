@@ -28,6 +28,7 @@ impl PropertyPanel {
             let mut stroke_opt = None;
             let mut opac = 1.0;
             let mut is_path = false;
+            let mut rect_wh: Option<(f64, f64, f64)> = None;
 
             for (_, obj) in state.document.all_objects() {
                 if obj.id == id {
@@ -43,6 +44,14 @@ impl PropertyPanel {
                     stroke_opt = obj.stroke.clone();
                     opac = obj.opacity;
                     is_path = matches!(obj.object_type, ObjectType::Path(_));
+                    if let ObjectType::Rectangle {
+                        width,
+                        height,
+                        corner_radius,
+                    } = &obj.object_type
+                    {
+                        rect_wh = Some((*width, *height, *corner_radius));
+                    }
                     break;
                 }
             }
@@ -252,6 +261,38 @@ impl PropertyPanel {
                     });
                 });
             });
+
+            // ─── 角丸 (Corner Radius) — Rectangle only ───
+            if let Some((rw, rh, mut cr)) = rect_wh {
+                let max_r = rw.abs().min(rh.abs()) * 0.5;
+                ui.horizontal(|ui| {
+                    ui.label(
+                        RichText::new("角丸:")
+                            .size(10.5)
+                            .color(Color32::from_rgb(150, 150, 150)),
+                    );
+                    let cr_resp = ui.add(
+                        egui::DragValue::new(&mut cr)
+                            .speed(0.5)
+                            .range(0.0..=max_r)
+                            .suffix(" mm"),
+                    );
+                    if cr_resp.changed() {
+                        let cr = cr.clamp(0.0, max_r);
+                        state.object_edit(&id, &cr_resp, |o| {
+                            if let ObjectType::Rectangle {
+                                corner_radius, ..
+                            } = &mut o.object_type
+                            {
+                                *corner_radius = cr;
+                            }
+                        });
+                    }
+                    if cr_resp.drag_stopped() {
+                        state.commit_object_edits("Corner Radius");
+                    }
+                });
+            }
 
             ui.add_space(6.0);
             ui.separator();

@@ -183,3 +183,31 @@ pub fn offset_polygon(polygon: &[AnchorPoint], delta: f64) -> Vec<AnchorPoint> {
 
     offset_poly
 }
+
+/// Live-corner radius from a local-space cursor: the depth into the rectangle
+/// from the two edges meeting at local vertex `corner`, clamped like
+/// `PathData::from_rect` (`0 ..= min(w, h) / 2`).
+pub fn compute_corner_radius(
+    width: f64,
+    height: f64,
+    local_x: f64,
+    local_y: f64,
+    corner: (f64, f64),
+) -> f64 {
+    let edge_left = local_x;
+    let edge_right = width - local_x;
+    let edge_top = local_y;
+    let edge_bottom = height - local_y;
+    let dx = if corner.0 <= width - corner.0 {
+        edge_left
+    } else {
+        edge_right
+    };
+    let dy = if corner.1 <= height - corner.1 {
+        edge_top
+    } else {
+        edge_bottom
+    };
+    dx.min(dy)
+        .clamp(0.0, width.abs().min(height.abs()) * 0.5)
+}

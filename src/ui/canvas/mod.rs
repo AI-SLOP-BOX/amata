@@ -51,6 +51,8 @@ enum DragMode {
     MoveNode(NodeTarget),
     /// Dragging the Text-on-Path start handle (arc-length slide).
     SlideTextOnPath,
+    /// Dragging a live corner-radius widget on a selected rectangle.
+    AdjustCorner(HandleCorner),
     DragGuideHorizontal,
     DragGuideVertical,
 }
@@ -769,9 +771,22 @@ impl CanvasWidget {
                     egui::CursorIcon::Grab
                 };
             } else if state.current_tool == Tool::Select {
+                let mut corner_widget = false;
                 for id in &state.selected_ids {
                     if let Some((_, obj)) = state.document.all_objects().find(|(_, o)| &o.id == id)
                     {
+                        if let Some(corner) =
+                            self.hit_test_corner_widgets(obj, screen_pos, origin, state)
+                        {
+                            cursor = match corner {
+                                HandleCorner::TopRight | HandleCorner::BottomLeft => {
+                                    egui::CursorIcon::ResizeNwSe
+                                }
+                                _ => egui::CursorIcon::ResizeNeSw,
+                            };
+                            corner_widget = true;
+                            break;
+                        }
                         if let Some(corner) = self.hit_test_handles(obj, screen_pos, origin, state)
                         {
                             cursor = match corner {
@@ -793,7 +808,8 @@ impl CanvasWidget {
                         }
                     }
                 }
-                if cursor == egui::CursorIcon::Default
+                if !corner_widget
+                    && cursor == egui::CursorIcon::Default
                     && self.select_state.hit_test(state, wx, wy).is_some()
                 {
                     cursor = if alt_down {
@@ -1006,6 +1022,36 @@ impl CanvasWidget {
                                     }
                                 }
                             }
+                            // Live corner-radius widgets take priority over
+                            // the resize handles (Rectangle only).
+                            if !handled {
+                                let selected = state.selected_ids.clone();
+                                let mut hit_corner = None;
+                                let mut hit_id = None;
+                                for id in &selected {
+                                    if let Some((_, obj)) = state
+                                        .document
+                                        .all_objects()
+                                        .find(|(_, o)| &o.id == id)
+                                    {
+                                        if let Some(corner) = self.hit_test_corner_widgets(
+                                            obj, screen_pos, origin, state,
+                                        ) {
+                                            hit_corner = Some(corner);
+                                            hit_id = Some(id.clone());
+                                            break;
+                                        }
+                                    }
+                                }
+                                if let (Some(corner), Some(id)) = (hit_corner, hit_id) {
+                                    state.ensure_object_snapshot(&id);
+                                    let mut d =
+                                        DragState::new(DragMode::AdjustCorner(corner), wx, wy);
+                                    d.object_id = Some(id);
+                                    self.drag = Some(d);
+                                    handled = true;
+                                }
+                            }
                             for id in &state.selected_ids {
                                 if let Some((_, obj)) =
                                     state.document.all_objects().find(|(_, o)| &o.id == id)
@@ -1200,6 +1246,10 @@ impl CanvasWidget {
                                     }
                                 }
                             }
+                        }
+                    } else if let DragMode::AdjustCorner(corner) = drag.mode {
+                        if let Some(obj_id) = drag.object_id.clone() {
+                            self.update_corner_radius(state, &obj_id, corner, wx, wy);
                         }
                     }
                 }

@@ -201,6 +201,82 @@ impl CanvasWidget {
         None
     }
 
+    /// Screen-space hit test for the live corner-radius widgets of a selected
+    /// rectangle. Checked *before* `hit_test_handles` so a sharp (`r = 0`)
+    /// corner can still be grabbed (widgets sit `max(r, ~10px/zoom)` inward).
+    pub(super) fn hit_test_corner_widgets(
+        &self,
+        obj: &Object,
+        screen_pos: Pos2,
+        origin: Pos2,
+        state: &AppState,
+    ) -> Option<HandleCorner> {
+        let (width, height, corner_radius) = match &obj.object_type {
+            ObjectType::Rectangle {
+                width,
+                height,
+                corner_radius,
+            } => (*width, *height, *corner_radius),
+            _ => return None,
+        };
+        if width.abs() < 1.0 || height.abs() < 1.0 {
+            return None;
+        }
+        let min_inset = f64::from(HANDLE_HIT_RADIUS) / f64::from(state.zoom).max(1e-6);
+        let max_r = width.abs().min(height.abs()) * 0.5;
+        let inset = corner_radius.clamp(min_inset, max_r);
+        let corners = [
+            (inset, inset, HandleCorner::TopLeft),
+            (width - inset, inset, HandleCorner::TopRight),
+            (width - inset, height - inset, HandleCorner::BottomRight),
+            (inset, height - inset, HandleCorner::BottomLeft),
+        ];
+        for (lx, ly, corner) in corners {
+            let (wx, wy) = obj.transform.transform_point(lx, ly);
+            let sp = Pos2::new(
+                origin.x + wx as f32 * state.zoom,
+                origin.y + wy as f32 * state.zoom,
+            );
+            if screen_pos.distance(sp) <= HANDLE_HIT_RADIUS {
+                return Some(corner);
+            }
+        }
+        None
+    }
+
+    /// Live-corner drag: inverse-transform the cursor into local space and
+    /// write the clamped corner depth back onto the rectangle.
+    pub(super) fn update_corner_radius(
+        &self,
+        state: &mut AppState,
+        obj_id: &str,
+        corner: HandleCorner,
+        wx: f64,
+        wy: f64,
+    ) {
+        if let Some(obj) = state.document.find_object_mut(obj_id) {
+            if let ObjectType::Rectangle {
+                width,
+                height,
+                corner_radius,
+            } = &mut obj.object_type
+            {
+                let (width, height) = (*width, *height);
+                let vertex = match corner {
+                    HandleCorner::TopLeft => (0.0, 0.0),
+                    HandleCorner::TopRight => (width, 0.0),
+                    HandleCorner::BottomRight => (width, height),
+                    HandleCorner::BottomLeft => (0.0, height),
+                    _ => return,
+                };
+                let (lx, ly) = obj.transform.inverse_transform_point(wx, wy);
+                *corner_radius = crate::core::geometry::compute_corner_radius(
+                    width, height, lx, ly, vertex,
+                );
+            }
+        }
+    }
+
     pub(super) fn update_rotate(&self, state: &mut AppState, wx: f64, wy: f64, snap_15_deg: bool) {
         // Snapshot once per gesture so rotation is a single undo step.
         for id in &state.selected_ids.clone() {

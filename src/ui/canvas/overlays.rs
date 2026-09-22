@@ -1,4 +1,4 @@
-use super::{CanvasWidget, DragState, HANDLE_SIZE, RULER_WIDTH};
+use super::{CanvasWidget, DragState, HANDLE_HIT_RADIUS, HANDLE_SIZE, RULER_WIDTH};
 use crate::core::document::{Object, ObjectType};
 use crate::core::path::PathData;
 use crate::core::state::AppState;
@@ -672,6 +672,38 @@ impl CanvasWidget {
                     egui::FontId::proportional(10.5),
                     Color32::from_rgb(20, 115, 230),
                 );
+            }
+
+            // Live corner-radius widgets (Rectangle only): circular handles
+            // inset from each corner so a sharp (r = 0) corner stays grabbable
+            // without colliding with the square resize handles.
+            if let ObjectType::Rectangle {
+                width,
+                height,
+                corner_radius,
+            } = &obj.object_type
+            {
+                if width.abs() >= 1.0 && height.abs() >= 1.0 {
+                    let min_inset = f64::from(HANDLE_HIT_RADIUS)
+                        / f64::from(state.zoom).max(1e-6);
+                    let max_r = width.abs().min(height.abs()) * 0.5;
+                    let inset = corner_radius.clamp(min_inset, max_r);
+                    let local_corners = [
+                        (inset, inset),
+                        (width - inset, inset),
+                        (width - inset, height - inset),
+                        (inset, height - inset),
+                    ];
+                    for (lx, ly) in local_corners {
+                        let (wx, wy) = obj.transform.transform_point(lx, ly);
+                        let sp = Pos2::new(
+                            origin.x + wx as f32 * state.zoom,
+                            origin.y + wy as f32 * state.zoom,
+                        );
+                        painter.circle_filled(sp, 5.0_f32, Color32::from_rgb(255, 150, 0));
+                        painter.circle_stroke(sp, 5.0_f32, Stroke::new(1.5_f32, Color32::WHITE));
+                    }
+                }
             }
         }
     }
