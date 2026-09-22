@@ -100,9 +100,61 @@ impl SelectState {
             return;
         }
         if let Some(start) = self.drag_start {
-            let dx = wx - start.0;
-            let dy = wy - start.1;
-            // Isolated children live in group-local space.
+            let mut dx = wx - start.0;
+            let mut dy = wy - start.1;
+
+            // Smart-guide snap: pull the moving bbox onto nearby edges /
+            // centres of other objects while dragging (Figma-style magnetism).
+            if state.show_smart_guides && state.isolated_group_id.is_none() {
+                let tol = 4.0 / f64::max(f64::from(state.zoom), 1e-9);
+                let mut s_min = (f64::MAX, f64::MAX);
+                let mut s_max = (f64::MIN, f64::MIN);
+                let mut any = false;
+                for (id, sx, sy) in &self.drag_starts {
+                    if let Some(obj) = state.document.find_object(id) {
+                        if let Some((bb_min, bb_max)) = obj.bounding_box() {
+                            // bbox offset from the (pure-translation) transform
+                            let ox0 = bb_min.x - obj.transform.x;
+                            let oy0 = bb_min.y - obj.transform.y;
+                            let ox1 = bb_max.x - obj.transform.x;
+                            let oy1 = bb_max.y - obj.transform.y;
+                            let min_x = *sx + dx + ox0;
+                            let min_y = *sy + dy + oy0;
+                            let max_x = *sx + dx + ox1;
+                            let max_y = *sy + dy + oy1;
+                            s_min.0 = s_min.0.min(min_x);
+                            s_min.1 = s_min.1.min(min_y);
+                            s_max.0 = s_max.0.max(max_x);
+                            s_max.1 = s_max.1.max(max_y);
+                            any = true;
+                        }
+                    }
+                }
+                if any {
+                    let mut targets_x: Vec<f64> = Vec::new();
+                    let mut targets_y: Vec<f64> = Vec::new();
+                    for (_, other) in state.document.all_objects() {
+                        if !other.visible
+                            || self.drag_starts.iter().any(|(id, _, _)| id == &other.id)
+                        {
+                            continue;
+                        }
+                        if let Some((o_min, o_max)) = other.bounding_box() {
+                            targets_x.push(o_min.x);
+                            targets_x.push((o_min.x + o_max.x) * 0.5);
+                            targets_x.push(o_max.x);
+                            targets_y.push(o_min.y);
+                            targets_y.push((o_min.y + o_max.y) * 0.5);
+                            targets_y.push(o_max.y);
+                        }
+                    }
+                    let moving_x = [s_min.0, (s_min.0 + s_max.0) * 0.5, s_max.0];
+                    let moving_y = [s_min.1, (s_min.1 + s_max.1) * 0.5, s_max.1];
+                    dx += crate::core::smart_guides::snap_axis(moving_x, &targets_x, tol);
+                    dy += crate::core::smart_guides::snap_axis(moving_y, &targets_y, tol);
+                }
+            }
+
             let (dx, dy) = Self::parent_delta(state, dx, dy);
 
             // Move all selected objects by the delta relative to their recorded start

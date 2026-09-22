@@ -362,46 +362,139 @@ impl CanvasWidget {
             let s_cy = (s_min.y + s_max.y) * 0.5;
             let tol = 4.0 / state.zoom as f64;
 
-            for (_, other) in state.document.all_objects() {
-                if state.selected_ids.contains(&other.id) || !other.visible {
-                    continue;
-                }
-                if let Some((o_min, o_max)) = other.bounding_box() {
-                    let o_cx = (o_min.x + o_max.x) * 0.5;
-                    let o_cy = (o_min.y + o_max.y) * 0.5;
+            let others: Vec<(
+                crate::core::path::AnchorPoint,
+                crate::core::path::AnchorPoint,
+            )> = state
+                .document
+                .all_objects()
+                .filter(|(_, o)| !state.selected_ids.contains(&o.id) && o.visible)
+                .filter_map(|(_, o)| o.bounding_box())
+                .collect();
 
-                    for x_val in [o_min.x, o_cx, o_max.x] {
-                        if (s_min.x - x_val).abs() < tol
-                            || (s_cx - x_val).abs() < tol
-                            || (s_max.x - x_val).abs() < tol
-                        {
-                            let sx = origin.x + x_val as f32 * state.zoom;
-                            painter.line_segment(
-                                [
-                                    Pos2::new(sx, canvas_rect.min.y),
-                                    Pos2::new(sx, canvas_rect.max.y),
-                                ],
-                                guide_stroke,
-                            );
-                        }
-                    }
+            // Alignment lines: selection edges/centers vs other edges/centers.
+            for (o_min, o_max) in &others {
+                let o_cx = (o_min.x + o_max.x) * 0.5;
+                let o_cy = (o_min.y + o_max.y) * 0.5;
 
-                    for y_val in [o_min.y, o_cy, o_max.y] {
-                        if (s_min.y - y_val).abs() < tol
-                            || (s_cy - y_val).abs() < tol
-                            || (s_max.y - y_val).abs() < tol
-                        {
-                            let sy = origin.y + y_val as f32 * state.zoom;
-                            painter.line_segment(
-                                [
-                                    Pos2::new(canvas_rect.min.x, sy),
-                                    Pos2::new(canvas_rect.max.x, sy),
-                                ],
-                                guide_stroke,
-                            );
-                        }
+                for x_val in [o_min.x, o_cx, o_max.x] {
+                    if (s_min.x - x_val).abs() < tol
+                        || (s_cx - x_val).abs() < tol
+                        || (s_max.x - x_val).abs() < tol
+                    {
+                        let sx = origin.x + x_val as f32 * state.zoom;
+                        painter.line_segment(
+                            [
+                                Pos2::new(sx, canvas_rect.min.y),
+                                Pos2::new(sx, canvas_rect.max.y),
+                            ],
+                            guide_stroke,
+                        );
                     }
                 }
+
+                for y_val in [o_min.y, o_cy, o_max.y] {
+                    if (s_min.y - y_val).abs() < tol
+                        || (s_cy - y_val).abs() < tol
+                        || (s_max.y - y_val).abs() < tol
+                    {
+                        let sy = origin.y + y_val as f32 * state.zoom;
+                        painter.line_segment(
+                            [
+                                Pos2::new(canvas_rect.min.x, sy),
+                                Pos2::new(canvas_rect.max.x, sy),
+                            ],
+                            guide_stroke,
+                        );
+                    }
+                }
+            }
+
+            // Equal-spacing (distribution) bars: the selection squeezed
+            // between two neighbours with matching gaps (Figma-style bars
+            // plus numeric gap labels).
+            let mut h_left: Vec<(f64, f64)> = Vec::new(); // (gap, neighbour right edge x)
+            let mut h_right: Vec<(f64, f64)> = Vec::new(); // (gap, neighbour left edge x)
+            let mut v_top: Vec<(f64, f64)> = Vec::new(); // (gap, neighbour bottom edge y)
+            let mut v_bottom: Vec<(f64, f64)> = Vec::new(); // (gap, neighbour top edge y)
+            for (o_min, o_max) in &others {
+                // Horizontal distribution: neighbours must overlap the
+                // selection vertically to count as "left" / "right".
+                if o_min.y < s_max.y && o_max.y > s_min.y {
+                    let gap_l = s_min.x - o_max.x;
+                    if gap_l >= -tol {
+                        h_left.push((gap_l, o_max.x));
+                    }
+                    let gap_r = o_min.x - s_max.x;
+                    if gap_r >= -tol {
+                        h_right.push((gap_r, o_min.x));
+                    }
+                }
+                // Vertical distribution: overlap horizontally.
+                if o_min.x < s_max.x && o_max.x > s_min.x {
+                    let gap_t = s_min.y - o_max.y;
+                    if gap_t >= -tol {
+                        v_top.push((gap_t, o_max.y));
+                    }
+                    let gap_b = o_min.y - s_max.y;
+                    if gap_b >= -tol {
+                        v_bottom.push((gap_b, o_min.y));
+                    }
+                }
+            }
+
+            let to_screen = |x: f64, y: f64| {
+                Pos2::new(
+                    origin.x + x as f32 * state.zoom,
+                    origin.y + y as f32 * state.zoom,
+                )
+            };
+            let bar_stroke = Stroke::new(2.0_f32, guide_stroke.color);
+
+            if let Some((li, ri, _)) =
+                crate::core::smart_guides::best_distribution(&h_left, &h_right, tol)
+            {
+                let (gap_l, x_l) = h_left[li];
+                let (gap_r, x_r) = h_right[ri];
+                // Left gap bar: neighbour's right edge → selection's left edge.
+                painter.line_segment([to_screen(x_l, s_cy), to_screen(s_min.x, s_cy)], bar_stroke);
+                measure_badge(
+                    painter,
+                    to_screen((x_l + s_min.x) * 0.5, s_cy),
+                    &fmt_measure(gap_l),
+                    guide_stroke.color,
+                );
+                // Right gap bar: selection's right edge → neighbour's left edge.
+                painter.line_segment([to_screen(s_max.x, s_cy), to_screen(x_r, s_cy)], bar_stroke);
+                measure_badge(
+                    painter,
+                    to_screen((s_max.x + x_r) * 0.5, s_cy),
+                    &fmt_measure(gap_r),
+                    guide_stroke.color,
+                );
+            }
+
+            if let Some((ti, bi, _)) =
+                crate::core::smart_guides::best_distribution(&v_top, &v_bottom, tol)
+            {
+                let (gap_t, y_t) = v_top[ti];
+                let (gap_b, y_b) = v_bottom[bi];
+                // Top gap bar: neighbour's bottom edge → selection's top edge.
+                painter.line_segment([to_screen(s_cx, y_t), to_screen(s_cx, s_min.y)], bar_stroke);
+                measure_badge(
+                    painter,
+                    to_screen(s_cx, (y_t + s_min.y) * 0.5),
+                    &fmt_measure(gap_t),
+                    guide_stroke.color,
+                );
+                // Bottom gap bar: selection's bottom edge → neighbour's top edge.
+                painter.line_segment([to_screen(s_cx, s_max.y), to_screen(s_cx, y_b)], bar_stroke);
+                measure_badge(
+                    painter,
+                    to_screen(s_cx, (s_max.y + y_b) * 0.5),
+                    &fmt_measure(gap_b),
+                    guide_stroke.color,
+                );
             }
         }
     }

@@ -35,6 +35,7 @@ pub mod presets;
 pub mod print;
 pub mod revolve;
 pub mod shape_builder;
+pub mod smart_guides;
 pub mod simplify;
 pub mod state;
 pub mod symmetry;
