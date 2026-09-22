@@ -139,6 +139,7 @@ fn object_type_name(object_type: &ObjectType) -> &'static str {
         ObjectType::Image { .. } => "image",
         ObjectType::PixelArt(_) => "pixel-art",
         ObjectType::GradientMesh(_) => "gradient-mesh",
+        ObjectType::TextOnPath { .. } => "text-on-path",
         ObjectType::Envelope { .. } => "envelope",
     }
 }

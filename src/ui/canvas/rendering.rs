@@ -328,6 +328,45 @@ impl CanvasWidget {
                     }
                 }
             }
+            ObjectType::TextOnPath {
+                text,
+                style,
+                path: tp,
+                start_offset,
+                side,
+                ..
+            } => {
+                let path = crate::core::text_path::text_on_path_outlines(
+                    tp,
+                    text,
+                    style,
+                    *start_offset,
+                    *side,
+                );
+                let subpaths = path.to_subpaths(16);
+                let triangles = path.to_triangles(16);
+                if let Some(fill) = fill_color {
+                    for tri in &triangles {
+                        let p0 = to_screen(tri[0].x, tri[0].y);
+                        let p1 = to_screen(tri[1].x, tri[1].y);
+                        let p2 = to_screen(tri[2].x, tri[2].y);
+                        painter.add(egui::epaint::PathShape::convex_polygon(
+                            vec![p0, p1, p2],
+                            fill,
+                            Stroke::NONE,
+                        ));
+                    }
+                }
+                if let Some(stroke) = stroke_info {
+                    for sp in &subpaths {
+                        if sp.len() >= 2 {
+                            let screen_pts: Vec<Pos2> =
+                                sp.iter().map(|p| to_screen(p.x, p.y)).collect();
+                            painter.add(egui::epaint::PathShape::line(screen_pts, stroke));
+                        }
+                    }
+                }
+            }
             ObjectType::Rectangle {
                 width,
                 height,

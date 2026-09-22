@@ -74,6 +74,174 @@ pub fn place_text_along_path(
     placements
 }
 
+/// Flattened polygon of `path` plus cumulative arc lengths and total length.
+fn poly_lengths(path: &PathData) -> (Vec<AnchorPoint>, Vec<f64>, f64) {
+    let poly = path.to_polygon(24);
+    let mut lengths = Vec::with_capacity(poly.len());
+    let mut total = 0.0;
+    lengths.push(0.0);
+    for i in 0..poly.len().saturating_sub(1) {
+        total += poly[i].distance(poly[i + 1]);
+        lengths.push(total);
+    }
+    (poly, lengths, total)
+}
+
+/// Total arc length of `path` (24 subdivisions per curve), used to clamp
+/// Text-on-Path `start_offset`.
+pub fn path_total_length(path: &PathData) -> f64 {
+    poly_lengths(path).2
+}
+
+/// Point at arc-length `dist` along `path`, clamped to `[0, total]`.
+/// Returns `None` for degenerate (empty / zero-length) paths.
+pub fn arc_point_at(path: &PathData, dist: f64) -> Option<AnchorPoint> {
+    let (poly, lengths, total) = poly_lengths(path);
+    if poly.len() < 2 || total <= 1e-6 {
+        return None;
+    }
+    let dist = dist.clamp(0.0, total);
+    for i in 0..poly.len() - 1 {
+        let (d0, d1) = (lengths[i], lengths[i + 1]);
+        if dist >= d0 && dist <= d1 {
+            let seg_len = (d1 - d0).max(1e-6);
+            let t = (dist - d0) / seg_len;
+            let (p0, p1) = (poly[i], poly[i + 1]);
+            return Some(AnchorPoint::new(
+                p0.x + t * (p1.x - p0.x),
+                p0.y + t * (p1.y - p0.y),
+            ));
+        }
+    }
+    poly.last().copied()
+}
+
+/// Project a local-space point onto `path`; returns the arc length of the
+/// closest point on the flattened curve. Drives the Text-on-Path slide handle.
+pub fn project_to_arc_length(path: &PathData, lx: f64, ly: f64) -> Option<f64> {
+    let (poly, lengths, total) = poly_lengths(path);
+    if poly.len() < 2 || total <= 1e-6 {
+        return None;
+    }
+    let p = AnchorPoint::new(lx, ly);
+    let mut best_dist = f64::MAX;
+    let mut best_s = 0.0;
+    for i in 0..poly.len() - 1 {
+        let (a, b) = (poly[i], poly[i + 1]);
+        let seg_len = b.distance(a).max(1e-12);
+        let t = (((p.x - a.x) * (b.x - a.x) + (p.y - a.y) * (b.y - a.y))
+            / (seg_len * seg_len))
+            .clamp(0.0, 1.0);
+        let q = AnchorPoint::new(a.x + t * (b.x - a.x), a.y + t * (b.y - a.y));
+        let d = p.distance(q);
+        if d < best_dist {
+            best_dist = d;
+            best_s = lengths[i] + t * seg_len;
+        }
+    }
+    Some(best_s)
+}
+
+/// [`place_text_along_path`] honouring `letter_spacing` (advance per glyph =
+/// `font_size * 0.6 + letter_spacing`). Used by the live Text-on-Path object.
+pub fn place_text_along_path_styled(
+    path: &PathData,
+    text: &str,
+    font_size: f64,
+    letter_spacing: f64,
+    start_offset: f64,
+) -> Vec<GlyphPlacement> {
+    let poly = path.to_polygon(24);
+    if poly.len() < 2 || text.is_empty() {
+        return Vec::new();
+    }
+    let mut lengths = vec![0.0];
+    let mut total_len = 0.0;
+    for i in 0..poly.len() - 1 {
+        total_len += poly[i].distance(poly[i + 1]);
+        lengths.push(total_len);
+    }
+    if total_len <= 1e-6 {
+        return Vec::new();
+    }
+    let mut placements = Vec::new();
+    let mut current_dist = start_offset;
+    for ch in text.chars() {
+        if current_dist > total_len {
+            break;
+        }
+        for i in 0..poly.len() - 1 {
+            let (d0, d1) = (lengths[i], lengths[i + 1]);
+            if current_dist >= d0 && current_dist <= d1 {
+                let seg_len = (d1 - d0).max(1e-6);
+                let seg_t = (current_dist - d0) / seg_len;
+                let p0 = poly[i];
+                let p1 = poly[i + 1];
+                let pt = AnchorPoint::new(
+                    p0.x + seg_t * (p1.x - p0.x),
+                    p0.y + seg_t * (p1.y - p0.y),
+                );
+                let angle = (p1.y - p0.y).atan2(p1.x - p0.x);
+                placements.push(GlyphPlacement {
+                    char_value: ch,
+                    position: pt,
+                    rotation_rad: angle,
+                });
+                break;
+            }
+        }
+        current_dist += font_size * 0.6 + letter_spacing;
+    }
+    placements
+}
+
+/// Live outline generation for `ObjectType::TextOnPath`: styled placement plus
+/// optional 180° flip (`side == Bottom`) around each glyph's arc anchor
+/// (linear part negated, translation mirrored: `t' = 2p - t`).
+pub fn text_on_path_outlines(
+    path: &PathData,
+    text: &str,
+    style: &crate::core::document::TextStyle,
+    start_offset: f64,
+    side: crate::core::document::TextPathSide,
+) -> PathData {
+    use crate::core::document::TextPathSide;
+    let font_size = style.font_size;
+    let placements =
+        place_text_along_path_styled(path, text, font_size, style.letter_spacing, start_offset);
+    let mut combined = PathData::new();
+    let char_width = font_size * 0.6;
+    let flip = side == TextPathSide::Bottom;
+
+    for p in placements {
+        if p.char_value == ' ' {
+            continue;
+        }
+        let mut glyph = get_glyph_outline_path(p.char_value);
+        let cos = p.rotation_rad.cos();
+        let sin = p.rotation_rad.sin();
+        let mut matrix = [
+            cos * char_width,
+            sin * char_width,
+            -sin * font_size,
+            cos * font_size,
+            p.position.x - sin * (font_size * 0.5),
+            p.position.y + cos * (font_size * 0.5) - font_size,
+        ];
+        if flip {
+            matrix[0] = -matrix[0];
+            matrix[1] = -matrix[1];
+            matrix[2] = -matrix[2];
+            matrix[3] = -matrix[3];
+            matrix[4] = 2.0 * p.position.x - matrix[4];
+            matrix[5] = 2.0 * p.position.y - matrix[5];
+        }
+        glyph.transform(&matrix);
+        combined.elements.extend(glyph.elements);
+    }
+    combined
+}
+
 /// Generate a vector PathData outlining a specific ASCII/common character.
 /// Coordinates are normalized to [0.0, 1.0] in width and [0.0, 1.0] in height (origin top-left).
 pub fn get_glyph_outline_path(ch: char) -> PathData {

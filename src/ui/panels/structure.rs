@@ -142,6 +142,7 @@ impl LayerPanel {
                             ObjectType::Image { .. } => "🖼",
                             ObjectType::PixelArt(_) => "👾",
                             ObjectType::GradientMesh(_) => "🌈",
+                            ObjectType::TextOnPath { .. } => "↻",
                             ObjectType::Envelope { .. } => "🌀",
                         };
                         let obj_text = format!("{icon} {}", obj.name);

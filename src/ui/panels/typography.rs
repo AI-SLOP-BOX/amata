@@ -41,6 +41,108 @@ impl TextPanel {
             }
         }
 
+        // Live Text-on-Path editing (its own controls; not regular text).
+        let mut top: Option<(String, TextStyle, f64, crate::core::document::TextPathSide)> = None;
+        for (_, obj) in state.document.all_objects() {
+            if obj.id == id {
+                if let ObjectType::TextOnPath {
+                    text,
+                    style,
+                    start_offset,
+                    side,
+                    ..
+                } = &obj.object_type
+                {
+                    top = Some((text.clone(), style.clone(), *start_offset, *side));
+                }
+                break;
+            }
+        }
+        if let Some((top_text, top_style, mut top_offset, mut top_side)) = top {
+            ui.label("パス上テキスト:");
+            let mut te = top_text.clone();
+            let te_resp = ui.text_edit_singleline(&mut te);
+            if te_resp.lost_focus() && te != top_text {
+                state.ensure_object_snapshot(&id);
+                if let Some(o) = state.document.find_object_mut(&id) {
+                    if let ObjectType::TextOnPath { text, .. } = &mut o.object_type {
+                        *text = te.clone();
+                    }
+                }
+                state.commit_object_edits("Edit Text on Path");
+            }
+            ui.horizontal(|ui| {
+                ui.label("サイズ:");
+                let mut fs = top_style.font_size;
+                let fs_resp = ui.add(
+                    egui::DragValue::new(&mut fs)
+                        .speed(1.0)
+                        .range(4.0..=500.0)
+                        .suffix("pt"),
+                );
+                if fs_resp.changed() {
+                    state.object_edit(&id, &fs_resp, |o| {
+                        if let ObjectType::TextOnPath { style, .. } = &mut o.object_type {
+                            style.font_size = fs;
+                        }
+                    });
+                }
+                if fs_resp.drag_stopped() {
+                    state.commit_object_edits("Edit Text on Path");
+                }
+            });
+            ui.horizontal(|ui| {
+                ui.label("開始位置:");
+                let off_resp = ui.add(
+                    egui::DragValue::new(&mut top_offset)
+                        .speed(1.0)
+                        .range(0.0..=10_000.0),
+                );
+                if off_resp.changed() {
+                    state.object_edit(&id, &off_resp, |o| {
+                        if let ObjectType::TextOnPath {
+                            start_offset, path, ..
+                        } = &mut o.object_type
+                        {
+                            let total = crate::core::text_path::path_total_length(path);
+                            *start_offset = top_offset.clamp(0.0, total.max(0.0));
+                        }
+                    });
+                }
+                if off_resp.drag_stopped() {
+                    state.commit_object_edits("Slide Text on Path");
+                }
+            });
+            ui.horizontal(|ui| {
+                ui.label("側:");
+                let side_before = top_side;
+                let mut sel_top = top_side == crate::core::document::TextPathSide::Top;
+                if ui
+                    .selectable_value(&mut sel_top, true, "上")
+                    .clicked()
+                {
+                    top_side = crate::core::document::TextPathSide::Top;
+                }
+                if ui
+                    .selectable_value(&mut sel_top, false, "下")
+                    .clicked()
+                {
+                    top_side = crate::core::document::TextPathSide::Bottom;
+                }
+                if top_side != side_before {
+                    let side = top_side;
+                    state.ensure_object_snapshot(&id);
+                    if let Some(o) = state.document.find_object_mut(&id) {
+                        if let ObjectType::TextOnPath { side: s, .. } = &mut o.object_type {
+                            *s = side;
+                        }
+                    }
+                    state.commit_object_edits("Flip Text on Path");
+                }
+            });
+            return;
+        }
+
         if !found {
             ui.label(RichText::new("選択中の要素はテキストではありません").weak());
             return;

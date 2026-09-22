@@ -1,7 +1,7 @@
 pub mod object;
 pub use object::{
-    BlendMode, FontStyle, Object, ObjectType, TextAnchor, TextArea, TextStyle, Transform,
-    VariationSetting, char_advance_estimate, layout_text,
+    BlendMode, FontStyle, Object, ObjectType, TextAnchor, TextArea, TextStyle, TextPathSide,
+    Transform, VariationSetting, char_advance_estimate, layout_text,
 };
 #[allow(unused_imports)]
 pub use object::compute_wrapped_lines;

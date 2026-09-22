@@ -49,12 +49,16 @@ enum DragMode {
     Rotate,
     Pan,
     MoveNode(NodeTarget),
+    /// Dragging the Text-on-Path start handle (arc-length slide).
+    SlideTextOnPath,
     DragGuideHorizontal,
     DragGuideVertical,
 }
 
 struct DragState {
     mode: DragMode,
+    /// Target object for id-carrying drags (`SlideTextOnPath`).
+    object_id: Option<String>,
     start_world: (f64, f64),
     current_world: (f64, f64),
     pencil_points: Vec<AnchorPoint>,
@@ -65,6 +69,7 @@ impl DragState {
     fn new(mode: DragMode, wx: f64, wy: f64) -> Self {
         Self {
             mode,
+            object_id: None,
             start_world: (wx, wy),
             current_world: (wx, wy),
             pencil_points: vec![AnchorPoint::new(wx, wy)],
@@ -644,6 +649,32 @@ impl CanvasWidget {
             }
         }
 
+        // Text-on-Path slide handle (single selection): circle at the arc start.
+        if state.current_tool == Tool::Select && state.selected_ids.len() == 1 {
+            let top_id = state.selected_ids[0].clone();
+            let handle = state.document.find_object(&top_id).and_then(|obj| {
+                if let ObjectType::TextOnPath {
+                    path: base_path,
+                    start_offset,
+                    ..
+                } = &obj.object_type
+                {
+                    let lp = crate::core::text_path::arc_point_at(base_path, *start_offset)?;
+                    let m = obj.transform.matrix();
+                    let hx = m[0] * lp.x + m[2] * lp.y + m[4];
+                    let hy = m[1] * lp.x + m[3] * lp.y + m[5];
+                    let (sx, sy) = state.world_to_screen(hx, hy);
+                    Some(Pos2::new(sx, sy))
+                } else {
+                    None
+                }
+            });
+            if let Some(sp) = handle {
+                painter.circle_filled(sp, 6.0, Color32::from_rgb(20, 115, 230));
+                painter.circle_stroke(sp, 6.0, Stroke::new(1.5_f32, Color32::WHITE));
+            }
+        }
+
         // Visual Diff Highlights on Canvas
         if state.is_comparing_diff {
             if let Some(ref diff) = state.active_diff {
@@ -940,6 +971,41 @@ impl CanvasWidget {
                         }
                         Tool::Select => {
                             let mut handled = false;
+                            // Text-on-Path slide handle takes priority over the
+                            // resize handles when it is under the cursor.
+                            if state.selected_ids.len() == 1 {
+                                let sid = state.selected_ids[0].clone();
+                                let handle = state.document.find_object(&sid).and_then(|obj| {
+                                    if let ObjectType::TextOnPath {
+                                        path: base_path,
+                                        start_offset,
+                                        ..
+                                    } = &obj.object_type
+                                    {
+                                        let lp = crate::core::text_path::arc_point_at(
+                                            base_path,
+                                            *start_offset,
+                                        )?;
+                                        let m = obj.transform.matrix();
+                                        let hx = m[0] * lp.x + m[2] * lp.y + m[4];
+                                        let hy = m[1] * lp.x + m[3] * lp.y + m[5];
+                                        let (sx, sy) = state.world_to_screen(hx, hy);
+                                        Some(Pos2::new(sx, sy))
+                                    } else {
+                                        None
+                                    }
+                                });
+                                if let Some(sp) = handle {
+                                    if screen_pos.distance(sp) <= HANDLE_HIT_RADIUS {
+                                        state.ensure_object_snapshot(&sid);
+                                        let mut d =
+                                            DragState::new(DragMode::SlideTextOnPath, wx, wy);
+                                        d.object_id = Some(sid);
+                                        self.drag = Some(d);
+                                        handled = true;
+                                    }
+                                }
+                            }
                             for id in &state.selected_ids {
                                 if let Some((_, obj)) =
                                     state.document.all_objects().find(|(_, o)| &o.id == id)
@@ -1106,6 +1172,35 @@ impl CanvasWidget {
                         self.move_node(state, target, wx, wy);
                     } else if let DragMode::Resize(corner) = drag.mode {
                         self.update_resize(state, corner, wx, wy);
+                    } else if drag.mode == DragMode::SlideTextOnPath {
+                        if let Some(obj_id) = drag.object_id.clone() {
+                            let projected =
+                                state.document.find_object(&obj_id).and_then(|obj| {
+                                    if let ObjectType::TextOnPath { path: bp, .. } =
+                                        &obj.object_type
+                                    {
+                                        let (lx, ly) =
+                                            obj.transform.inverse_transform_point(wx, wy);
+                                        crate::core::text_path::project_to_arc_length(bp, lx, ly)
+                                    } else {
+                                        None
+                                    }
+                                });
+                            if let Some(new_off) = projected {
+                                if let Some(o) = state.document.find_object_mut(&obj_id) {
+                                    if let ObjectType::TextOnPath {
+                                        path,
+                                        start_offset,
+                                        ..
+                                    } = &mut o.object_type
+                                    {
+                                        let total =
+                                            crate::core::text_path::path_total_length(path);
+                                        *start_offset = new_off.clamp(0.0, total.max(0.0));
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }

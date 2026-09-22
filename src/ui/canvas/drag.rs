@@ -416,6 +416,11 @@ impl CanvasWidget {
                     // Commits the snapshot taken by update_resize.
                     state.commit_transform_edits("Resize");
                 }
+                DragMode::SlideTextOnPath => {
+                    // Commits the snapshot taken at pointer-down (no-op when
+                    // the handle was clicked without moving).
+                    state.commit_object_edits("Slide Text on Path");
+                }
                 DragMode::MoveNode(_) => {
                     if let Some(initial) = drag.initial_elements {
                         if let Some(ref obj_id) = self.node_edit_state.selected_object_id {

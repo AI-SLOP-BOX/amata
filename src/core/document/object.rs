@@ -321,6 +321,15 @@ impl TextStyle {
     }
 }
 
+/// Which side of a path Text-on-Path glyphs sit on: `Top` follows the curve
+/// direction; `Bottom` flips each glyph 180° around its arc anchor.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum TextPathSide {
+    #[default]
+    Top,
+    Bottom,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ObjectType {
     Path(PathData),
@@ -385,6 +394,24 @@ pub enum ObjectType {
     /// Live envelope: `source` (normalized to a Path with identity
     /// transform at wrap time) deformed by kind/amount on every read.
     /// Edit params or release to restore the source.
+    /// Live text laid out along a path. `path` is a self-contained local-space
+    /// copy; `source_path_id` optionally records the sibling Path this was
+    /// created from (stored as a link only — no live re-sync in v1).
+    /// Glyph outlines are recomputed on every read via
+    /// [`crate::core::text_path::text_on_path_outlines`].
+    TextOnPath {
+        text: String,
+        #[serde(default)]
+        style: TextStyle,
+        path: PathData,
+        #[serde(default)]
+        source_path_id: Option<String>,
+        /// Arc-length distance along `path` where the first glyph starts.
+        #[serde(default)]
+        start_offset: f64,
+        #[serde(default)]
+        side: TextPathSide,
+    },
     Envelope {
         source: Box<Object>,
         kind: crate::core::envelope::EnvelopeKind,
@@ -1096,6 +1123,33 @@ impl Object {
         }
     }
 
+    pub fn new_text_on_path(name: &str, text: &str, path: PathData) -> Self {
+        Self {
+            id: Uuid::new_v4().to_string(),
+            name: name.to_string(),
+            object_type: ObjectType::TextOnPath {
+                text: text.to_string(),
+                style: TextStyle::new("Inter, sans-serif", 24.0),
+                path,
+                source_path_id: None,
+                start_offset: 0.0,
+                side: TextPathSide::Top,
+            },
+            transform: Transform::default(),
+            fill: Some(FillStyle::default()),
+            stroke: None,
+            shadow: None,
+            glow: None,
+            appearance: AppearanceStack::default(),
+            opacity: 1.0,
+            width_profile: None,
+            auto_layout: None,
+            blend_mode: BlendMode::Normal,
+            visible: true,
+            locked: false,
+        }
+    }
+
     pub fn new_group(name: &str, objects: Vec<Object>) -> Self {
         Self {
             id: Uuid::new_v4().to_string(),
@@ -1427,6 +1481,20 @@ impl Object {
                 Some((mn, mx)) => PathData::from_rect(mn.x, mn.y, mx.x - mn.x, mx.y - mn.y, 0.0),
                 None => PathData::new(),
             },
+            ObjectType::TextOnPath {
+                text,
+                style,
+                path: base,
+                start_offset,
+                side,
+                ..
+            } => crate::core::text_path::text_on_path_outlines(
+                base,
+                text,
+                style,
+                *start_offset,
+                *side,
+            ),
             ObjectType::Envelope { source, kind, amount } => {
                 deform_path_data(&source.to_path_data(), *kind, amount.clamp(-1.0, 1.0))
             },
@@ -1515,6 +1583,12 @@ impl Object {
             ObjectType::GradientMesh(m) => match m.node_bbox() {
                 Some((mn, mx)) => lx >= mn.x && lx <= mx.x && ly >= mn.y && ly <= mx.y,
                 None => false,
+            },
+            ObjectType::TextOnPath { .. } => {
+                let outlines = self.to_path_data();
+                let subpaths = outlines.to_subpaths(8);
+                // Glyph counters (holes in A/B/…) require even-odd.
+                crate::core::geometry::point_in_subpaths(lx, ly, &subpaths, true)
             },
             ObjectType::Envelope { .. } => {
                 let poly = self.to_path_data().to_polygon(8);

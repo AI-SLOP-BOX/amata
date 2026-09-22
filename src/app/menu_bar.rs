@@ -658,6 +658,54 @@ impl IrasuApp {
                         self.state.selected_ids = new_ids;
                         ui.close_menu();
                     }
+
+                    if ui
+                        .add_enabled(
+                            has_sel,
+                            egui::Button::new("Type on Path  (from selected path)"),
+                        )
+                        .clicked()
+                    {
+                        let sel = self.state.selected_ids.clone();
+                        let mut new_ids = Vec::new();
+                        for id in &sel {
+                            let Some(src) = self.state.document.find_object(id) else {
+                                continue;
+                            };
+                            let bp = src.to_path_data();
+                            if bp.elements.is_empty() {
+                                continue;
+                            }
+                            let mut obj = crate::core::document::Object::new_text_on_path(
+                                &format!("{} Type", src.name),
+                                "Type on path",
+                                bp,
+                            );
+                            obj.fill = src.fill.clone();
+                            obj.transform = src.transform.clone();
+                            let src_is_path =
+                                matches!(src.object_type, crate::core::document::ObjectType::Path(_));
+                            let src_id = src.id.clone();
+                            if src_is_path {
+                                if let crate::core::document::ObjectType::TextOnPath {
+                                    source_path_id,
+                                    ..
+                                } = &mut obj.object_type
+                                {
+                                    *source_path_id = Some(src_id);
+                                }
+                            }
+                            let nid = obj.id.clone();
+                            let cmd =
+                                Box::new(crate::core::history::AddObjectCommand::new(obj));
+                            self.state
+                                .undo_manager
+                                .execute(cmd, &mut self.state.document);
+                            new_ids.push(nid);
+                        }
+                        self.state.selected_ids = new_ids;
+                        ui.close_menu();
+                    }
                 });
 
                 ui.menu_button("Pathfinder", |ui| {

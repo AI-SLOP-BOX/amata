@@ -929,6 +929,38 @@ fn render_object_to_svg(
             }
             svg.push_str("  </g>\n");
         }
+        ObjectType::TextOnPath {
+            text,
+            style,
+            path: tp,
+            start_offset,
+            side,
+            ..
+        } => {
+            // Live outlines baked once at export time.
+            let outlines = crate::core::text_path::text_on_path_outlines(
+                tp,
+                text,
+                style,
+                *start_offset,
+                *side,
+            );
+            let d = path_data_to_d(&outlines, &obj.transform);
+            let stroke = obj
+                .stroke
+                .as_ref()
+                .map(|s| {
+                    format!(
+                        " stroke=\"{}\" stroke-width=\"{}\"",
+                        color_to_svg_str(&s.color),
+                        s.width
+                    )
+                })
+                .unwrap_or_default();
+            svg.push_str(&format!(
+                "  <path{id_attr} d=\"{d}\"{fill_attr}{stroke}{effect_attr} />\n"
+            ));
+        }
         ObjectType::Envelope { .. } => {
             // Same proxy recursion as canvas: deformed source as Path.
             if let Some(proxy) = obj.envelope_proxy() {
