@@ -80,6 +80,112 @@ impl PathData {
         None
     }
 
+    /// Number of anchors (MoveTo / LineTo / CurveTo endpoints; ClosePath excluded).
+    pub fn anchor_count(&self) -> usize {
+        self.elements
+            .iter()
+            .filter(|e| !matches!(e, PathElement::ClosePath))
+            .count()
+    }
+
+    /// Endpoint of element `idx`, if it carries an anchor.
+    pub fn element_anchor(&self, idx: usize) -> Option<AnchorPoint> {
+        match self.elements.get(idx)? {
+            PathElement::MoveTo(p) | PathElement::LineTo(p) => Some(*p),
+            PathElement::CurveTo(seg) => Some(seg.end),
+            PathElement::ClosePath => None,
+        }
+    }
+
+    /// Split the segment ending at `elem_idx` at parameter `t` (0..1),
+    /// inserting a new anchor between the neighbors. Lines split by
+    /// lerp; cubics split exactly via de Casteljau.
+    pub fn split_segment(&mut self, elem_idx: usize, t: f64) -> bool {
+        if elem_idx == 0 || elem_idx >= self.elements.len() {
+            return false;
+        }
+        let t = t.clamp(0.01, 0.99);
+        match self.elements[elem_idx].clone() {
+            PathElement::LineTo(p) => {
+                let Some(prev) = self.element_anchor(elem_idx - 1) else {
+                    return false;
+                };
+                let m = AnchorPoint::new(
+                    prev.x + (p.x - prev.x) * t,
+                    prev.y + (p.y - prev.y) * t,
+                );
+                self.elements[elem_idx] = PathElement::LineTo(m);
+                self.elements.insert(elem_idx + 1, PathElement::LineTo(p));
+                true
+            }
+            PathElement::CurveTo(seg) => {
+                let lerp = |a: AnchorPoint, b: AnchorPoint, k: f64| {
+                    AnchorPoint::new(a.x + (b.x - a.x) * k, a.y + (b.y - a.y) * k)
+                };
+                let p01 = lerp(seg.start, seg.control1, t);
+                let p12 = lerp(seg.control1, seg.control2, t);
+                let p23 = lerp(seg.control2, seg.end, t);
+                let p012 = lerp(p01, p12, t);
+                let p123 = lerp(p12, p23, t);
+                let mid = lerp(p012, p123, t);
+                self.elements[elem_idx] =
+                    PathElement::CurveTo(BezierSegment::cubic(seg.start, p01, p012, mid));
+                self.elements.insert(
+                    elem_idx + 1,
+                    PathElement::CurveTo(BezierSegment::cubic(mid, p123, p23, seg.end)),
+                );
+                true
+            }
+            PathElement::MoveTo(_) | PathElement::ClosePath => false,
+        }
+    }
+
+    /// Remove the anchor at `elem_idx`, reconnecting its neighbors:
+    /// the following segment starts at the previous anchor (its departure
+    /// handle shifts along). Refuses when fewer than three anchors would
+    /// remain, or when the path would be left with a single point.
+    pub fn remove_anchor(&mut self, elem_idx: usize) -> bool {
+        if elem_idx >= self.elements.len() {
+            return false;
+        }
+        if matches!(self.elements[elem_idx], PathElement::ClosePath) {
+            return false;
+        }
+        if self.anchor_count() < 3 {
+            return false;
+        }
+
+        if elem_idx == 0 {
+            // Dropping the start anchor: promote the first segment's end
+            // to MoveTo and discard that segment. For closed paths the
+            // ClosePath now targets the promoted point automatically.
+            if self.elements.len() < 2 {
+                return false;
+            }
+            let Some(next) = self.element_anchor(1) else {
+                return false;
+            };
+            self.elements[0] = PathElement::MoveTo(next);
+            self.elements.remove(1);
+            return true;
+        }
+
+        let Some(deleted) = self.element_anchor(elem_idx) else {
+            return false;
+        };
+        self.elements.remove(elem_idx);
+        if let Some(prev) = self.element_anchor(elem_idx - 1) {
+            if let Some(PathElement::CurveTo(seg)) = self.elements.get_mut(elem_idx) {
+                let dx = prev.x - deleted.x;
+                let dy = prev.y - deleted.y;
+                seg.start = prev;
+                seg.control1.x += dx;
+                seg.control1.y += dy;
+            }
+        }
+        true
+    }
+
     pub fn to_polygon(&self, segments_per_edge: u32) -> Vec<AnchorPoint> {
         let mut points = Vec::new();
 

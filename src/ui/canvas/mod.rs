@@ -979,50 +979,77 @@ impl CanvasWidget {
                             if let Some((target, obj_id)) =
                                 self.hit_test_nodes(state, screen_pos, origin)
                             {
+                                if !state.selected_ids.contains(&obj_id) {
+                                    state.selected_ids = vec![obj_id.clone()];
+                                }
                                 self.node_edit_state.selected_target = Some(target);
                                 self.node_edit_state.selected_object_id = Some(obj_id.clone());
 
-                                // Shape-to-path conversion is destructive:
-                                // snapshot first so one Undo restores the
-                                // original shape.
-                                let needs_convert = state
-                                    .document
-                                    .find_object(&obj_id)
-                                    .map(|o| {
-                                        !matches!(
-                                            o.object_type,
-                                            crate::core::document::ObjectType::Path(_)
-                                        )
-                                    })
-                                    .unwrap_or(false);
-                                if needs_convert {
-                                    state.ensure_object_snapshot(&obj_id);
-                                }
-                                let initial_elements = if let Some(obj) =
-                                    state.document.find_object_mut(&obj_id)
-                                {
-                                    if needs_convert {
-                                        let p = obj.to_path_data();
-                                        obj.object_type =
-                                            crate::core::document::ObjectType::Path(p);
-                                    }
-                                    if let crate::core::document::ObjectType::Path(ref p) =
-                                        obj.object_type
-                                    {
-                                        Some(p.elements.clone())
-                                    } else {
-                                        None
+                                // Alt+click on an anchor deletes it (one undo).
+                                let delete_idx = if alt_down {
+                                    match target {
+                                        NodeTarget::Anchor(idx) => Some(idx),
+                                        _ => None,
                                     }
                                 } else {
                                     None
                                 };
-                                if needs_convert {
-                                    state.commit_object_edits("Convert to Path");
-                                }
+                                if let Some(idx) = delete_idx {
+                                    self.delete_anchor_at(state, &obj_id, idx);
+                                    self.node_edit_state.selected_target = None;
+                                } else {
+                                    // Shape-to-path conversion is destructive:
+                                    // snapshot first so one Undo restores the
+                                    // original shape.
+                                    let needs_convert = state
+                                        .document
+                                        .find_object(&obj_id)
+                                        .map(|o| {
+                                            !matches!(
+                                                o.object_type,
+                                                crate::core::document::ObjectType::Path(_)
+                                            )
+                                        })
+                                        .unwrap_or(false);
+                                    if needs_convert {
+                                        state.ensure_object_snapshot(&obj_id);
+                                    }
+                                    let initial_elements = if let Some(obj) =
+                                        state.document.find_object_mut(&obj_id)
+                                    {
+                                        if needs_convert {
+                                            let p = obj.to_path_data();
+                                            obj.object_type =
+                                                crate::core::document::ObjectType::Path(p);
+                                        }
+                                        if let crate::core::document::ObjectType::Path(ref p) =
+                                            obj.object_type
+                                        {
+                                            Some(p.elements.clone())
+                                        } else {
+                                            None
+                                        }
+                                    } else {
+                                        None
+                                    };
+                                    if needs_convert {
+                                        state.commit_object_edits("Convert to Path");
+                                    }
 
-                                let mut d = DragState::new(DragMode::MoveNode(target), wx, wy);
-                                d.initial_elements = initial_elements;
-                                self.drag = Some(d);
+                                    let mut d =
+                                        DragState::new(DragMode::MoveNode(target), wx, wy);
+                                    d.initial_elements = initial_elements;
+                                    self.drag = Some(d);
+                                }
+                            } else if let Some(obj_id) =
+                                self.insert_anchor_near(state, screen_pos, origin)
+                            {
+                                // Click on a segment: add an anchor there.
+                                if !state.selected_ids.contains(&obj_id) {
+                                    state.selected_ids = vec![obj_id.clone()];
+                                }
+                                self.node_edit_state.selected_object_id = Some(obj_id);
+                                self.node_edit_state.selected_target = None;
                             } else if let Some(id) = self.select_state.hit_test(state, wx, wy) {
                                 state.selected_ids = vec![id.clone()];
                                 self.node_edit_state.selected_object_id = Some(id);

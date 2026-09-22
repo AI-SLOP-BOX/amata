@@ -313,6 +313,30 @@ impl CanvasWidget {
         }
     }
 
+    /// Screen-space hit test for the anchors of `obj_id`.
+    fn anchor_hit(state: &AppState, obj_id: &str, screen_pos: Pos2, origin: Pos2) -> Option<usize> {
+        let obj = state.document.find_object(obj_id)?;
+        let path_data = obj.to_path_data();
+        for (idx, elem) in path_data.elements.iter().enumerate() {
+            let anchor_local = match elem {
+                PathElement::MoveTo(p) | PathElement::LineTo(p) => *p,
+                PathElement::CurveTo(seg) => seg.end,
+                PathElement::ClosePath => continue,
+            };
+            let (awx, awy) = obj
+                .transform
+                .transform_point(anchor_local.x, anchor_local.y);
+            let sp = Pos2::new(
+                origin.x + awx as f32 * state.zoom,
+                origin.y + awy as f32 * state.zoom,
+            );
+            if screen_pos.distance(sp) <= HANDLE_HIT_RADIUS {
+                return Some(idx);
+            }
+        }
+        None
+    }
+
     pub(super) fn hit_test_nodes(
         &self,
         state: &AppState,
@@ -359,28 +383,158 @@ impl CanvasWidget {
 
         // 2. Check all anchors of selected objects
         for id in &state.selected_ids {
-            if let Some(obj) = state.document.find_object(id) {
-                let path_data = obj.to_path_data();
-                for (idx, elem) in path_data.elements.iter().enumerate() {
-                    let anchor_local = match elem {
-                        PathElement::MoveTo(p) | PathElement::LineTo(p) => *p,
-                        PathElement::CurveTo(seg) => seg.end,
-                        PathElement::ClosePath => continue,
-                    };
-                    let (awx, awy) = obj
-                        .transform
-                        .transform_point(anchor_local.x, anchor_local.y);
-                    let sp = Pos2::new(
-                        origin.x + awx as f32 * state.zoom,
-                        origin.y + awy as f32 * state.zoom,
-                    );
-                    if screen_pos.distance(sp) <= HANDLE_HIT_RADIUS {
-                        return Some((super::NodeTarget::Anchor(idx), id.clone()));
-                    }
+            if let Some(idx) = Self::anchor_hit(state, id, screen_pos, origin) {
+                return Some((super::NodeTarget::Anchor(idx), id.clone()));
+            }
+        }
+
+        // 3. Anchors of the object under the cursor (not yet selected), so a
+        // single click grabs a node without a separate selection click first.
+        let (wx, wy) = state.screen_to_world(screen_pos.x, screen_pos.y);
+        if let Some(id) = self.select_state.hit_test(state, wx, wy) {
+            if !state.selected_ids.contains(&id) {
+                if let Some(idx) = Self::anchor_hit(state, &id, screen_pos, origin) {
+                    return Some((super::NodeTarget::Anchor(idx), id));
                 }
             }
         }
         None
+    }
+
+    /// Split the closest path segment under the cursor — selected paths
+    /// first, then the object under the pointer — when it is within the
+    /// node hit radius. Returns the edited object id.
+    pub(super) fn insert_anchor_near(
+        &self,
+        state: &mut AppState,
+        screen_pos: Pos2,
+        _origin: Pos2,
+    ) -> Option<String> {
+        let mut candidates: Vec<String> = state.selected_ids.clone();
+        let (wx, wy) = state.screen_to_world(screen_pos.x, screen_pos.y);
+        if let Some(id) = self.select_state.hit_test(state, wx, wy) {
+            if !candidates.contains(&id) {
+                candidates.push(id);
+            }
+        }
+
+        let radius = f64::from(HANDLE_HIT_RADIUS);
+        for obj_id in candidates {
+            let Some(old_obj) = state.document.find_object(&obj_id).cloned() else {
+                continue;
+            };
+            if !old_obj.visible || old_obj.locked {
+                continue;
+            }
+            let path = old_obj.to_path_data();
+
+            // Closest segment within the screen-space hit radius.
+            let mut best: Option<(usize, f64, f64)> = None;
+            for (idx, elem) in path.elements.iter().enumerate() {
+                if idx == 0 {
+                    continue;
+                }
+                let (dist, t) = match elem {
+                    PathElement::LineTo(p) => {
+                        let Some(prev) = path.element_anchor(idx - 1) else {
+                            continue;
+                        };
+                        let (ax, ay) = old_obj.transform.transform_point(prev.x, prev.y);
+                        let (bx, by) = old_obj.transform.transform_point(p.x, p.y);
+                        let abx = bx - ax;
+                        let aby = by - ay;
+                        let len2 = abx * abx + aby * aby;
+                        if len2 <= f64::EPSILON {
+                            continue;
+                        }
+                        let t = (((wx - ax) * abx + (wy - ay) * aby) / len2).clamp(0.0, 1.0);
+                        let qx = ax + abx * t;
+                        let qy = ay + aby * t;
+                        let d = ((wx - qx).powi(2) + (wy - qy).powi(2)).sqrt();
+                        (d * f64::from(state.zoom), t)
+                    }
+                    PathElement::CurveTo(seg) => {
+                        let mut best_d = f64::MAX;
+                        let mut best_t = 0.5;
+                        for i in 0..=24 {
+                            let t = i as f64 / 24.0;
+                            let q = seg.eval(t);
+                            let (qx, qy) = old_obj.transform.transform_point(q.x, q.y);
+                            let d = ((wx - qx).powi(2) + (wy - qy).powi(2)).sqrt();
+                            if d < best_d {
+                                best_d = d;
+                                best_t = t;
+                            }
+                        }
+                        (best_d * f64::from(state.zoom), best_t)
+                    }
+                    _ => continue,
+                };
+                if dist <= radius && best.map(|b| dist < b.2).unwrap_or(true) {
+                    best = Some((idx, t, dist));
+                }
+            }
+
+            let Some((idx, t, _)) = best else {
+                continue;
+            };
+
+            let mut new_obj = old_obj.clone();
+            if !matches!(new_obj.object_type, ObjectType::Path(_)) {
+                new_obj.object_type = ObjectType::Path(new_obj.to_path_data());
+            }
+            let ObjectType::Path(ref mut np) = new_obj.object_type else {
+                continue;
+            };
+            if !np.split_segment(idx, t.clamp(0.05, 0.95)) {
+                continue;
+            }
+            let cmd = crate::core::history::ObjectCommand {
+                object_id: obj_id.clone(),
+                old_obj,
+                new_obj,
+            };
+            state
+                .undo_manager
+                .execute(Box::new(cmd), &mut state.document);
+            return Some(obj_id);
+        }
+        None
+    }
+
+    /// Delete an anchor (Alt+click in the Node tool), reconnecting the
+    /// neighbors. One undoable whole-object swap (converts shapes first).
+    pub(super) fn delete_anchor_at(
+        &self,
+        state: &mut AppState,
+        obj_id: &str,
+        elem_idx: usize,
+    ) -> bool {
+        let Some(old_obj) = state.document.find_object(obj_id).cloned() else {
+            return false;
+        };
+        if !old_obj.visible || old_obj.locked {
+            return false;
+        }
+        let mut new_obj = old_obj.clone();
+        if !matches!(new_obj.object_type, ObjectType::Path(_)) {
+            new_obj.object_type = ObjectType::Path(new_obj.to_path_data());
+        }
+        let ObjectType::Path(ref mut np) = new_obj.object_type else {
+            return false;
+        };
+        if !np.remove_anchor(elem_idx) {
+            return false;
+        }
+        let cmd = crate::core::history::ObjectCommand {
+            object_id: obj_id.to_string(),
+            old_obj,
+            new_obj,
+        };
+        state
+            .undo_manager
+            .execute(Box::new(cmd), &mut state.document);
+        true
     }
 
     pub(super) fn move_node(
