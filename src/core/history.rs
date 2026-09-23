@@ -61,6 +61,16 @@ impl UndoManager {
         self.saved_state_id = None;
     }
 
+    /// Cap the undo stack (wired to `Prefs::history_states_count`). Lowering
+    /// the cap evicts the oldest steps immediately so the limit holds even for
+    /// a stack that was deeper a moment ago.
+    pub fn set_max_steps(&mut self, max_steps: usize) {
+        self.max_steps = max_steps.max(1);
+        while self.undo_stack.len() > self.max_steps {
+            self.undo_stack.pop_front();
+        }
+    }
+
     pub fn execute(&mut self, mut cmd: Box<dyn Command>, doc: &mut Document) {
         cmd.execute(doc);
         self.state_counter += 1;

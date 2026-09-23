@@ -24,5 +24,7 @@ pub use panels::*;
 pub use preferences_dialog::PreferencesDialog;
 pub use shortcuts_modal::ShortcutsModal;
 #[allow(unused_imports)]
-pub use theme::{apply_adobe_theme, build_ui_font_definitions, setup_custom_fonts, UiFontSet};
+pub use theme::{
+    apply_adobe_theme, build_ui_font_definitions, setup_custom_fonts, ui_font_warnings, UiFontSet,
+};
 pub use timeline_widget::TimelineWidget;

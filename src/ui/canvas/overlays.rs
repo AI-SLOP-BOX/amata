@@ -1,4 +1,15 @@
-use super::{CanvasWidget, DragState, HANDLE_HIT_RADIUS, HANDLE_SIZE, RULER_WIDTH};
+use super::{CanvasWidget, DragState, HANDLE_HIT_RADIUS, RULER_WIDTH};
+
+/// `(fill, stroke)` for points and handles — `point_handle_color_mode`.
+/// The default matches what the renderer has always drawn (white fill with an
+/// Adobe-blue border); the high-contrast variant is black on yellow.
+fn handle_palette(state: &AppState) -> (Color32, Color32) {
+    if state.prefs.high_contrast_handles() {
+        (Color32::from_rgb(255, 242, 0), Color32::BLACK)
+    } else {
+        (Color32::WHITE, Color32::from_rgb(20, 115, 230))
+    }
+}
 use crate::core::document::{Object, ObjectType};
 use crate::core::path::PathData;
 use crate::core::state::AppState;
@@ -599,6 +610,12 @@ impl CanvasWidget {
         origin: Pos2,
         state: &AppState,
     ) {
+        // A hidden bounding box hides the whole widget (Illustrator's
+        // *View ▸ Hide Bounding Box*): `hit_test_handles` bails out on the
+        // same flag, so no invisible handle stays clickable.
+        if !state.prefs.show_bounding_box {
+            return;
+        }
         if let Some((bb_min, bb_max)) = obj.bounding_box() {
             let min_p = Pos2::new(
                 origin.x + bb_min.x as f32 * state.zoom,
@@ -610,7 +627,9 @@ impl CanvasWidget {
             );
             let rect = Rect::from_min_max(min_p, max_p);
 
-            let sel_stroke = Stroke::new(1.0_f32, Color32::from_rgb(20, 115, 230));
+            let (point_fill, point_stroke) = handle_palette(state);
+            let sel_stroke =
+                Stroke::new(state.prefs.selection_line_width, Color32::from_rgb(20, 115, 230));
             painter.rect_stroke(rect, 0.0_f32, sel_stroke, StrokeKind::Outside);
 
             // Center target crosshair (+)
@@ -632,7 +651,7 @@ impl CanvasWidget {
                 c_stroke,
             );
 
-            // 8 handles (Hollow white square with blue border)
+            // 8 handles (size + palette come from the preferences)
             let corners = [
                 rect.left_top(),
                 rect.right_top(),
@@ -645,20 +664,20 @@ impl CanvasWidget {
             ];
 
             for p in corners {
-                let h_rect = Rect::from_center_size(p, Vec2::splat(HANDLE_SIZE));
-                painter.rect_filled(h_rect, 0.0_f32, Color32::WHITE);
+                let h_rect = Rect::from_center_size(p, Vec2::splat(state.prefs.handle_size));
+                painter.rect_filled(h_rect, 0.0_f32, point_fill);
                 painter.rect_stroke(
                     h_rect,
                     0.0_f32,
-                    Stroke::new(1.0_f32, Color32::from_rgb(20, 115, 230)),
+                    Stroke::new(1.0_f32, point_stroke),
                     StrokeKind::Outside,
                 );
             }
 
             // Top Rotation handle circle above right_top
             let rot_p = Pos2::new(rect.right_top().x + 12.0_f32, rect.right_top().y - 12.0_f32);
-            painter.circle_filled(rot_p, 4.0_f32, Color32::from_rgb(20, 115, 230));
-            painter.circle_stroke(rot_p, 4.0_f32, Stroke::new(1.0_f32, Color32::WHITE));
+            painter.circle_filled(rot_p, 4.0_f32, point_stroke);
+            painter.circle_stroke(rot_p, 4.0_f32, Stroke::new(1.0_f32, point_fill));
 
             // If rotated, show crisp angle readout badge
             if obj.transform.rotation.abs() > 0.001 {
@@ -709,6 +728,7 @@ impl CanvasWidget {
     }
 
     pub(super) fn draw_node_edit(&self, painter: &egui::Painter, origin: Pos2, state: &AppState) {
+        let (point_fill, point_stroke) = handle_palette(state);
         let active_target = self.node_edit_state.selected_target;
         let active_node_idx = active_target.map(|t| t.elem_idx());
         let active_obj_id = self.node_edit_state.selected_object_id.as_deref();
@@ -733,8 +753,18 @@ impl CanvasWidget {
                         .collect();
                     painter.add(egui::epaint::PathShape::closed_line(
                         screen_pts,
-                        Stroke::new(1.0_f32, Color32::from_rgb(20, 115, 230)),
+                        Stroke::new(
+                            state.prefs.selection_line_width,
+                            Color32::from_rgb(20, 115, 230),
+                        ),
                     ));
+                }
+
+                // The anchors themselves (with their handles and badge) are a
+                // display preference; `hit_test_nodes` bails out on the same
+                // flag so nothing invisible stays clickable.
+                if !state.prefs.show_anchor_points {
+                    continue;
                 }
 
                 for (idx, elem) in elements.iter().enumerate() {
@@ -755,14 +785,16 @@ impl CanvasWidget {
                     let is_active =
                         active_obj_id == Some(id.as_str()) && active_node_idx == Some(idx);
 
-                    let anchor_rect = Rect::from_center_size(sp, Vec2::splat(6.0));
+                    let anchor_rect =
+                        Rect::from_center_size(sp, Vec2::splat(state.prefs.anchor_point_size));
                     if is_active {
-                        // Selected anchor: Solid blue square with white outline
-                        painter.rect_filled(anchor_rect, 0.0_f32, Color32::from_rgb(20, 115, 230));
+                        // Selected anchor: solid square in the palette's stroke
+                        // colour, outlined with its fill colour.
+                        painter.rect_filled(anchor_rect, 0.0_f32, point_stroke);
                         painter.rect_stroke(
                             anchor_rect,
                             0.0_f32,
-                            Stroke::new(1.0_f32, Color32::WHITE),
+                            Stroke::new(1.0_f32, point_fill),
                             StrokeKind::Outside,
                         );
 
@@ -782,13 +814,13 @@ impl CanvasWidget {
                             let c2_col = if is_c2_active {
                                 Color32::from_rgb(255, 120, 0)
                             } else {
-                                Color32::from_rgb(20, 115, 230)
+                                point_stroke
                             };
                             painter.circle_filled(c2_sp, 3.5_f32, c2_col);
                             painter.circle_stroke(
                                 c2_sp,
                                 3.5_f32,
-                                Stroke::new(1.0_f32, Color32::WHITE),
+                                Stroke::new(1.0_f32, point_fill),
                             );
                         }
 
@@ -808,13 +840,13 @@ impl CanvasWidget {
                             let c1_col = if is_c1_active {
                                 Color32::from_rgb(255, 120, 0)
                             } else {
-                                Color32::from_rgb(20, 115, 230)
+                                point_stroke
                             };
                             painter.circle_filled(c1_sp, 3.5_f32, c1_col);
                             painter.circle_stroke(
                                 c1_sp,
                                 3.5_f32,
-                                Stroke::new(1.0_f32, Color32::WHITE),
+                                Stroke::new(1.0_f32, point_fill),
                             );
                         }
 
@@ -840,12 +872,12 @@ impl CanvasWidget {
                             Color32::from_rgb(30, 30, 30),
                         );
                     } else {
-                        // Unselected anchor: Hollow white square with blue outline
-                        painter.rect_filled(anchor_rect, 0.0_f32, Color32::WHITE);
+                        // Unselected anchor: hollow square in the palette
+                        painter.rect_filled(anchor_rect, 0.0_f32, point_fill);
                         painter.rect_stroke(
                             anchor_rect,
                             0.0_f32,
-                            Stroke::new(1.2_f32, Color32::from_rgb(20, 115, 230)),
+                            Stroke::new(1.2_f32, point_stroke),
                             StrokeKind::Outside,
                         );
                     }

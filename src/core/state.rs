@@ -1,5 +1,6 @@
 use super::document::{Document, Layer, Object, Transform};
 use super::history::{BatchCommand, Command, LayerCommand, ObjectCommand, TransformCommand, UndoManager};
+use super::prefs::Prefs;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Tool {
@@ -114,6 +115,9 @@ pub enum HandleCorner {
 pub struct AppState {
     pub document: Document,
     pub undo_manager: UndoManager,
+    /// User preferences (環境設定) — edited live by the preferences dialog
+    /// and read by the renderer, the theme and the startup path.
+    pub prefs: Prefs,
     pub current_tool: Tool,
     pub previous_tool: Tool,
     pub zoom: f32,
@@ -252,6 +256,7 @@ impl Default for AppState {
         Self {
             document: Document::default(),
             undo_manager: UndoManager::new(),
+            prefs: Prefs::default(),
             current_tool: Tool::Select,
             previous_tool: Tool::Select,
             zoom: 1.0,
@@ -778,42 +783,123 @@ impl AppState {
         (sx, sy)
     }
 
+    /// Snap a world-space point against every enabled snap target and return
+    /// the snapped position.
+    ///
+    /// Targets compete on their distance from `(x, y)`: the closest one wins,
+    /// so a guide1px away beats a grid line 30px away. Guides (like the grid)
+    /// pin a single axis, objects / anchor points / the perspective grid snap
+    /// both axes at once.
     pub fn snap(&self, x: f64, y: f64) -> (f64, f64) {
-        let (mut sx, mut sy) = if self.snap_to_grid && self.grid_size > 0.0 {
-            (
-                (x / self.grid_size).round() * self.grid_size,
-                (y / self.grid_size).round() * self.grid_size,
-            )
+        /// Reach of the point-like targets — the window
+        /// `snap_to_object_edges` has always used.
+        const THRESHOLD: f64 = 5.0;
+
+        let (mut sx, mut sy) = (x, y);
+        // Distance of each axis' current value from the raw point. An axis
+        // that has not snapped yet carries no distance at all (`snapped_* =
+        // false`), which is what lets the first candidate win instead of
+        // being rejected against a distance of 0.
+        let mut x_snapped = false;
+        let mut y_snapped = false;
+
+        // Grid: no threshold — it always lands on the nearest line.
+        if self.snap_to_grid && self.grid_size > 0.0 {
+            sx = (x / self.grid_size).round() * self.grid_size;
+            sy = (y / self.grid_size).round() * self.grid_size;
+            x_snapped = true;
+            y_snapped = true;
+        }
+
+        // Guides: a horizontal guide pins Y, a vertical one pins X.
+        if self.snap_to_guides {
+            for guide in &self.guides {
+                match guide.orientation {
+                    GuideOrientation::Horizontal => {
+                        let d = (guide.position - y).abs();
+                        if d <= THRESHOLD && (!y_snapped || d < (sy - y).abs()) {
+                            sy = guide.position;
+                            y_snapped = true;
+                        }
+                    }
+                    GuideOrientation::Vertical => {
+                        let d = (guide.position - x).abs();
+                        if d <= THRESHOLD && (!x_snapped || d < (sx - x).abs()) {
+                            sx = guide.position;
+                            x_snapped = true;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Distance of the whole current candidate; infinite while no axis
+        // snapped, so whole-point targets are always considered first.
+        let mut cur_dist = if x_snapped || y_snapped {
+            ((sx - x).powi(2) + (sy - y).powi(2)).sqrt()
         } else {
-            (x, y)
+            f64::INFINITY
+        };
+        let mut consider = |px: f64, py: f64| {
+            let d = ((px - x).powi(2) + (py - y).powi(2)).sqrt();
+            if d <= THRESHOLD && d < cur_dist {
+                sx = px;
+                sy = py;
+                cur_dist = d;
+            }
         };
 
-        if self.snap_to_objects {
-            let objects: Vec<&crate::core::document::Object> = self
+        // Object edges / centers and anchor points share one pass over the
+        // document (snap runs on every mouse move).
+        if self.snap_to_objects || self.snap_to_points {
+            let objects: Vec<&Object> = self
                 .document
                 .all_objects()
                 .filter(|(_, o)| o.visible && !o.locked)
                 .map(|(_, o)| o)
                 .collect();
-            let (osx, osy) = self.snap_to_object_edges(x, y, &objects);
-            let grid_dist = ((sx - x).powi(2) + (sy - y).powi(2)).sqrt();
-            let obj_dist = ((osx - x).powi(2) + (osy - y).powi(2)).sqrt();
-            if obj_dist < grid_dist {
-                sx = osx;
-                sy = osy;
+
+            if self.snap_to_objects {
+                if let Some((ox, oy)) = self.snap_to_object_edges(x, y, &objects) {
+                    consider(ox, oy);
+                }
+            }
+
+            if self.snap_to_points {
+                for obj in &objects {
+                    // Only an object whose box reaches the point can hold an
+                    // anchor this close — skips building the path for the
+                    // rest of the document.
+                    match obj.bounding_box() {
+                        Some((bb_min, bb_max))
+                            if x >= bb_min.x - THRESHOLD
+                                && x <= bb_max.x + THRESHOLD
+                                && y >= bb_min.y - THRESHOLD
+                                && y <= bb_max.y + THRESHOLD => {}
+                        _ => continue,
+                    }
+                    let path = obj.to_path_data();
+                    for el in &path.elements {
+                        let pts = match el {
+                            crate::core::path::PathElement::MoveTo(a)
+                            | crate::core::path::PathElement::LineTo(a) => [*a, *a],
+                            crate::core::path::PathElement::CurveTo(seg) => [seg.start, seg.end],
+                            crate::core::path::PathElement::ClosePath => continue,
+                        };
+                        for p in pts {
+                            let (wx, wy) = obj.transform.transform_point(p.x, p.y);
+                            consider(wx, wy);
+                        }
+                    }
+                }
             }
         }
 
         if let Some(grid) = self.document.perspective.as_ref() {
             if grid.snap {
                 let canvas = (0.0, 0.0, self.document.width, self.document.height);
-                if let Some((px, py)) = grid.snap_point(x, y, canvas, 5.0) {
-                    let persp_dist = ((px - x).powi(2) + (py - y).powi(2)).sqrt();
-                    let cur_dist = ((sx - x).powi(2) + (sy - y).powi(2)).sqrt();
-                    if persp_dist < cur_dist {
-                        sx = px;
-                        sy = py;
-                    }
+                if let Some((px, py)) = grid.snap_point(x, y, canvas, THRESHOLD) {
+                    consider(px, py);
                 }
             }
         }
@@ -827,17 +913,16 @@ impl AppState {
     }
 
     /// Snaps to the nearest object edge or center within a threshold (5px in world space).
-    /// Returns the snapped position, or the original position if nothing is close enough.
+    /// Returns `None` when nothing is close enough, so a miss cannot be told
+    /// apart from an exact hit (and cannot cancel a stronger snap target).
     pub fn snap_to_object_edges(
         &self,
         x: f64,
         y: f64,
         objects: &[&crate::core::document::Object],
-    ) -> (f64, f64) {
+    ) -> Option<(f64, f64)> {
         let threshold = 5.0;
-        let mut best_x = x;
-        let mut best_y = y;
-        let mut best_dist = f64::MAX;
+        let mut best: Option<(f64, f64, f64)> = None;
 
         for obj in objects {
             if let Some((bb_min, bb_max)) = obj.bounding_box() {
@@ -858,16 +943,14 @@ impl AppState {
 
                 for (ex, ey) in edges {
                     let dist = ((ex - x).powi(2) + (ey - y).powi(2)).sqrt();
-                    if dist < threshold && dist < best_dist {
-                        best_dist = dist;
-                        best_x = ex;
-                        best_y = ey;
+                    if dist < threshold && best.is_none_or(|(best_dist, _, _)| dist < best_dist) {
+                        best = Some((dist, ex, ey));
                     }
                 }
             }
         }
 
-        (best_x, best_y)
+        best.map(|(_, ex, ey)| (ex, ey))
     }
 
     /// Calculate and apply zoom-to-fit, setting animation targets

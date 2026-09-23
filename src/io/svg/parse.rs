@@ -716,10 +716,20 @@ pub fn parse_svg_document(svg_text: &str) -> Document {
             let local_op = extract_opacity(trimmed).unwrap_or(1.0);
             group_opacity.push(parent_op * local_op);
             let clip_id = extract_clip_path_id(trimmed);
-            let opens = clip_id
-                .as_ref()
-                .filter(|id| clip_paths.contains_key(*id))
-                .cloned();
+            // `data-text-clip="1"`: wrapper is the area text's own overflow
+            // clip. The Text already carries `area`, which re-clips on canvas
+            // and on export, so wrapping it in a ClippingMask would hide it
+            // from flat `all_objects()` for no visual gain. Real, authored
+            // clip groups carry no marker and are imported as before.
+            let intrinsic_text_clip = extract_attr_str(trimmed, "data-text-clip").is_some();
+            let opens = if intrinsic_text_clip {
+                None
+            } else {
+                clip_id
+                    .as_ref()
+                    .filter(|id| clip_paths.contains_key(*id))
+                    .cloned()
+            };
             if let Some(id) = opens {
                 clip_frames.push((id, full, Vec::new()));
                 g_opens_clip.push(true);

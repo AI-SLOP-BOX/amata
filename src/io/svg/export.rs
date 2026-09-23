@@ -789,9 +789,16 @@ fn render_object_to_svg(
             } else {
                 String::new()
             };
+            // `data-text-clip` marks the wrapper as *intrinsic* to the area
+            // text: the box (`data-text-area`) already re-clips on canvas and
+            // on every re-export, so this <g clip-path> exists purely for
+            // external renderers. Without the marker the importer turns it
+            // into a ClippingMask and nests the <text> out of the flat
+            // `all_objects()` walk, so the text can no longer be found by
+            // round-trip (see tests/text_engine_tests.rs).
             let clip_attr = clip_id
                 .as_ref()
-                .map(|c| format!(" clip-path=\"url(#{c})\""))
+                .map(|c| format!(" clip-path=\"url(#{c})\" data-text-clip=\"1\""))
                 .unwrap_or_default();
             // The clip rect lives in local coordinates, so in the linear
             // case the object transform moves onto the wrapping `<g>` (with

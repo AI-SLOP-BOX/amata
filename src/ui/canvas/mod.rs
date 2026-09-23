@@ -80,7 +80,6 @@ impl DragState {
     }
 }
 
-const HANDLE_SIZE: f32 = 8.0_f32;
 const HANDLE_HIT_RADIUS: f32 = 12.0_f32;
 const RULER_WIDTH: f32 = 20.0_f32;
 
@@ -456,48 +455,61 @@ impl CanvasWidget {
             let shadow_rect3 = ab_rect.translate(Vec2::new(1.0, 1.0));
             painter.rect_filled(shadow_rect3, 0.0_f32, Color32::from_black_alpha(90));
 
-            // Transparency checkerboard (6px squares at base zoom)
-            let check_size = 6.0 * state.zoom;
-            if check_size >= 2.0 {
-                let cols = (ab_rect.width() / check_size).ceil() as i32;
-                let rows = (ab_rect.height() / check_size).ceil() as i32;
-                let c_light = Color32::from_rgb(240, 240, 240);
-                let c_dark = Color32::from_rgb(204, 204, 204);
-                for row in 0..rows {
-                    for col in 0..cols {
-                        let x = ab_rect.min.x + col as f32 * check_size;
-                        let y = ab_rect.min.y + row as f32 * check_size;
-                        let r = Rect::from_min_size(
-                            Pos2::new(x, y),
-                            Vec2::new(check_size + 0.5, check_size + 0.5),
-                        ).intersect(ab_rect);
-                        let c = if (row + col) % 2 == 0 { c_light } else { c_dark };
-                        painter.rect_filled(r, 0.0, c);
-                    }
-                }
-            } else {
-                // Too zoomed out: just fill white
+            // Artboard background: opaque white or the transparency
+            // checkerboard (`artboard_bg_mode`).
+            if state.prefs.artboard_is_white() {
                 painter.rect_filled(ab_rect, 0.0_f32, Color32::WHITE);
+            } else {
+                // Transparency checkerboard (6px squares at base zoom)
+                let check_size = 6.0 * state.zoom;
+                if check_size >= 2.0 {
+                    let cols = (ab_rect.width() / check_size).ceil() as i32;
+                    let rows = (ab_rect.height() / check_size).ceil() as i32;
+                    let c_light = Color32::from_rgb(240, 240, 240);
+                    let c_dark = Color32::from_rgb(204, 204, 204);
+                    for row in 0..rows {
+                        for col in 0..cols {
+                            let x = ab_rect.min.x + col as f32 * check_size;
+                            let y = ab_rect.min.y + row as f32 * check_size;
+                            let r = Rect::from_min_size(
+                                Pos2::new(x, y),
+                                Vec2::new(check_size + 0.5, check_size + 0.5),
+                            ).intersect(ab_rect);
+                            let c = if (row + col) % 2 == 0 { c_light } else { c_dark };
+                            painter.rect_filled(r, 0.0, c);
+                        }
+                    }
+                } else {
+                    // Too zoomed out: just fill white
+                    painter.rect_filled(ab_rect, 0.0_f32, Color32::WHITE);
+                }
             }
 
-            painter.rect_stroke(
-                ab_rect,
-                0.0_f32,
-                Stroke::new(1.0_f32, Color32::from_rgb(60, 60, 60)),
-                StrokeKind::Outside,
-            );
+            if state.prefs.show_boundary_lines {
+                painter.rect_stroke(
+                    ab_rect,
+                    0.0_f32,
+                    Stroke::new(1.0_f32, Color32::from_rgb(60, 60, 60)),
+                    StrokeKind::Outside,
+                );
+            }
 
-            // Artboard Header Tab Label
+            // Artboard Header Tab Label (the size part is the dimension label)
             let tab_pos = Pos2::new(ab_rect.min.x, ab_rect.min.y - 18.0);
-            painter.text(
-                tab_pos,
-                egui::Align2::LEFT_TOP,
+            let label = if state.prefs.show_dimension_labels {
                 format!(
                     "{} ({} × {} px)",
                     ab.name,
                     ab.width as i32,
                     ab.height as i32
-                ),
+                )
+            } else {
+                ab.name.clone()
+            };
+            painter.text(
+                tab_pos,
+                egui::Align2::LEFT_TOP,
+                label,
                 FontId::proportional(11.0),
                 Color32::from_rgb(170, 170, 170),
             );

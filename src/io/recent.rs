@@ -11,7 +11,20 @@ pub struct RecentEntry {
     pub last_opened_secs: u64,
 }
 
-const MAX_RECENTS: usize = 8;
+/// How many recent files to keep. Driven by `Prefs::recent_files_count`
+/// (see [`set_recent_limit`]); the default only applies before preferences
+/// are loaded (CLI runs and tests).
+static RECENT_LIMIT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(8);
+
+/// Update the recent-files cap (`0` is clamped to 1 so the list never
+/// becomes unreachable).
+pub fn set_recent_limit(count: usize) {
+    RECENT_LIMIT.store(count.max(1), std::sync::atomic::Ordering::Relaxed);
+}
+
+fn recent_limit() -> usize {
+    RECENT_LIMIT.load(std::sync::atomic::Ordering::Relaxed)
+}
 
 fn config_dir() -> Option<PathBuf> {
     #[cfg(target_os = "windows")]
@@ -117,7 +130,7 @@ pub fn load_recents() -> Vec<RecentEntry> {
     let mut entries: Vec<RecentEntry> = serde_json::from_str(&data).unwrap_or_default();
     // Drop entries whose files vanished (stale cards are worse than none).
     entries.retain(|e| Path::new(&e.path).exists());
-    entries.truncate(MAX_RECENTS);
+    entries.truncate(recent_limit());
     entries
 }
 
@@ -153,6 +166,6 @@ pub fn push_recent(path: &Path, width: f64, height: f64) {
             last_opened_secs: now_secs(),
         },
     );
-    entries.truncate(MAX_RECENTS);
+    entries.truncate(recent_limit());
     save_recents(&entries);
 }

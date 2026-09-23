@@ -4,6 +4,14 @@ use crate::app::icons::{icon_bell, icon_button, icon_search};
 use crate::core::boolean::{execute_pathfinder, BooleanOp};
 use crate::core::document::Object;
 use egui::{self, Color32, RichText, Vec2};
+
+// Progressive disclosure thresholds for the right-aligned utilities:
+// below each width the matching item hides when the menus fill the bar.
+pub(crate) const SHOW_SEARCH_W: f32 = 320.0;
+pub(crate) const SHOW_WORKSPACE_W: f32 = 420.0;
+pub(crate) const SHOW_SHARE_W: f32 = 260.0;
+pub(crate) const SHOW_BELL_W: f32 = 220.0;
+
 impl IrasuApp {
     pub(super) fn show_menu_bar(&mut self, ctx: &egui::Context) {
         // Top Menu Bar
@@ -47,7 +55,12 @@ impl IrasuApp {
                 }
                 ui.add_space(8.0);
 
-                ui.menu_button("ファイル (F)", |ui| {
+                let file_menu_label = if self.state.prefs.show_tool_hints {
+                    "ファイル (F)"
+                } else {
+                    "ファイル"
+                };
+                ui.menu_button(file_menu_label, |ui| {
                     if ui
                         .button(format!("新規ドキュメント... ({}+N)", mod_key()))
                         .clicked()
@@ -148,7 +161,11 @@ impl IrasuApp {
                                                 "PDFをインポートしました ({} 個のオブジェクト)",
                                                 obj_count
                                             );
-                                            if !warnings.is_empty() {
+                                            // 互換性の警告（飛び捨てた要素の一覧）は
+                                            // 通知設定に従ってのみ添付する。
+                                            if !warnings.is_empty()
+                                                && self.state.prefs.notify_file_compat
+                                            {
                                                 msg.push_str(&format!(
                                                     " — {}件スキップ: {}",
                                                     warnings.len(),
@@ -798,7 +815,13 @@ impl IrasuApp {
                     }
                 });
 
-                ui.menu_button("ヘルプ (H)", |ui| {
+                ui.menu_button(
+                    if self.state.prefs.show_tool_hints {
+                        "ヘルプ (H)"
+                    } else {
+                        "ヘルプ"
+                    },
+                    |ui| {
                     if ui.button("Amata について (About)...").clicked() {
                         self.about_modal.is_open = true;
                         ui.close_menu();
@@ -825,13 +848,13 @@ impl IrasuApp {
 
                 // Right-aligned Utilities: Search bar, Share button, Bell, Profile.
                 // Progressive disclosure: search/workspace hide first when the
-                // window is near the 800px minimum and the menus fill the bar.
+                // window is near the 640px minimum and the menus fill the bar.
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     let avail = ui.available_width();
-                    let show_search = avail >= 320.0;
-                    let show_workspace = avail >= 420.0;
-                    let show_share = avail >= 260.0;
-                    let show_bell = avail >= 220.0;
+                    let show_search = avail >= SHOW_SEARCH_W;
+                    let show_workspace = avail >= SHOW_WORKSPACE_W;
+                    let show_share = avail >= SHOW_SHARE_W;
+                    let show_bell = avail >= SHOW_BELL_W;
 
                     // Profile avatar circle
                     let (ava_rect, _) =

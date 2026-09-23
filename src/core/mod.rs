@@ -31,6 +31,7 @@ pub mod path;
 pub mod perspective;
 pub mod pixel;
 pub mod polar;
+pub mod prefs;
 pub mod presets;
 pub mod print;
 pub mod revolve;

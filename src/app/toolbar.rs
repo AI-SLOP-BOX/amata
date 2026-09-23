@@ -229,8 +229,11 @@ impl IrasuApp {
 
     pub(super) fn tool_button(&mut self, ui: &mut egui::Ui, tool: Tool) {
         let is_active = self.state.current_tool == tool;
-        let response = tool_icon_button(ui, tool, is_active, Vec2::new(32.0, 30.0))
-            .on_hover_text(format!("{} ({})", tool.name(), tool.shortcut()));
+        // Tool hints preference: name + shortcut tooltip on hover.
+        let mut response = tool_icon_button(ui, tool, is_active, Vec2::new(32.0, 30.0));
+        if self.state.prefs.show_tool_hints {
+            response = response.on_hover_text(format!("{} ({})", tool.name(), tool.shortcut()));
+        }
 
         if response.clicked() {
             if self.state.current_tool == Tool::Pen && self.canvas.pen_state.is_drawing {

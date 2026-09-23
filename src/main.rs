@@ -33,7 +33,7 @@ fn main() -> eframe::Result<()> {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([1440.0, 920.0])
-            .with_min_inner_size([800.0, 600.0])
+            .with_min_inner_size([640.0, 480.0])
             .with_title("Amata (数多) — Pro Vector Graphics Studio"),
         ..Default::default()
     };
@@ -44,8 +44,10 @@ fn main() -> eframe::Result<()> {
         "Amata Vector Studio",
         options,
         Box::new(move |cc| {
+            let prefs = crate::core::prefs::Prefs::load();
             crate::ui::setup_custom_fonts(&cc.egui_ctx);
-            crate::ui::apply_adobe_theme(&cc.egui_ctx);
+            crate::ui::apply_adobe_theme(&cc.egui_ctx, &prefs.color_theme);
+            cc.egui_ctx.set_zoom_factor(prefs.ui_scale_factor());
             Ok(Box::new(IrasuApp::with_file(initial_file)))
         }),
     )

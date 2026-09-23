@@ -187,6 +187,12 @@ impl IrasuApp {
             } else {
                 eprintln!("⚠️ Failed to load file: {}", p.display());
             }
+        } else if !app.state.prefs.show_home_on_startup && app.state.prefs.open_last_doc {
+            // No CLI file, home screen off → reopen the most recent document
+            // ("前回のドキュメントを開く"). The home screen wins when shown.
+            if let Some(last) = crate::io::recent::load_recents().into_iter().next() {
+                app.open_path_in_editor(std::path::PathBuf::from(last.path));
+            }
         }
         app
     }
@@ -194,8 +200,23 @@ impl IrasuApp {
 
 impl Default for IrasuApp {
     fn default() -> Self {
+        // Preferences load exactly once, here: the dialog edits
+        // `state.prefs` in place, so the startup-only values (home screen,
+        // mirrored session toggles, stack limits) are applied from here.
+        let mut state = AppState::default();
+        state.prefs = crate::core::prefs::Prefs::load();
+        crate::ui::PreferencesDialog::apply_to_session(&mut state);
+        // Font substitutions discovered while installing the UI fonts.
+        if state.prefs.notify_font_substitute {
+            let warns = crate::ui::ui_font_warnings();
+            if !warns.is_empty() {
+                state.notify_info(warns.join("\n"));
+            }
+        }
+        let mut home_view = HomeView::default();
+        home_view.is_open = state.prefs.show_home_on_startup;
         Self {
-            state: AppState::default(),
+            state,
             canvas: CanvasWidget::new(),
             active_tab: ActiveTab::Properties,
             preferences_dialog: PreferencesDialog::default(),
@@ -203,7 +224,7 @@ impl Default for IrasuApp {
             new_doc_modal: NewDocModal::default(),
             about_modal: AboutModal::default(),
             shortcuts_modal: ShortcutsModal::default(),
-            home_view: HomeView::default(),
+            home_view,
             onboarding_tour: OnboardingTour::default(),
             search_query: String::new(),
             version_history_panel: crate::ui::panels::VersionHistoryPanel::default(),
@@ -216,8 +237,13 @@ impl Default for IrasuApp {
 
 impl eframe::App for IrasuApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        // Apply Adobe Charcoal Theme
-        apply_adobe_theme(ctx);
+        // Theme + UI scale follow the preferences, reapplied every frame so a
+        // change made inside the open dialog takes effect immediately.
+        apply_adobe_theme(ctx, &self.state.prefs.color_theme);
+        let scale = self.state.prefs.ui_scale_factor();
+        if (ctx.zoom_factor() - scale).abs() > 0.001 {
+            ctx.set_zoom_factor(scale);
+        }
 
         // Timeline animation playback tick
         if self.state.timeline.is_playing {

@@ -165,6 +165,11 @@ impl CanvasWidget {
         origin: Pos2,
         state: &AppState,
     ) -> Option<HandleCorner> {
+        // Mirrors `draw_selection`: a hidden bounding box must not leave
+        // invisible but still draggable handles behind.
+        if !state.prefs.show_bounding_box {
+            return None;
+        }
         if let Some((bb_min, bb_max)) = obj.bounding_box() {
             let min_p = Pos2::new(
                 origin.x + bb_min.x as f32 * state.zoom,
@@ -211,6 +216,11 @@ impl CanvasWidget {
         origin: Pos2,
         state: &AppState,
     ) -> Option<HandleCorner> {
+        // Drawn inside `draw_selection`, so it vanishes with the box; keep
+        // the hit test in sync.
+        if !state.prefs.show_bounding_box {
+            return None;
+        }
         let (width, height, corner_radius) = match &obj.object_type {
             ObjectType::Rectangle {
                 width,
@@ -437,6 +447,12 @@ impl CanvasWidget {
         screen_pos: Pos2,
         origin: Pos2,
     ) -> Option<(super::NodeTarget, String)> {
+        // Anchors (and their handles/badges) are only drawn when the
+        // `show_anchor_points` preference is on — bail out here so hidden
+        // geometry is never an invisible click target.
+        if !state.prefs.show_anchor_points {
+            return None;
+        }
         let active_target = self.node_edit_state.selected_target;
         let active_node_idx = active_target.map(|t| t.elem_idx());
         let active_obj_id = self.node_edit_state.selected_object_id.as_deref();

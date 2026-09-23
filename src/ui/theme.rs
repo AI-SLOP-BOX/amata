@@ -142,6 +142,16 @@ fn font_covers(bytes: &[u8], probe: char) -> bool {
     }
 }
 
+/// UI font warnings from the last [`setup_custom_fonts`] call — surfaced as a
+/// toast when `Prefs::notify_font_substitute` is on. Set once during startup
+/// (fonts are installed before the app state exists).
+static FONT_WARNINGS: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
+
+/// Font substitutions the last [`setup_custom_fonts`] performed.
+pub fn ui_font_warnings() -> &'static [String] {
+    FONT_WARNINGS.get().map(Vec::as_slice).unwrap_or(&[])
+}
+
 /// Setup refined high-legibility UI typography: Inter (Latin) + Japanese CJK.
 /// Prioritized cascade: Inter → CJK → egui defaults. See
 /// [`build_ui_font_definitions`].
@@ -150,26 +160,115 @@ pub fn setup_custom_fonts(ctx: &egui::Context) {
     for w in &set.warnings {
         log::warn!("{w}");
     }
+    let _ = FONT_WARNINGS.set(set.warnings);
     ctx.set_fonts(set.defs);
 }
 
-/// Apply refined Creative Cloud Charcoal Theme — precisely matched to Illustrator CC reference.
+/// Apply the selected Adobe theme — *ダーク* (Creative Cloud Charcoal,
+/// precisely matched to the Illustrator CC reference), *ミディアムダーク* or
+/// *ライト* — plus the shared spacing/typography.
 ///
-/// Palette:
+/// Dark palette reference:
 ///   #1e1e1e — panel fills (sidebars, top/bottom bars)
 ///   #262626 — modal/popup window fills
 ///   #323232 — widget idle bg
 ///   #3e3e3e — hover bg
 ///   #1473e6 — accent blue
-pub fn apply_adobe_theme(ctx: &egui::Context) {
-    let mut visuals = Visuals::dark();
+/// Surface / widget colors for one `color_theme` variant.
+struct Palette {
+    panel: Color32,
+    window: Color32,
+    faint: Color32,
+    extreme: Color32,
+    code: Color32,
+    idle: Color32,
+    idle_stroke: Color32,
+    idle_fg: Color32,
+    hover: Color32,
+    hover_stroke: Color32,
+    open: Color32,
+    noninteractive: Color32,
+    noninteractive_stroke: Color32,
+    noninteractive_fg: Color32,
+    window_stroke: Color32,
+}
+
+/// Palette per `Prefs::color_theme`: *ダーク* (default, the Creative Cloud
+/// Charcoal reference), *ミディアムダーク* or *ライト*.
+fn palette(theme: &str) -> Palette {
+    match theme {
+        "ミディアムダーク" => Palette {
+            panel: Color32::from_rgb(45, 45, 45),
+            window: Color32::from_rgb(54, 54, 54),
+            faint: Color32::from_rgb(38, 38, 38),
+            extreme: Color32::from_rgb(30, 30, 30),
+            code: Color32::from_rgb(28, 28, 28),
+            idle: Color32::from_rgb(66, 66, 66),
+            idle_stroke: Color32::from_rgb(80, 80, 80),
+            idle_fg: Color32::from_rgb(225, 225, 225),
+            hover: Color32::from_rgb(84, 84, 84),
+            hover_stroke: Color32::from_rgb(104, 104, 104),
+            open: Color32::from_rgb(56, 56, 56),
+            noninteractive: Color32::from_rgb(45, 45, 45),
+            noninteractive_stroke: Color32::from_rgb(64, 64, 64),
+            noninteractive_fg: Color32::from_rgb(196, 196, 196),
+            window_stroke: Color32::from_rgb(70, 70, 70),
+        },
+        "ライト" => Palette {
+            panel: Color32::from_rgb(232, 232, 232),
+            window: Color32::from_rgb(245, 245, 245),
+            faint: Color32::from_rgb(238, 238, 238),
+            extreme: Color32::from_rgb(250, 250, 250),
+            code: Color32::from_rgb(248, 248, 248),
+            idle: Color32::from_rgb(224, 224, 224),
+            idle_stroke: Color32::from_rgb(198, 198, 198),
+            idle_fg: Color32::from_rgb(58, 58, 58),
+            hover: Color32::from_rgb(208, 208, 208),
+            hover_stroke: Color32::from_rgb(166, 166, 166),
+            open: Color32::from_rgb(255, 255, 255),
+            noninteractive: Color32::from_rgb(232, 232, 232),
+            noninteractive_stroke: Color32::from_rgb(204, 204, 204),
+            noninteractive_fg: Color32::from_rgb(92, 92, 92),
+            window_stroke: Color32::from_rgb(176, 176, 176),
+        },
+        // "ダーク"
+        _ => Palette {
+            panel: Color32::from_rgb(30, 30, 30),
+            window: Color32::from_rgb(38, 38, 38),
+            faint: Color32::from_rgb(26, 26, 26),
+            extreme: Color32::from_rgb(20, 20, 20),
+            code: Color32::from_rgb(18, 18, 18),
+            idle: Color32::from_rgb(50, 50, 50),
+            idle_stroke: Color32::from_rgb(62, 62, 62),
+            idle_fg: Color32::from_rgb(212, 212, 212),
+            hover: Color32::from_rgb(62, 62, 62),
+            hover_stroke: Color32::from_rgb(88, 88, 88),
+            open: Color32::from_rgb(42, 42, 42),
+            noninteractive: Color32::from_rgb(30, 30, 30),
+            noninteractive_stroke: Color32::from_rgb(48, 48, 48),
+            noninteractive_fg: Color32::from_rgb(175, 175, 175),
+            window_stroke: Color32::from_rgb(52, 52, 52),
+        },
+    }
+}
+
+pub fn apply_adobe_theme(ctx: &egui::Context, theme: &str) {
+    let p = palette(theme);
+    let light = theme == "ライト";
+    let mut visuals = if light { Visuals::light() } else { Visuals::dark() };
+    // Foreground for surfaces whose fill is *not* the accent blue.
+    let strong_fg = if light {
+        Color32::from_rgb(24, 24, 24)
+    } else {
+        Color32::WHITE
+    };
 
     // Base surfaces
-    visuals.panel_fill = Color32::from_rgb(30, 30, 30); // #1e1e1e
-    visuals.window_fill = Color32::from_rgb(38, 38, 38); // #262626
-    visuals.faint_bg_color = Color32::from_rgb(26, 26, 26);
-    visuals.extreme_bg_color = Color32::from_rgb(20, 20, 20);
-    visuals.code_bg_color = Color32::from_rgb(18, 18, 18);
+    visuals.panel_fill = p.panel; // #1e1e1e
+    visuals.window_fill = p.window; // #262626
+    visuals.faint_bg_color = p.faint;
+    visuals.extreme_bg_color = p.extreme;
+    visuals.code_bg_color = p.code;
 
     // macOS-style window shadow
     visuals.window_shadow = egui::Shadow {
@@ -179,7 +278,7 @@ pub fn apply_adobe_theme(ctx: &egui::Context) {
         color: Color32::from_black_alpha(110),
     };
 
-    // Selection / accent
+    // Selection / accent (the accent blue is identical in every theme)
     visuals.selection.bg_fill = Color32::from_rgb(20, 115, 230);
     visuals.selection.stroke = Stroke::new(1.0_f32, Color32::WHITE);
     visuals.hyperlink_color = Color32::from_rgb(64, 156, 255);
@@ -188,17 +287,17 @@ pub fn apply_adobe_theme(ctx: &egui::Context) {
     visuals.menu_corner_radius = CornerRadius::same(4);
 
     // Inactive
-    visuals.widgets.inactive.bg_fill = Color32::from_rgb(50, 50, 50);
+    visuals.widgets.inactive.bg_fill = p.idle;
     visuals.widgets.inactive.corner_radius = CornerRadius::same(3);
-    visuals.widgets.inactive.bg_stroke = Stroke::new(1.0_f32, Color32::from_rgb(62, 62, 62));
-    visuals.widgets.inactive.fg_stroke = Stroke::new(1.0_f32, Color32::from_rgb(212, 212, 212));
+    visuals.widgets.inactive.bg_stroke = Stroke::new(1.0_f32, p.idle_stroke);
+    visuals.widgets.inactive.fg_stroke = Stroke::new(1.0_f32, p.idle_fg);
     visuals.widgets.inactive.expansion = 0.0;
 
     // Hovered
-    visuals.widgets.hovered.bg_fill = Color32::from_rgb(62, 62, 62);
+    visuals.widgets.hovered.bg_fill = p.hover;
     visuals.widgets.hovered.corner_radius = CornerRadius::same(3);
-    visuals.widgets.hovered.bg_stroke = Stroke::new(1.0_f32, Color32::from_rgb(88, 88, 88));
-    visuals.widgets.hovered.fg_stroke = Stroke::new(1.0_f32, Color32::WHITE);
+    visuals.widgets.hovered.bg_stroke = Stroke::new(1.0_f32, p.hover_stroke);
+    visuals.widgets.hovered.fg_stroke = Stroke::new(1.0_f32, strong_fg);
     visuals.widgets.hovered.expansion = 0.0;
 
     // Active (pressed)
@@ -209,18 +308,19 @@ pub fn apply_adobe_theme(ctx: &egui::Context) {
     visuals.widgets.active.expansion = 0.0;
 
     // Open (ComboBox / menu)
-    visuals.widgets.open.bg_fill = Color32::from_rgb(42, 42, 42);
+    visuals.widgets.open.bg_fill = p.open;
     visuals.widgets.open.corner_radius = CornerRadius::same(3);
     visuals.widgets.open.bg_stroke = Stroke::new(1.0_f32, Color32::from_rgb(20, 115, 230));
-    visuals.widgets.open.fg_stroke = Stroke::new(1.0_f32, Color32::WHITE);
+    visuals.widgets.open.fg_stroke = Stroke::new(1.0_f32, strong_fg);
 
     // Noninteractive (labels, static frames)
-    visuals.widgets.noninteractive.bg_fill = Color32::from_rgb(30, 30, 30);
-    visuals.widgets.noninteractive.bg_stroke = Stroke::new(1.0_f32, Color32::from_rgb(48, 48, 48));
+    visuals.widgets.noninteractive.bg_fill = p.noninteractive;
+    visuals.widgets.noninteractive.bg_stroke =
+        Stroke::new(1.0_f32, p.noninteractive_stroke);
     visuals.widgets.noninteractive.fg_stroke =
-        Stroke::new(1.0_f32, Color32::from_rgb(175, 175, 175));
+        Stroke::new(1.0_f32, p.noninteractive_fg);
 
-    visuals.window_stroke = Stroke::new(1.0_f32, Color32::from_rgb(52, 52, 52));
+    visuals.window_stroke = Stroke::new(1.0_f32, p.window_stroke);
 
     ctx.set_visuals(visuals);
 

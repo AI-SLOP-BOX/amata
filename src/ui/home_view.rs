@@ -1,6 +1,10 @@
 use crate::core::state::AppState;
 use eframe::egui::{self, Color32, Pos2, Rect, RichText, Stroke, StrokeKind, Ui, Vec2};
 
+// Minimum main-column width before the home screen splits into two
+// columns; below it the right rail stacks under the main column.
+pub(crate) const TWO_COL_MIN_W: f32 = 420.0;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HomeSidebarTab {
     Home,
@@ -113,7 +117,7 @@ impl HomeView {
                             // Two columns when there is room for a usable main
                             // column plus the right rail; otherwise stack so
                             // the tutorial rail is never clipped away.
-                            let two_col = avail_w >= 420.0 + gap + right_w;
+                            let two_col = avail_w >= TWO_COL_MIN_W + gap + right_w;
 
                             if two_col {
                                 ui.horizontal_top(|ui| {

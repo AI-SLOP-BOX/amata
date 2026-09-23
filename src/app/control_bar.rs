@@ -3,6 +3,13 @@ use super::IrasuApp;
 use crate::core::state::Tool;
 use egui::{self, Color32, Vec2};
 
+// Progressive disclosure thresholds: below each width the matching
+// controls hide so the bar stays usable at the 640px window minimum.
+pub(crate) const SHOW_XY_W: f32 = 760.0;
+pub(crate) const SHOW_STYLE_W: f32 = 640.0;
+pub(crate) const SHOW_COMBOS_W: f32 = 520.0;
+pub(crate) const SHOW_MORE_W: f32 = 360.0;
+
 /// Platform modifier shown in UI labels ("Cmd" on macOS, "Ctrl" elsewhere).
 pub(crate) fn mod_key() -> &'static str {
     if cfg!(target_os = "macos") {
@@ -19,7 +26,7 @@ impl IrasuApp {
             .resizable(false)
             .show(ctx, |ui| {
                 // Wraps instead of clipping when the window is at the
-                // 800px minimum (the old single horizontal row overflowed
+                // 640px minimum (the old single horizontal row overflowed
                 // and pushed the right-hand buttons off-screen).
                 ui.horizontal_wrapped(|ui| {
                     ui.spacing_mut().item_spacing.x = 6.0;
@@ -27,9 +34,10 @@ impl IrasuApp {
                     let avail_before = ui.available_width();
                     // Progressive disclosure: core controls stay visible,
                     // secondary combos hide once the row is tight.
-                    let show_combos = avail_before >= 520.0;
-                    let show_style = avail_before >= 640.0;
-                    let show_xy = avail_before >= 760.0;
+                    let show_combos = avail_before >= SHOW_COMBOS_W;
+                    let show_style = avail_before >= SHOW_STYLE_W;
+                    let show_xy = avail_before >= SHOW_XY_W;
+                    let show_more = avail_before >= SHOW_MORE_W;
                     if has_sel {
                         // Read live values from first selected object
                         let first_id = self.state.selected_ids.first().cloned();
@@ -165,8 +173,11 @@ impl IrasuApp {
                                     self.state.commit_object_edits("Edit Stroke");
                                 }
 
-                                // Stroke Width
-                                ui.label(egui::RichText::new("線:").size(11.0));
+                                // Stroke Width (label drops first at the
+                                // tightest tier; the " pt" suffix remains)
+                                if show_more {
+                                    ui.label(egui::RichText::new("線:").size(11.0));
+                                }
                                 let mut sw = obj_sw;
                                 let sw_resp = ui.add(
                                     egui::DragValue::new(&mut sw)
@@ -289,7 +300,9 @@ impl IrasuApp {
 
                                 // Opacity
                                 let mut op = self.state.opacity;
-                                ui.label(egui::RichText::new("不透明度:").size(11.0));
+                                if show_more {
+                                    ui.label(egui::RichText::new("不透明度:").size(11.0));
+                                }
                                 let op_resp = ui.add(
                                     egui::Slider::new(&mut op, 0.0..=1.0)
                                         .custom_formatter(|n, _| format!("{:.0}%", n * 100.0)),
@@ -484,7 +497,9 @@ impl IrasuApp {
                         }
 
                         // Stroke Width
-                        ui.label(egui::RichText::new("線:").size(11.0));
+                        if show_more {
+                            ui.label(egui::RichText::new("線:").size(11.0));
+                        }
                         let mut sw = self.state.stroke_width;
                         if ui
                             .add(
@@ -576,7 +591,9 @@ impl IrasuApp {
 
                         // Opacity
                         let mut op = self.state.opacity;
-                        ui.label(egui::RichText::new("不透明度:").size(11.0));
+                        if show_more {
+                            ui.label(egui::RichText::new("不透明度:").size(11.0));
+                        }
                         if ui
                             .add(
                                 egui::Slider::new(&mut op, 0.0..=1.0)

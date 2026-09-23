@@ -89,10 +89,17 @@ impl NewDocModal {
     pub fn show(
         &mut self,
         ctx: &egui::Context,
-        _state: &mut AppState,
+        state: &mut AppState,
     ) -> Option<NewDocRequest> {
         if !self.is_open {
             return None;
+        }
+        // "新規ドキュメントを作成するときに設定ダイアログを表示" is off: the
+        // current fields (defaults or a home-screen preset) *are* the settings,
+        // so create straight away instead of showing the dialog.
+        if !state.prefs.show_new_doc_dialog {
+            self.is_open = false;
+            return Some(self.build_request());
         }
         let mut request = None;
         let mut close_clicked = false;
@@ -136,31 +143,7 @@ impl NewDocModal {
                             )
                             .clicked()
                         {
-                            let (w, h) = self.dims_to_px();
-                            let name = if self.doc_name.trim().is_empty() {
-                                "名称未設定".to_string()
-                            } else {
-                                self.doc_name.trim().to_string()
-                            };
-                            let color_mode = if self.color_mode.contains("CMYK") {
-                                crate::core::document::ColorMode::Cmyk
-                            } else {
-                                crate::core::document::ColorMode::Rgb
-                            };
-                            request = Some(NewDocRequest {
-                                name,
-                                width: w,
-                                height: h,
-                                color_mode,
-                                artboard_count: self.artboard_count,
-                                bleed: crate::core::print::mm_to_pt(
-                                    self.bleed_top
-                                        .max(self.bleed_bottom)
-                                        .max(self.bleed_left)
-                                        .max(self.bleed_right)
-                                        .max(0.0),
-                                ),
-                            });
+                            request = Some(self.build_request());
                             self.is_open = false;
                         }
                         return;
@@ -181,6 +164,36 @@ impl NewDocModal {
             self.is_open = is_open;
         }
         request
+    }
+
+    /// Validate the current fields into a request. Shared by the *作成*
+    /// button and the no-dialog path of [`Self::show`].
+    fn build_request(&self) -> NewDocRequest {
+        let (w, h) = self.dims_to_px();
+        let name = if self.doc_name.trim().is_empty() {
+            "名称未設定".to_string()
+        } else {
+            self.doc_name.trim().to_string()
+        };
+        let color_mode = if self.color_mode.contains("CMYK") {
+            crate::core::document::ColorMode::Cmyk
+        } else {
+            crate::core::document::ColorMode::Rgb
+        };
+        NewDocRequest {
+            name,
+            width: w,
+            height: h,
+            color_mode,
+            artboard_count: self.artboard_count,
+            bleed: crate::core::print::mm_to_pt(
+                self.bleed_top
+                    .max(self.bleed_bottom)
+                    .max(self.bleed_left)
+                    .max(self.bleed_right)
+                    .max(0.0),
+            ),
+        }
     }
 
     fn show_presets(&mut self, ui: &mut Ui, left_w: f32) {
