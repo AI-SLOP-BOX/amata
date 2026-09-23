@@ -456,15 +456,15 @@ impl PropertyPanel {
                     .clicked()
                 {
                     let sel = state.selected_ids.clone();
-                    for id in &sel {
-                        for (_, o) in state.document.all_objects_mut() {
-                            if &o.id == id {
+                    state.undoable_snapshot("Offset Path", &sel, |doc| {
+                        for id in &sel {
+                            if let Some(o) = doc.find_object_mut(id) {
                                 let path = o.to_path_data();
                                 let off = crate::core::offset::offset_path(&path, 5.0);
                                 o.object_type = ObjectType::Path(off);
                             }
                         }
-                    }
+                    });
                 }
                 if ui
                     .add(
@@ -474,9 +474,9 @@ impl PropertyPanel {
                     .clicked()
                 {
                     let sel = state.selected_ids.clone();
-                    for id in &sel {
-                        for (_, o) in state.document.all_objects_mut() {
-                            if &o.id == id {
+                    state.undoable_snapshot("Outline Stroke", &sel, |doc| {
+                        for id in &sel {
+                            if let Some(o) = doc.find_object_mut(id) {
                                 let path = o.to_path_data();
                                 let stroke = o.stroke.clone().unwrap_or_default();
                                 let outlined =
@@ -484,7 +484,7 @@ impl PropertyPanel {
                                 o.object_type = ObjectType::Path(outlined);
                             }
                         }
-                    }
+                    });
                 }
             });
 
@@ -731,7 +731,10 @@ impl PropertyPanel {
                     };
                     if ui
                         .add(sg_btn)
-                        .on_hover_text("スマートガイド (Cmd+U)")
+                        .on_hover_text(format!(
+                            "スマートガイド ({}+U)",
+                            crate::app::control_bar::mod_key()
+                        ))
                         .clicked()
                     {
                         state.show_smart_guides = !state.show_smart_guides;

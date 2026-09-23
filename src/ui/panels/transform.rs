@@ -1,3 +1,4 @@
+use crate::app::control_bar::mod_key;
 use crate::core::history::{BatchCommand, Command, MoveObjectCommand};
 use crate::core::state::AppState;
 use egui::{RichText, Ui};
@@ -114,35 +115,38 @@ impl AlignPanel {
                 .add_enabled(!sel.is_empty(), egui::Button::new("⇆ Flip H"))
                 .clicked()
             {
-                for id in &sel {
-                    for (_, obj) in state.document.all_objects_mut() {
-                        if &obj.id == id {
+                let ids = sel.clone();
+                state.undoable_snapshot("Flip Horizontal", &ids, |doc| {
+                    for id in &ids {
+                        if let Some(obj) = doc.find_object_mut(id) {
                             obj.transform.scale_x *= -1.0;
                         }
                     }
-                }
+                });
             }
             if ui
                 .add_enabled(!sel.is_empty(), egui::Button::new("⇅ Flip V"))
                 .clicked()
             {
-                for id in &sel {
-                    for (_, obj) in state.document.all_objects_mut() {
-                        if &obj.id == id {
+                let ids = sel.clone();
+                state.undoable_snapshot("Flip Vertical", &ids, |doc| {
+                    for id in &ids {
+                        if let Some(obj) = doc.find_object_mut(id) {
                             obj.transform.scale_y *= -1.0;
                         }
                     }
-                }
+                });
             }
         });
 
         ui.add_space(4.0);
         ui.label(RichText::new("Arrange:").weak().size(11.0));
         ui.horizontal(|ui| {
+            let mk = mod_key();
             let has_sel = !sel.is_empty();
             if ui
                 .add_enabled(has_sel, egui::Button::new("⬍ To Front"))
-                .on_hover_text("Ctrl+Shift+]")
+                .on_hover_text(format!("{mk}+Shift+]"))
                 .clicked()
             {
                 state.reorder_objects_undoable("Bring to Front", |doc| {
@@ -160,7 +164,7 @@ impl AlignPanel {
             }
             if ui
                 .add_enabled(has_sel, egui::Button::new("↑ Forward"))
-                .on_hover_text("Ctrl+]")
+                .on_hover_text(format!("{mk}+]"))
                 .clicked()
             {
                 state.reorder_objects_undoable("Bring Forward", |doc| {
@@ -179,7 +183,7 @@ impl AlignPanel {
             }
             if ui
                 .add_enabled(has_sel, egui::Button::new("↓ Backward"))
-                .on_hover_text("Ctrl+[")
+                .on_hover_text(format!("{mk}+["))
                 .clicked()
             {
                 state.reorder_objects_undoable("Send Backward", |doc| {
@@ -198,7 +202,7 @@ impl AlignPanel {
             }
             if ui
                 .add_enabled(has_sel, egui::Button::new("⬌ To Back"))
-                .on_hover_text("Ctrl+Shift+[")
+                .on_hover_text(format!("{mk}+Shift+["))
                 .clicked()
             {
                 state.reorder_objects_undoable("Send to Back", |doc| {

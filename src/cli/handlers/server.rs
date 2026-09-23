@@ -556,7 +556,15 @@ fn export_svg_route(api: &mut ApiState, query: &str) -> ApiResponse {
     let svg = crate::io::svg::export_svg(&api.document);
     match query_param(query, "path") {
         Some(raw_path) => {
-            let path = PathBuf::from(raw_path);
+            // Absolute paths are fine for a local tool, but `..` segments
+            // must not be usable to walk out of a caller-supplied base.
+            let path = PathBuf::from(&raw_path);
+            let has_dotdot = path
+                .components()
+                .any(|c| matches!(c, std::path::Component::ParentDir));
+            if has_dotdot {
+                return ApiResponse::error(422, "path must not contain '..' segments");
+            }
             if path.is_dir() {
                 return ApiResponse::error(422, "path points at a directory");
             }
@@ -681,7 +689,7 @@ fn write_response(stream: &mut TcpStream, response: &ApiResponse) -> std::io::Re
          Content-Type: {}\r\n\
          Content-Length: {}\r\n\
          Connection: close\r\n\
-         Access-Control-Allow-Origin: *\r\n\
+         Access-Control-Allow-Origin: http://127.0.0.1\r\n\
          Access-Control-Allow-Methods: GET, POST, OPTIONS\r\n\
          Access-Control-Allow-Headers: Content-Type\r\n\
          \r\n",

@@ -36,12 +36,19 @@ impl OnboardingTour {
                 .interactable(true)
                 .order(egui::Order::Tooltip)
                 .show(ctx, |ui| {
+                    let bubble = Vec2::new(210.0, 120.0);
+                    let clamp = |p: Pos2| -> Pos2 {
+                        Pos2::new(
+                            p.x.clamp(8.0, (screen.max.x - bubble.x - 8.0).max(8.0)),
+                            p.y.clamp(48.0, (screen.max.y - bubble.y - 36.0).max(48.0)),
+                        )
+                    };
                     match self.step {
-                        1 => self.render_bubble(ui, Pos2::new(75.0, 130.0), Pos2::new(35.0, 150.0), 1, "ツールパネル", "ここから描画や編集のツールを選びます。まずはペンツールを使ってみましょう。"),
-                        2 => self.render_bubble(ui, Pos2::new(80.0, 310.0), Pos2::new(35.0, 320.0), 2, "ペンツール  [P]", "アンカーポイントを打って、自由なパスを描くことができます。"),
-                        3 => self.render_bubble(ui, Pos2::new(screen.center().x - 110.0, screen.center().y - 40.0), Pos2::new(screen.center().x, screen.center().y - 80.0), 3, "アートボード", "ここにイラストやデザインを作成します。ズームや移動で、自由に作業できます。"),
-                        4 => self.render_bubble(ui, Pos2::new(screen.max.x - 470.0, 230.0), Pos2::new(screen.max.x - 300.0, 140.0), 4, "レイヤーパネル", "オブジェクトをレイヤーで管理できます。複雑なデザインも整理して編集できます。"),
-                        5 => self.render_bubble(ui, Pos2::new(screen.max.x - 450.0, screen.max.y - 280.0), Pos2::new(screen.max.x - 280.0, screen.max.y - 280.0), 5, "プロパティパネル", "選択したオブジェクトの設定をここで調整できます。"),
+                        1 => self.render_bubble(ui, clamp(Pos2::new(75.0, 130.0)), Pos2::new(35.0, 150.0), 1, "ツールパネル", "ここから描画や編集のツールを選びます。まずはペンツールを使ってみましょう。"),
+                        2 => self.render_bubble(ui, clamp(Pos2::new(80.0, 310.0)), Pos2::new(35.0, 320.0), 2, "ペンツール  [P]", "アンカーポイントを打って、自由なパスを描くことができます。"),
+                        3 => self.render_bubble(ui, clamp(Pos2::new(screen.center().x - 110.0, screen.center().y - 40.0)), Pos2::new(screen.center().x, screen.center().y - 80.0), 3, "アートボード", "ここにイラストやデザインを作成します。ズームや移動で、自由に作業できます。"),
+                        4 => self.render_bubble(ui, clamp(Pos2::new(screen.max.x - 470.0, 230.0)), Pos2::new(screen.max.x - 300.0, 140.0), 4, "レイヤーパネル", "オブジェクトをレイヤーで管理できます。複雑なデザインも整理して編集できます。"),
+                        5 => self.render_bubble(ui, clamp(Pos2::new(screen.max.x - 450.0, screen.max.y - 280.0)), Pos2::new(screen.max.x - 280.0, screen.max.y - 280.0), 5, "プロパティパネル", "選択したオブジェクトの設定をここで調整できます。"),
                         _ => {}
                     }
                 });
@@ -74,7 +81,7 @@ impl OnboardingTour {
                         });
 
                         ui.add_space(4.0);
-                        ui.label(RichText::new("基本操作を学んで、\nすぐにデザインを始めましょう。\nこのチュートリアルでは、描画の基本から\n書き出しまでをステップごとに案内します。").size(10.0).color(Color32::from_rgb(160, 160, 160)));
+                        ui.label(RichText::new("基本操作を学んで、すぐにデザインを始めましょう。このチュートリアルでは、描画の基本から書き出しまでをステップごとに案内します。").size(10.0).color(Color32::from_rgb(160, 160, 160)));
 
                         ui.add_space(8.0);
                         ui.horizontal(|ui| {
@@ -86,6 +93,11 @@ impl OnboardingTour {
 
                         ui.add_space(8.0);
 
+                        // Lessons + hint need scrolling on short windows.
+                        egui::ScrollArea::vertical()
+                            .id_salt("onboarding_lessons_scroll")
+                            .auto_shrink([false, false])
+                            .show(ui, |ui| {
                         // Lessons list
                         let lessons = [
                             (1, "作業画面の基本", "ツール、パネル、アートボードの\n役割を知ろう", "2分", true),
@@ -146,6 +158,7 @@ impl OnboardingTour {
 
                         let link_btn = Rect::from_min_max(Pos2::new(h_rect.max.x - 90.0, h_rect.max.y - 18.0), Pos2::new(h_rect.max.x - 8.0, h_rect.max.y - 4.0));
                         ui.painter().text(link_btn.center(), egui::Align2::CENTER_CENTER, "さらに詳しく見る ↗", egui::FontId::proportional(9.0), Color32::from_rgb(180, 180, 180));
+                            });
                     });
                 });
         }
@@ -204,31 +217,18 @@ impl OnboardingTour {
             Color32::WHITE,
         );
 
-        // Body
-        let body_lines = body.chars().collect::<Vec<_>>();
-        let mut line1 = String::new();
-        let mut line2 = String::new();
-        for (idx, ch) in body_lines.iter().enumerate() {
-            if idx < 17 {
-                line1.push(*ch);
-            } else {
-                line2.push(*ch);
-            }
-        }
-        ui.painter().text(
+        // Body: wrap to the bubble width instead of a fixed char split,
+        // which used to dump the entire remainder onto line2.
+        let body_font = egui::FontId::proportional(10.0);
+        let body_color = Color32::from_rgb(200, 200, 200);
+        let body_rect = Rect::from_min_size(
             Pos2::new(rect.min.x + 10.0, rect.min.y + 36.0),
-            egui::Align2::LEFT_TOP,
-            &line1,
-            egui::FontId::proportional(10.0),
-            Color32::from_rgb(200, 200, 200),
+            Vec2::new(rect.width() - 20.0, 44.0),
         );
-        ui.painter().text(
-            Pos2::new(rect.min.x + 10.0, rect.min.y + 50.0),
-            egui::Align2::LEFT_TOP,
-            &line2,
-            egui::FontId::proportional(10.0),
-            Color32::from_rgb(200, 200, 200),
-        );
+        let body_galley = ui.fonts(|f| {
+            f.layout(body.to_string(), body_font, body_color, body_rect.width())
+        });
+        ui.painter().galley(body_rect.min, body_galley, body_color);
 
         // Progress Text "1/5"
         ui.painter().text(

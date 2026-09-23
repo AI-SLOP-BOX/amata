@@ -62,6 +62,7 @@ impl StrokePanel {
             ui.label("Color:");
             let mut c = color;
             if ui.color_edit_button_rgba_premultiplied(&mut c).changed() {
+                state.ensure_object_snapshot(&id);
                 for (_, obj) in state.document.all_objects_mut() {
                     if obj.id == id {
                         if let Some(ref mut s) = obj.stroke {
@@ -69,6 +70,7 @@ impl StrokePanel {
                         }
                     }
                 }
+                state.commit_object_edits("Edit Stroke Color");
             }
         });
 
@@ -85,6 +87,7 @@ impl StrokePanel {
                 )
                 .changed()
             {
+                state.ensure_object_snapshot(&id);
                 for (_, obj) in state.document.all_objects_mut() {
                     if obj.id == id {
                         if let Some(ref mut s) = obj.stroke {
@@ -92,6 +95,7 @@ impl StrokePanel {
                         }
                     }
                 }
+                state.commit_object_edits("Edit Stroke Width");
             }
         });
 
@@ -110,6 +114,7 @@ impl StrokePanel {
                 }
             }
             if new_cap != cap {
+                state.ensure_object_snapshot(&id);
                 for (_, obj) in state.document.all_objects_mut() {
                     if obj.id == id {
                         if let Some(ref mut s) = obj.stroke {
@@ -117,6 +122,7 @@ impl StrokePanel {
                         }
                     }
                 }
+                state.commit_object_edits("Edit Stroke Cap");
             }
         });
 
@@ -133,6 +139,7 @@ impl StrokePanel {
                 }
             }
             if new_join != join {
+                state.ensure_object_snapshot(&id);
                 for (_, obj) in state.document.all_objects_mut() {
                     if obj.id == id {
                         if let Some(ref mut s) = obj.stroke {
@@ -140,6 +147,7 @@ impl StrokePanel {
                         }
                     }
                 }
+                state.commit_object_edits("Edit Stroke Join");
             }
         });
 
@@ -152,6 +160,7 @@ impl StrokePanel {
                     .add(egui::DragValue::new(&mut ml).speed(0.5).range(1.0..=100.0))
                     .changed()
                 {
+                    state.ensure_object_snapshot(&id);
                     for (_, obj) in state.document.all_objects_mut() {
                         if obj.id == id {
                             if let Some(ref mut s) = obj.stroke {
@@ -159,6 +168,7 @@ impl StrokePanel {
                             }
                         }
                     }
+                    state.commit_object_edits("Edit Miter Limit");
                 }
             });
         }
@@ -179,6 +189,7 @@ impl StrokePanel {
                             .collect(),
                     )
                 };
+                state.ensure_object_snapshot(&id);
                 for (_, obj) in state.document.all_objects_mut() {
                     if obj.id == id {
                         if let Some(ref mut s) = obj.stroke {
@@ -186,6 +197,7 @@ impl StrokePanel {
                         }
                     }
                 }
+                state.commit_object_edits("Edit Dash Pattern");
             }
         });
         ui.label(
@@ -215,6 +227,7 @@ impl StrokePanel {
                 }
             }
             if new_as != arrow_start {
+                state.ensure_object_snapshot(&id);
                 for (_, obj) in state.document.all_objects_mut() {
                     if obj.id == id {
                         if let Some(ref mut s) = obj.stroke {
@@ -222,6 +235,7 @@ impl StrokePanel {
                         }
                     }
                 }
+                state.commit_object_edits("Edit Arrow Start");
             }
         });
         ui.horizontal(|ui| {
@@ -241,6 +255,7 @@ impl StrokePanel {
                 }
             }
             if new_ae != arrow_end {
+                state.ensure_object_snapshot(&id);
                 for (_, obj) in state.document.all_objects_mut() {
                     if obj.id == id {
                         if let Some(ref mut s) = obj.stroke {
@@ -248,6 +263,7 @@ impl StrokePanel {
                         }
                     }
                 }
+                state.commit_object_edits("Edit Arrow End");
             }
         });
     }
@@ -282,11 +298,13 @@ impl BlendModePanel {
         for mode in BlendMode::all() {
             let is_selected = current == *mode;
             if ui.selectable_label(is_selected, mode.name()).clicked() && !is_selected {
+                state.ensure_object_snapshot(&id);
                 for (_, obj) in state.document.all_objects_mut() {
                     if obj.id == id {
                         obj.blend_mode = *mode;
                     }
                 }
+                state.commit_object_edits("Edit Blend Mode");
             }
         }
     }
@@ -661,13 +679,12 @@ impl SwatchesPanel {
                         let fc = state.fill_color;
                         let sel = state.selected_ids.clone();
                         for id in &sel {
+                            state.ensure_object_snapshot(id);
                             if let Some(o) = state.document.find_object_mut(id) {
                                 o.fill = Some(FillStyle::solid(fc));
                             }
                         }
-                    }
-                    if resp.drag_stopped() {
-                        state.commit_object_edits("Edit Object");
+                        state.commit_object_edits("Edit Fill (CMYK)");
                     }
                 }
             });
@@ -955,13 +972,14 @@ impl ColorHarmonyPanel {
 
         if response.clicked() {
             state.fill_color = color;
-            for id in &state.selected_ids {
-                for (_, obj) in state.document.all_objects_mut() {
-                    if &obj.id == id {
-                        obj.fill = Some(FillStyle::solid(color));
+            let sel = state.selected_ids.clone();
+            state.undoable_snapshot("Apply Swatch", &sel, |doc| {
+                for id in &sel {
+                    if let Some(o) = doc.find_object_mut(id) {
+                        o.fill = Some(FillStyle::solid(color));
                     }
                 }
-            }
+            });
         }
     }
 }

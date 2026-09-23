@@ -8,7 +8,7 @@ pub mod toolbar;
 use crate::core::state::AppState;
 use crate::ui::{
     apply_adobe_theme, AboutModal, CanvasWidget, ExportModal, HomeView, NewDocModal,
-    OnboardingTour, PreferencesDialog, TimelineWidget,
+    OnboardingTour, PreferencesDialog, ShortcutsModal, TimelineWidget,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -34,6 +34,7 @@ pub struct IrasuApp {
     export_modal: ExportModal,
     new_doc_modal: NewDocModal,
     about_modal: AboutModal,
+    shortcuts_modal: ShortcutsModal,
     home_view: HomeView,
     onboarding_tour: OnboardingTour,
     search_query: String,
@@ -201,6 +202,7 @@ impl Default for IrasuApp {
             export_modal: ExportModal::default(),
             new_doc_modal: NewDocModal::default(),
             about_modal: AboutModal::default(),
+            shortcuts_modal: ShortcutsModal::default(),
             home_view: HomeView::default(),
             onboarding_tour: OnboardingTour::default(),
             search_query: String::new(),
@@ -309,6 +311,9 @@ impl eframe::App for IrasuApp {
                         self.state
                             .notify_info("キャンバスと差分パネルに変更箇所をハイライト表示中");
                     }
+                    // Close the modal: Escape/×/Accept/Revert were the only
+                    // ways out before, trapping users who just wanted to look.
+                    self.external_change_dialog.clear();
                 }
                 crate::ui::ExternalChangeAction::Accept => {
                     if let Some(notice) = self.external_change_dialog.notice.take() {
@@ -399,6 +404,11 @@ impl eframe::App for IrasuApp {
                     }
                 }
                 crate::ui::ExternalChangeAction::Dismiss => {
+                    // Sync the watcher to the on-disk content so this notice
+                    // does not re-fire every second (hash was never updated).
+                    if let Some(w) = self.file_watcher.as_mut() {
+                        w.update_timestamp();
+                    }
                     self.external_change_dialog.clear();
                     self.state.is_comparing_diff = false;
                 }
@@ -408,20 +418,28 @@ impl eframe::App for IrasuApp {
         // Keyboard shortcuts
         self.handle_shortcuts(ctx);
 
-        // Top Menu Bar
+        // Top Menu Bar (always visible, including on the home hub so the
+        // user can still reach File / Edit / the Preferences dialog).
         self.show_menu_bar(ctx);
 
-        // Top Horizontal Control / Options Bar
-        self.show_control_bar(ctx);
+        // Editor chrome is hidden while the home hub is open: the control
+        // bar, document tabs, status bar and left toolbar belong to the
+        // document workspace, and showing them on the home screen left
+        // stray "settings-like" widgets (opacity slider, environment
+        // settings button) floating above the hub.
+        if !self.home_view.is_open {
+            // Top Horizontal Control / Options Bar
+            self.show_control_bar(ctx);
 
-        // Document Tab Bar
-        self.show_document_tab_bar(ctx);
+            // Document Tab Bar
+            self.show_document_tab_bar(ctx);
 
-        // Bottom Status Bar
-        self.show_status_bar(ctx);
+            // Bottom Status Bar
+            self.show_status_bar(ctx);
 
-        // Left Vertical Toolbar
-        self.show_toolbar(ctx);
+            // Left Vertical Toolbar
+            self.show_toolbar(ctx);
+        }
 
         // Periodic autosave of dirty work to a recovery slot (temp dir,
         // always full-fidelity project JSON — never touches the user's
@@ -496,6 +514,7 @@ impl eframe::App for IrasuApp {
                 self.create_new_document(req);
             }
             self.about_modal.show(ctx);
+            self.shortcuts_modal.show(ctx, &mut self.state);
             return;
         }
 
@@ -527,6 +546,7 @@ impl eframe::App for IrasuApp {
             self.create_new_document(req);
         }
         self.about_modal.show(ctx);
+        self.shortcuts_modal.show(ctx, &mut self.state);
 
         // Floating Toast Notification
         self.state.clear_toast_if_expired();

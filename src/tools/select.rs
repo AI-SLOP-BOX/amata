@@ -23,7 +23,16 @@ impl SelectState {
         if state.isolated_group_id.is_some() {
             return self.hit_test_isolated(state, wx, wy);
         }
-        for (_, obj) in state.document.all_objects().rev() {
+        for (layer_idx, obj) in state.document.all_objects().rev() {
+            // Skip objects on hidden or locked layers too.
+            if state
+                .document
+                .layers
+                .get(layer_idx)
+                .is_some_and(|l| !l.visible || l.locked)
+            {
+                continue;
+            }
             if obj.visible && !obj.locked && obj.hit_test(wx, wy) {
                 return Some(obj.id.clone());
             }

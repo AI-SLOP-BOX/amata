@@ -1,36 +1,22 @@
 use super::{zoom_to_fit, ActiveTab, IrasuApp};
+use crate::app::control_bar::mod_key;
 use crate::app::icons::{icon_bell, icon_button, icon_search};
 use crate::core::boolean::{execute_pathfinder, BooleanOp};
 use crate::core::document::Object;
-use egui::{self, Color32, Pos2, RichText, Vec2};
+use egui::{self, Color32, RichText, Vec2};
 impl IrasuApp {
     pub(super) fn show_menu_bar(&mut self, ctx: &egui::Context) {
         // Top Menu Bar
         egui::TopBottomPanel::top("menu_bar").show(ctx, |ui| {
             egui::menu::bar(ui, |ui| {
-                // macOS Window Control Dots (Red, Yellow, Green)
-                let (dots_rect, _) =
-                    ui.allocate_exact_size(Vec2::new(52.0, 18.0), egui::Sense::hover());
+                // Native macOS traffic lights live in the OS title bar
+                // above this menu. Drawing look-alike dots here stacked a
+                // second, non-functional set on top of the real ones.
+                ui.add_space(4.0);
                 // Amata Logo & Home Button
                 let (logo_rect, logo_resp) =
                     ui.allocate_exact_size(Vec2::new(26.0, 22.0), egui::Sense::click());
                 let p = ui.painter();
-                let cy = dots_rect.center().y;
-                p.circle_filled(
-                    Pos2::new(dots_rect.min.x + 6.0, cy),
-                    5.5,
-                    Color32::from_rgb(255, 95, 87),
-                );
-                p.circle_filled(
-                    Pos2::new(dots_rect.min.x + 22.0, cy),
-                    5.5,
-                    Color32::from_rgb(254, 188, 46),
-                );
-                p.circle_filled(
-                    Pos2::new(dots_rect.min.x + 38.0, cy),
-                    5.5,
-                    Color32::from_rgb(40, 200, 64),
-                );
 
                 // Draw Amata Official Vector Logo
                 let hover = logo_resp.hovered();
@@ -62,7 +48,10 @@ impl IrasuApp {
                 ui.add_space(8.0);
 
                 ui.menu_button("ファイル (F)", |ui| {
-                    if ui.button("新規ドキュメント... (Cmd+N)").clicked() {
+                    if ui
+                        .button(format!("新規ドキュメント... ({}+N)", mod_key()))
+                        .clicked()
+                    {
                         self.new_doc_modal.is_open = true;
                         ui.close_menu();
                     }
@@ -210,7 +199,7 @@ impl IrasuApp {
                         }
                         ui.close_menu();
                     }
-                    if ui.button("Save (Cmd+S)").clicked() {
+                    if ui.button(format!("Save ({}+S)", mod_key())).clicked() {
                         if let Some(ref mut watcher) = self.file_watcher {
                             self.state.sync_doc_extras();
                             match crate::cli::handlers::common::save_any_document(
@@ -274,6 +263,16 @@ impl IrasuApp {
                             self.state.sync_doc_extras();
                             match crate::io::project::save_project(&self.state.document, &path) {
                                 Ok(_) => {
+                                    // Clear dirty + rebind Cmd+S destination to
+                                    // this project (same fix Load Project has).
+                                    self.state.undo_manager.mark_saved();
+                                    let mut watcher =
+                                        crate::core::watcher::FileWatcher::new(path.clone());
+                                    if let Ok(content) = std::fs::read_to_string(&path) {
+                                        watcher.mark_saved(&content);
+                                    }
+                                    self.file_watcher = Some(watcher);
+                                    self.version_history_panel.refresh_history(&path);
                                     crate::io::recent::push_recent(
                                         &path,
                                         self.state.document.width,
@@ -326,7 +325,10 @@ impl IrasuApp {
                         ui.close_menu();
                     }
                     ui.separator();
-                    if ui.button("Export...  (Ctrl+Shift+E)").clicked() {
+                    if ui
+                        .button(format!("Export...  ({}+Shift+E)", mod_key()))
+                        .clicked()
+                    {
                         self.export_modal.is_open = true;
                         ui.close_menu();
                     }
@@ -446,7 +448,10 @@ impl IrasuApp {
                     if ui
                         .add_enabled(
                             can_undo,
-                            egui::Button::new(format!("Undo ({undo_name})  (Ctrl+Z)")),
+                            egui::Button::new(format!(
+                                "Undo ({undo_name})  ({}+Z)",
+                                mod_key()
+                            )),
                         )
                         .clicked()
                     {
@@ -456,7 +461,10 @@ impl IrasuApp {
                     if ui
                         .add_enabled(
                             can_redo,
-                            egui::Button::new(format!("Redo ({redo_name})  (Ctrl+Y)")),
+                            egui::Button::new(format!(
+                                "Redo ({redo_name})  ({}+Y)",
+                                mod_key()
+                            )),
                         )
                         .clicked()
                     {
@@ -464,7 +472,10 @@ impl IrasuApp {
                         ui.close_menu();
                     }
                     ui.separator();
-                    if ui.button("Select All  (Ctrl+A)").clicked() {
+                    if ui
+                        .button(format!("Select All  ({}+A)", mod_key()))
+                        .clicked()
+                    {
                         self.state.selected_ids = self
                             .state
                             .document
@@ -479,7 +490,10 @@ impl IrasuApp {
                         ui.close_menu();
                     }
                     ui.separator();
-                    if ui.button("Duplicate  (Ctrl+D)").clicked() {
+                    if ui
+                        .button(format!("Duplicate  ({}+D)", mod_key()))
+                        .clicked()
+                    {
                         let ids: Vec<String> = self.state.selected_ids.clone();
                         let mut new_objs = Vec::new();
                         for id in &ids {
@@ -507,7 +521,10 @@ impl IrasuApp {
                         ui.close_menu();
                     }
                     ui.separator();
-                    if ui.button("Preferences...  (Ctrl+K)").clicked() {
+                    if ui
+                        .button(format!("Preferences...  ({}+K)", mod_key()))
+                        .clicked()
+                    {
                         self.preferences_dialog.is_open = true;
                         ui.close_menu();
                     }
@@ -518,22 +535,24 @@ impl IrasuApp {
                     let multi_sel = self.state.selected_ids.len() >= 2;
 
                     if ui
-                        .add_enabled(multi_sel, egui::Button::new("Group  (Ctrl+G)"))
+                        .add_enabled(
+                            multi_sel,
+                            egui::Button::new(format!("Group  ({}+G)", mod_key())),
+                        )
                         .clicked()
                     {
-                        let mut objs = Vec::new();
-                        for id in &self.state.selected_ids {
-                            if let Some(o) = self.state.document.remove_object(id) {
-                                objs.push(o);
+                        // replace_selected: one undo step that restores the
+                        // originals. The old remove_object + AddObjectCommand
+                        // path left the sources deleted on undo.
+                        self.state.replace_selected("Group", |objects| {
+                            if objects.len() >= 2 {
+                                let group = Object::new_group("Group", objects);
+                                let gid = group.id.clone();
+                                Some((vec![group], vec![gid]))
+                            } else {
+                                None
                             }
-                        }
-                        let group = Object::new_group("Group", objs);
-                        let gid = group.id.clone();
-                        let cmd = Box::new(crate::core::history::AddObjectCommand::new(group));
-                        self.state
-                            .undo_manager
-                            .execute(cmd, &mut self.state.document);
-                        self.state.selected_ids = vec![gid];
+                        });
                         ui.close_menu();
                     }
 
@@ -542,15 +561,17 @@ impl IrasuApp {
                         .clicked()
                     {
                         let sel = self.state.selected_ids.clone();
-                        for id in &sel {
-                            for layer in self.state.document.layers.iter_mut() {
-                                if let Some(pos) = layer.objects.iter().position(|o| &o.id == id) {
-                                    let obj = layer.objects.remove(pos);
-                                    layer.objects.push(obj);
-                                    break;
+                        self.state.reorder_objects_undoable("Bring to Front", |doc| {
+                            for id in &sel {
+                                for layer in doc.layers.iter_mut() {
+                                    if let Some(pos) = layer.objects.iter().position(|o| &o.id == id) {
+                                        let obj = layer.objects.remove(pos);
+                                        layer.objects.push(obj);
+                                        break;
+                                    }
                                 }
                             }
-                        }
+                        });
                         ui.close_menu();
                     }
 
@@ -559,67 +580,69 @@ impl IrasuApp {
                         .clicked()
                     {
                         let sel = self.state.selected_ids.clone();
-                        for id in &sel {
-                            for layer in self.state.document.layers.iter_mut() {
-                                if let Some(pos) = layer.objects.iter().position(|o| &o.id == id) {
-                                    let obj = layer.objects.remove(pos);
-                                    layer.objects.insert(0, obj);
-                                    break;
+                        self.state.reorder_objects_undoable("Send to Back", |doc| {
+                            for id in &sel {
+                                for layer in doc.layers.iter_mut() {
+                                    if let Some(pos) = layer.objects.iter().position(|o| &o.id == id) {
+                                        let obj = layer.objects.remove(pos);
+                                        layer.objects.insert(0, obj);
+                                        break;
+                                    }
                                 }
                             }
-                        }
+                        });
                         ui.close_menu();
                     }
 
                     ui.separator();
 
                     if ui
-                        .add_enabled(multi_sel, egui::Button::new("Make Compound Path  (Ctrl+8)"))
+                        .add_enabled(
+                            multi_sel,
+                            egui::Button::new(format!(
+                                "Make Compound Path  ({}+8)",
+                                mod_key()
+                            )),
+                        )
                         .clicked()
                     {
-                        let sel = self.state.selected_ids.clone();
-                        let mut objs = Vec::new();
-                        for id in &sel {
-                            if let Some(obj) = self.state.document.remove_object(id) {
-                                objs.push(obj);
+                        self.state.replace_selected("Make Compound Path", |objects| {
+                            if objects.len() < 2 {
+                                return None;
                             }
-                        }
-                        if let Some(compound) = Object::make_compound_path(&objs) {
-                            let nid = compound.id.clone();
-                            let cmd =
-                                Box::new(crate::core::history::AddObjectCommand::new(compound));
-                            self.state
-                                .undo_manager
-                                .execute(cmd, &mut self.state.document);
-                            self.state.selected_ids = vec![nid];
-                        }
+                            Object::make_compound_path(&objects).map(|compound| {
+                                let nid = compound.id.clone();
+                                (vec![compound], vec![nid])
+                            })
+                        });
                         ui.close_menu();
                     }
 
                     if ui
                         .add_enabled(
                             has_sel,
-                            egui::Button::new("Release Compound Path  (Ctrl+Alt+Shift+8)"),
+                            egui::Button::new(format!(
+                                "Release Compound Path  ({}+Alt+Shift+8)",
+                                mod_key()
+                            )),
                         )
                         .clicked()
                     {
-                        let sel = self.state.selected_ids.clone();
-                        let mut new_ids = Vec::new();
-                        for id in &sel {
-                            if let Some(obj) = self.state.document.remove_object(id) {
-                                let released = obj.release_compound_path();
-                                for r in released {
-                                    let nid = r.id.clone();
-                                    new_ids.push(nid);
-                                    let cmd =
-                                        Box::new(crate::core::history::AddObjectCommand::new(r));
-                                    self.state
-                                        .undo_manager
-                                        .execute(cmd, &mut self.state.document);
+                        self.state.replace_selected_where(
+                            "Release Compound",
+                            |o| o.release_compound_path().len() > 1,
+                            |objects| {
+                                let mut added = Vec::new();
+                                let mut new_ids = Vec::new();
+                                for obj in objects {
+                                    for r in obj.release_compound_path() {
+                                        new_ids.push(r.id.clone());
+                                        added.push(r);
+                                    }
                                 }
-                            }
-                        }
-                        self.state.selected_ids = new_ids;
+                                Some((added, new_ids))
+                            },
+                        );
                         ui.close_menu();
                     }
                 });
@@ -629,36 +652,29 @@ impl IrasuApp {
                     if ui
                         .add_enabled(
                             has_sel,
-                            egui::Button::new("Create Outlines  (Ctrl+Shift+O)"),
+                            egui::Button::new(format!(
+                                "Create Outlines  ({}+Shift+O)",
+                                mod_key()
+                            )),
                         )
                         .clicked()
                     {
-                        let sel = self.state.selected_ids.clone();
-                        let mut new_ids = Vec::new();
-                        for id in &sel {
-                            if let Some(obj) = self.state.document.remove_object(id) {
+                        self.state.replace_selected("Create Outlines", |objects| {
+                            let mut added = Vec::new();
+                            let mut new_ids = Vec::new();
+                            for obj in objects {
                                 if let Some(outlined) =
                                     crate::core::text_path::create_text_outlines(&obj)
                                 {
-                                    let nid = outlined.id.clone();
-                                    new_ids.push(nid);
-                                    let cmd = Box::new(
-                                        crate::core::history::AddObjectCommand::new(outlined),
-                                    );
-                                    self.state
-                                        .undo_manager
-                                        .execute(cmd, &mut self.state.document);
+                                    new_ids.push(outlined.id.clone());
+                                    added.push(outlined);
                                 } else {
                                     new_ids.push(obj.id.clone());
-                                    let cmd =
-                                        Box::new(crate::core::history::AddObjectCommand::new(obj));
-                                    self.state
-                                        .undo_manager
-                                        .execute(cmd, &mut self.state.document);
+                                    added.push(obj);
                                 }
                             }
-                        }
-                        self.state.selected_ids = new_ids;
+                            Some((added, new_ids))
+                        });
                         ui.close_menu();
                     }
 
@@ -725,32 +741,19 @@ impl IrasuApp {
                                 multi,
                                 egui::Button::new(format!("{} {}", op.icon(), name)),
                             )
-                            .clicked()
-                        {
-                            let mut selected_objs: Vec<Object> = Vec::new();
-                            for id in &self.state.selected_ids {
-                                if let Some((_, obj)) =
-                                    self.state.document.all_objects().find(|(_, o)| &o.id == id)
-                                {
-                                    selected_objs.push(obj.clone());
-                                }
-                            }
-                            let obj_refs: Vec<&Object> = selected_objs.iter().collect();
-                            if let Some(result_obj) = execute_pathfinder(&obj_refs, op) {
-                                for id in &self.state.selected_ids {
-                                    self.state.document.remove_object(id);
-                                }
-                                let new_id = result_obj.id.clone();
-                                let cmd = Box::new(crate::core::history::AddObjectCommand::new(
-                                    result_obj,
-                                ));
-                                self.state
-                                    .undo_manager
-                                    .execute(cmd, &mut self.state.document);
-                                self.state.selected_ids = vec![new_id];
-                            }
-                            ui.close_menu();
-                        }
+                        .clicked()
+                    {
+                        let op_selected = op;
+                        self.state.replace_selected("Pathfinder", |objects| {
+                            let obj_refs: Vec<&Object> = objects.iter().collect();
+                            execute_pathfinder(&obj_refs, op_selected)
+                                .map(|result_obj| {
+                                    let new_id = result_obj.id.clone();
+                                    (vec![result_obj], vec![new_id])
+                                })
+                        });
+                        ui.close_menu();
+                    }
                     }
                 });
 
@@ -769,7 +772,10 @@ impl IrasuApp {
                             .range(5.0..=500.0),
                     );
                     ui.separator();
-                    if ui.button("Zoom to Fit  (Ctrl+0)").clicked() {
+                    if ui
+                        .button(format!("Zoom to Fit  ({}+0)", mod_key()))
+                        .clicked()
+                    {
                         self.state.start_zoom = self.state.zoom;
                         self.state.start_pan_x = self.state.pan_x;
                         self.state.start_pan_y = self.state.pan_y;
@@ -777,7 +783,10 @@ impl IrasuApp {
                         self.state.zoom_animation_progress = 0.0;
                         ui.close_menu();
                     }
-                    if ui.button("Zoom 100%  (Ctrl+1)").clicked() {
+                    if ui
+                        .button(format!("Zoom 100%  ({}+1)", mod_key()))
+                        .clicked()
+                    {
                         self.state.start_zoom = self.state.zoom;
                         self.state.start_pan_x = self.state.pan_x;
                         self.state.start_pan_y = self.state.pan_y;
@@ -805,14 +814,25 @@ impl IrasuApp {
                         ui.close_menu();
                     }
                     ui.separator();
-                    if ui.button("キーボードショートカット (Cmd+/)").clicked() {
-                        self.about_modal.is_open = true;
+                    if ui
+                        .button(format!("キーボードショートカット ({}+/)", mod_key()))
+                        .clicked()
+                    {
+                        self.shortcuts_modal.is_open = true;
                         ui.close_menu();
                     }
                 });
 
-                // Right-aligned Utilities: Search bar, Share button, Bell, Profile
+                // Right-aligned Utilities: Search bar, Share button, Bell, Profile.
+                // Progressive disclosure: search/workspace hide first when the
+                // window is near the 800px minimum and the menus fill the bar.
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    let avail = ui.available_width();
+                    let show_search = avail >= 320.0;
+                    let show_workspace = avail >= 420.0;
+                    let show_share = avail >= 260.0;
+                    let show_bell = avail >= 220.0;
+
                     // Profile avatar circle
                     let (ava_rect, _) =
                         ui.allocate_exact_size(Vec2::splat(18.0), egui::Sense::hover());
@@ -832,49 +852,56 @@ impl IrasuApp {
                     ui.add_space(4.0);
 
                     // Notifications Bell — painted vector icon
-                    let _ = icon_button(ui, egui::Vec2::splat(20.0), |p, r, col| {
-                        icon_bell(p, r, col);
-                    })
-                    .on_hover_text("通知");
+                    if show_bell {
+                        let _ = icon_button(ui, egui::Vec2::splat(20.0), |p, r, col| {
+                            icon_bell(p, r, col);
+                        })
+                        .on_hover_text("通知");
 
-                    ui.add_space(4.0);
-
-                    // Pill-shaped Blue "共有" (Share) button
-                    let share_btn = egui::Button::new(
-                        RichText::new("共有")
-                            .size(11.5)
-                            .strong()
-                            .color(Color32::WHITE),
-                    )
-                    .fill(Color32::from_rgb(20, 115, 230))
-                    .corner_radius(12)
-                    .min_size(Vec2::new(56.0, 22.0));
-                    if ui
-                        .add(share_btn)
-                        .on_hover_text("プロジェクトを共有または書き出し")
-                        .clicked()
-                    {
-                        self.export_modal.is_open = true;
+                        ui.add_space(4.0);
                     }
 
-                    ui.add_space(6.0);
+                    // Pill-shaped Blue "共有" (Share) button
+                    if show_share {
+                        let share_btn = egui::Button::new(
+                            RichText::new("共有")
+                                .size(11.5)
+                                .strong()
+                                .color(Color32::WHITE),
+                        )
+                        .fill(Color32::from_rgb(20, 115, 230))
+                        .corner_radius(12)
+                        .min_size(Vec2::new(56.0, 22.0));
+                        if ui
+                            .add(share_btn)
+                            .on_hover_text("プロジェクトを共有または書き出し")
+                            .clicked()
+                        {
+                            self.export_modal.is_open = true;
+                        }
+
+                        ui.add_space(6.0);
+                    }
 
                     // Search help input with vector search icon
-                    ui.horizontal(|ui| {
-                        let (s_rect, _) =
-                            ui.allocate_exact_size(Vec2::splat(16.0), egui::Sense::hover());
-                        icon_search(ui.painter(), s_rect, Color32::from_gray(160));
-                        ui.add(
-                            egui::TextEdit::singleline(&mut self.search_query)
-                                .hint_text("ヘルプを検索...")
-                                .desired_width(110.0),
-                        );
-                    });
+                    if show_search {
+                        ui.horizontal(|ui| {
+                            let (s_rect, _) =
+                                ui.allocate_exact_size(Vec2::splat(16.0), egui::Sense::hover());
+                            icon_search(ui.painter(), s_rect, Color32::from_gray(160));
+                            ui.add(
+                                egui::TextEdit::singleline(&mut self.search_query)
+                                    .hint_text("ヘルプを検索...")
+                                    .desired_width(110.0),
+                            );
+                        });
 
-                    ui.add_space(4.0);
+                        ui.add_space(4.0);
+                    }
 
-                    // Illustrator Signature Workspace Preset Switcher (Image 1 & 3 top right)
-                    egui::ComboBox::from_id_salt("workspace_preset_switcher")
+                    // Illustrator Signature Workspace Preset Switcher
+                    if show_workspace {
+                        egui::ComboBox::from_id_salt("workspace_preset_switcher")
                         .selected_text(match self.active_tab {
                             ActiveTab::Properties => "初期設定",
                             ActiveTab::Layers => "レイヤー",
@@ -960,6 +987,7 @@ impl IrasuApp {
                                 self.active_tab = ActiveTab::PixelArt;
                             }
                         });
+                    }
                 });
             });
         });

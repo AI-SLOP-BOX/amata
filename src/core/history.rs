@@ -311,18 +311,18 @@ pub struct ObjectCommand {
 }
 
 impl Command for ObjectCommand {
-    /// Swap the stored snapshot with the live object instead of cloning.
-    /// Because undo/redo alternate swaps, `old_obj`/`new_obj` always hold the
-    /// state not currently in the document — zero allocation per step.
+    /// Absolute assignment (not swap): panels pre-apply the edit before
+    /// `execute`, so a swap would corrupt the second undo/redo cycle —
+    /// `old_obj`/`new_obj` must stay the canonical snapshots forever.
     fn execute(&mut self, doc: &mut Document) {
         if let Some(obj) = doc.find_object_mut(&self.object_id) {
-            std::mem::swap(obj, &mut self.new_obj);
+            *obj = self.new_obj.clone();
         }
     }
 
     fn undo(&mut self, doc: &mut Document) {
         if let Some(obj) = doc.find_object_mut(&self.object_id) {
-            std::mem::swap(obj, &mut self.old_obj);
+            *obj = self.old_obj.clone();
         }
     }
 
@@ -838,5 +838,156 @@ impl Command for ModifyTextCommand {
 
     fn name(&self) -> &str {
         "Change Typography"
+    }
+}
+
+/// Create / delete a reusable component (`<symbol>` + `<use>` instance).
+/// Replace the whole artboards list (layout grid edits, artboard settings).
+pub struct SetArtboardsCommand {
+    name: String,
+    before: Vec<super::document::Artboard>,
+    after: Vec<super::document::Artboard>,
+}
+
+impl SetArtboardsCommand {
+    pub fn new(
+        name: impl Into<String>,
+        before: Vec<super::document::Artboard>,
+        after: Vec<super::document::Artboard>,
+    ) -> Self {
+        Self {
+            name: name.into(),
+            before,
+            after,
+        }
+    }
+}
+
+impl Command for SetArtboardsCommand {
+    fn execute(&mut self, doc: &mut Document) {
+        doc.artboards = self.after.clone();
+    }
+    fn undo(&mut self, doc: &mut Document) {
+        doc.artboards = self.before.clone();
+    }
+    fn name(&self) -> &str {
+        &self.name
+    }
+}
+
+/// Swap the full `symbols` list (component master delete/rename).
+pub struct SetSymbolsCommand {
+    name: String,
+    before: Vec<super::document::Symbol>,
+    after: Vec<super::document::Symbol>,
+}
+
+impl SetSymbolsCommand {
+    pub fn new(name: impl Into<String>, before: Vec<super::document::Symbol>, after: Vec<super::document::Symbol>) -> Self {
+        Self { name: name.into(), before, after }
+    }
+}
+
+impl Command for SetSymbolsCommand {
+    fn execute(&mut self, doc: &mut Document) {
+        doc.symbols = self.after.clone();
+    }
+    fn undo(&mut self, doc: &mut Document) {
+        doc.symbols = self.before.clone();
+    }
+    fn name(&self) -> &str {
+        &self.name
+    }
+}
+
+/// Restores the full `symbols` list and the objects that were folded into
+/// the master, so undo is exact.
+pub struct ComponentCommand {
+    name: String,
+    /// Objects removed from layers when the master was created (or the
+    /// `<use>` instances removed when the master was deleted).
+    removed: Vec<LocatedObject>,
+    /// Objects added to layers (the `<use>` instance on create).
+    added: Vec<super::document::Object>,
+    symbols_before: Vec<super::document::Symbol>,
+    symbols_after: Vec<super::document::Symbol>,
+}
+
+impl ComponentCommand {
+    pub fn create(
+        name: impl Into<String>,
+        removed: Vec<LocatedObject>,
+        symbols_before: Vec<super::document::Symbol>,
+        symbols_after: Vec<super::document::Symbol>,
+        added: Option<super::document::Object>,
+    ) -> Self {
+        Self {
+            name: name.into(),
+            removed,
+            added: added.into_iter().collect(),
+            symbols_before,
+            symbols_after,
+        }
+    }
+}
+
+impl Command for ComponentCommand {
+    fn execute(&mut self, doc: &mut Document) {
+        for item in &self.removed {
+            doc.remove_object(&item.object.id);
+        }
+        for object in &self.added {
+            // Callers (components panel) already ran create_component_*
+            // before pushing this command; re-adding blindly duplicated
+            // the <use> instance. Only insert when absent (redo path).
+            if doc.find_object(&object.id).is_none() {
+                doc.add_object(object.clone());
+            }
+        }
+        doc.symbols = self.symbols_after.clone();
+    }
+
+    fn undo(&mut self, doc: &mut Document) {
+        for object in &self.added {
+            doc.remove_object(&object.id);
+        }
+        // Ascending (layer, parent, position) restores multi-insert order.
+        let mut items = self.removed.clone();
+        items.sort_by_key(|item| {
+            (
+                item.layer_idx,
+                item.parent.clone().unwrap_or_default(),
+                item.position,
+            )
+        });
+        for item in items {
+            if let Some(ref pid) = item.parent {
+                if let Some(parent) = doc.find_object_mut(pid) {
+                    match &mut parent.object_type {
+                        super::document::ObjectType::Group(children)
+                        | super::document::ObjectType::ClippingMask { children } => {
+                            let pos = item.position.min(children.len());
+                            children.insert(pos, item.object);
+                            continue;
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            let idx = if item.layer_idx < doc.layers.len() {
+                item.layer_idx
+            } else {
+                doc.layers.len().saturating_sub(1)
+            };
+            if let Some(layer) = doc.layers.get_mut(idx) {
+                let pos = item.position.min(layer.objects.len());
+                layer.objects.insert(pos, item.object);
+            }
+        }
+        doc.symbols = self.symbols_before.clone();
+    }
+
+    fn name(&self) -> &str {
+        &self.name
     }
 }

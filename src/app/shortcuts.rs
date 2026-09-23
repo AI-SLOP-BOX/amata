@@ -29,9 +29,49 @@ fn arrange_move(sel: &[String], doc: &mut Document, forward: bool, jump: bool) {
 }
 impl IrasuApp {
     pub(super) fn handle_shortcuts(&mut self, ctx: &egui::Context) {
+        // Modal Escape/Enter handling runs BEFORE the early-return so every
+        // dialog is dismissible from the keyboard (previously only the
+        // window X / footer buttons worked — mouse required).
+        let modal_open = self.new_doc_modal.is_open
+            || self.export_modal.is_open
+            || self.preferences_dialog.is_open
+            || self.about_modal.is_open
+            || self.shortcuts_modal.is_open
+            || self.external_change_dialog.notice.is_some();
+        if modal_open {
+            ctx.input(|i| {
+                if i.key_pressed(egui::Key::Escape) {
+                    // Conflict mode: Escape = Dismiss (same as × 閉じる).
+                    if self.external_change_dialog.notice.is_some() {
+                        self.external_change_dialog.clear();
+                        self.state.is_comparing_diff = false;
+                    } else if self.new_doc_modal.is_open {
+                        self.new_doc_modal.is_open = false;
+                    } else if self.export_modal.is_open {
+                        self.export_modal.is_open = false;
+                    } else if self.preferences_dialog.is_open {
+                        self.preferences_dialog.is_open = false;
+                    } else if self.shortcuts_modal.is_open {
+                        self.shortcuts_modal.is_open = false;
+                    } else if self.about_modal.is_open {
+                        self.about_modal.is_open = false;
+                    }
+                }
+            });
+            return;
+        }
+
+        // Don't fire global shortcuts while typing in a text field or using
+        // a DragValue (layer rename used to switch tools and Delete used to
+        // remove objects mid-edit).
+        let typing = ctx.wants_keyboard_input();
+        if typing {
+            return;
+        }
+
         // Keyboard shortcuts
         ctx.input(|i| {
-            if !i.modifiers.ctrl && !i.modifiers.mac_cmd && !i.modifiers.alt {
+            if !i.modifiers.ctrl && !i.modifiers.mac_cmd && !i.modifiers.alt && !i.modifiers.shift {
                 if i.key_pressed(egui::Key::V) {
                     self.state.current_tool = Tool::Select;
                 }
@@ -96,7 +136,9 @@ impl IrasuApp {
                     self.state.fill_color = [1.0, 1.0, 1.0, 1.0];
                     self.state.stroke_color = [0.0, 0.0, 0.0, 1.0];
                     self.state.stroke_width = 1.0;
-                    for id in &self.state.selected_ids {
+                    let sel = self.state.selected_ids.clone();
+                    for id in &sel {
+                        self.state.ensure_object_snapshot(id);
                         for (_, obj) in self.state.document.all_objects_mut() {
                             if &obj.id == id {
                                 obj.fill = Some(crate::core::path::FillStyle::solid(
@@ -110,29 +152,28 @@ impl IrasuApp {
                             }
                         }
                     }
+                    self.state.commit_object_edits("Default Fill and Stroke");
                 }
 
-                // None / Transparent (/ key)
-                if i.key_pressed(egui::Key::Slash) {
-                    self.state.fill_color = [0.0, 0.0, 0.0, 0.0];
-                    for id in &self.state.selected_ids {
-                        for (_, obj) in self.state.document.all_objects_mut() {
-                            if &obj.id == id {
-                                obj.fill = None;
-                            }
-                        }
-                    }
-                }
+                // Default Fill and Stroke (D) — shape-edit section also binds
+                // this below; only run object palette sync once here is fine
+                // because the later handler is assignment (not swap).
+
+                // Set Fill to None is handled below with the same guard.
             }
 
             // Swap Fill and Stroke (Shift+X)
+            // Single handler: updates palette AND selected objects together.
+            // (A second bare swap at the bottom used to net-zero the palette.)
             if i.modifiers.shift
                 && !i.modifiers.ctrl
                 && !i.modifiers.mac_cmd
                 && i.key_pressed(egui::Key::X)
             {
                 std::mem::swap(&mut self.state.fill_color, &mut self.state.stroke_color);
-                for id in &self.state.selected_ids {
+                let sel = self.state.selected_ids.clone();
+                for id in &sel {
+                    self.state.ensure_object_snapshot(id);
                     for (_, obj) in self.state.document.all_objects_mut() {
                         if &obj.id == id {
                             let old_fill = obj
@@ -152,6 +193,7 @@ impl IrasuApp {
                         }
                     }
                 }
+                self.state.commit_object_edits("Swap Fill and Stroke");
             }
 
             // Escape: exit group isolation first, else cancel pen/deselect
@@ -285,6 +327,54 @@ impl IrasuApp {
                     && i.key_pressed(egui::Key::Z))
             {
                 self.state.undo_manager.redo(&mut self.state.document);
+            }
+
+            // Export (Cmd+Shift+E / Ctrl+Shift+E) — menu advertised this
+            // but no handler existed.
+            if (i.modifiers.ctrl || i.modifiers.mac_cmd)
+                && i.modifiers.shift
+                && i.key_pressed(egui::Key::E)
+            {
+                self.export_modal.is_open = true;
+            }
+
+            // Preferences (Cmd+K / Ctrl+K)
+            if (i.modifiers.ctrl || i.modifiers.mac_cmd)
+                && !i.modifiers.shift
+                && i.key_pressed(egui::Key::K)
+            {
+                self.preferences_dialog.is_open = true;
+            }
+
+            // Smart Guides toggle (Cmd+U / Ctrl+U)
+            if (i.modifiers.ctrl || i.modifiers.mac_cmd)
+                && !i.modifiers.shift
+                && i.key_pressed(egui::Key::U)
+            {
+                self.state.show_smart_guides = !self.state.show_smart_guides;
+            }
+
+            // Shortcuts help (Cmd+/ / Ctrl+/)
+            if (i.modifiers.ctrl || i.modifiers.mac_cmd)
+                && i.key_pressed(egui::Key::Slash)
+            {
+                self.shortcuts_modal.is_open = true;
+            }
+
+            // Menu accelerators: Alt+F (File), Alt+H (Help) — match the
+            // "(F)" / "(H)" hints on the top-level menu titles.
+            if i.modifiers.alt
+                && !i.modifiers.ctrl
+                && !i.modifiers.mac_cmd
+                && !i.modifiers.shift
+            {
+                if i.key_pressed(egui::Key::F) {
+                    // File: open New Document (primary File action).
+                    self.new_doc_modal.is_open = true;
+                } else if i.key_pressed(egui::Key::H) {
+                    // Help: open About.
+                    self.about_modal.is_open = true;
+                }
             }
 
             // Select All (Ctrl+A / Cmd+A) & Deselect (Ctrl+Shift+A / Cmd+Shift+A)
@@ -529,10 +619,7 @@ impl IrasuApp {
                 }
             }
 
-            // Swap Fill and Stroke (Shift+X)
-            if i.modifiers.shift && i.key_pressed(egui::Key::X) {
-                std::mem::swap(&mut self.state.fill_color, &mut self.state.stroke_color);
-            }
+            // Shift+X handled once above (palette + objects together).
 
             // Default Fill and Stroke (D)
             if !i.modifiers.ctrl
@@ -574,74 +661,9 @@ impl IrasuApp {
                 self.state.zoom_animation_progress = 0.0;
             }
 
-            // Object ordering: detect Ctrl+]/Ctrl+[ via text events
-            let ctrl = i.modifiers.ctrl || i.modifiers.mac_cmd;
-            let shift = i.modifiers.shift;
-            for event in &i.events {
-                if let egui::Event::Text(text) = event {
-                    if ctrl && text == "]" {
-                        let sel = self.state.selected_ids.clone();
-                        if shift {
-                            // Bring to Front (Ctrl+Shift+])
-                            for id in &sel {
-                                for layer in self.state.document.layers.iter_mut() {
-                                    if let Some(pos) =
-                                        layer.objects.iter().position(|o| &o.id == id)
-                                    {
-                                        let obj = layer.objects.remove(pos);
-                                        layer.objects.push(obj);
-                                        break;
-                                    }
-                                }
-                            }
-                        } else {
-                            // Bring Forward (Ctrl+])
-                            for id in &sel {
-                                for layer in self.state.document.layers.iter_mut() {
-                                    if let Some(pos) =
-                                        layer.objects.iter().position(|o| &o.id == id)
-                                    {
-                                        if pos + 1 < layer.objects.len() {
-                                            layer.objects.swap(pos, pos + 1);
-                                        }
-                                        break;
-                                    }
-                                }
-                            }
-                        }
-                    } else if ctrl && text == "[" {
-                        let sel = self.state.selected_ids.clone();
-                        if shift {
-                            // Send to Back (Ctrl+Shift+[)
-                            for id in &sel {
-                                for layer in self.state.document.layers.iter_mut() {
-                                    if let Some(pos) =
-                                        layer.objects.iter().position(|o| &o.id == id)
-                                    {
-                                        let obj = layer.objects.remove(pos);
-                                        layer.objects.insert(0, obj);
-                                        break;
-                                    }
-                                }
-                            }
-                        } else {
-                            // Send Backward (Ctrl+[)
-                            for id in &sel {
-                                for layer in self.state.document.layers.iter_mut() {
-                                    if let Some(pos) =
-                                        layer.objects.iter().position(|o| &o.id == id)
-                                    {
-                                        if pos > 0 {
-                                            layer.objects.swap(pos, pos - 1);
-                                        }
-                                        break;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+            // Object ordering is handled exclusively via Key events above
+            // (Ctrl/Cmd + ]/[). A previous Text-event path here double-fired
+            // and skipped undo — removed.
 
             // Cut (Ctrl+X / Cmd+X): one undo step restoring all parts.
             if (i.modifiers.ctrl || i.modifiers.mac_cmd)

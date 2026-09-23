@@ -243,3 +243,74 @@ fn test_rhai_procedural_helpers() {
     assert_eq!(objs.len(), 1);
     assert!(matches!(objs[0].object_type, ObjectType::Path { .. }));
 }
+
+#[test]
+fn test_svg_clip_path_import_and_roundtrip() {
+    let svg = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
+  <defs>
+    <clipPath id="cp1">
+      <rect x="20" y="20" width="80" height="80" />
+    </clipPath>
+  </defs>
+  <g clip-path="url(#cp1)">
+    <rect x="0" y="0" width="200" height="200" fill="#ff0000" />
+    <circle cx="50" cy="50" r="20" fill="#00ff00" />
+  </g>
+  <rect x="100" y="100" width="50" height="50" clip-path="url(#cp1)" fill="#0000ff" />
+</svg>"##;
+
+    let doc = parse_svg_document(svg);
+    let clipping: Vec<&Object> = doc
+        .all_objects()
+        .map(|(_, o)| o)
+        .filter(|o| matches!(o.object_type, ObjectType::ClippingMask { .. }))
+        .collect();
+    assert!(
+        !clipping.is_empty(),
+        "clip-path group and element should import as ClippingMask"
+    );
+    assert_eq!(
+        clipping.len(),
+        2,
+        "one group clip + one element clip expected"
+    );
+    for c in &clipping {
+        if let ObjectType::ClippingMask { children } = &c.object_type {
+            assert!(!children.is_empty(), "mask must have at least a mask shape");
+        }
+    }
+    // Mask shapes must not appear as free top-level objects.
+    let top_level = doc.all_objects().count();
+    assert_eq!(top_level, 2, "only the two ClippingMask wrappers at top level");
+
+    // Round-trip: export re-emits clipPath + clip-path, re-import keeps masks.
+    let out = export_svg(&doc);
+    assert!(out.contains("<clipPath"), "export must emit clipPath defs");
+    assert!(
+        out.contains("clip-path="),
+        "export must emit clip-path references"
+    );
+    let back = parse_svg_document(&out);
+    let clipping2 = back
+        .all_objects()
+        .filter(|(_, o)| matches!(o.object_type, ObjectType::ClippingMask { .. }))
+        .count();
+    assert_eq!(clipping2, 2, "round-trip must preserve both clipping masks");
+}
+
+#[test]
+fn test_svg_missing_clip_ref_does_not_crash() {
+    let svg = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+      <rect x="0" y="0" width="100" height="100" fill="#ccc" clip-path="url(#nope)" />
+      <g clip-path="url(#also_missing)">
+        <rect x="10" y="10" width="20" height="20" fill="#000" />
+      </g>
+    </svg>"##;
+    let doc = parse_svg_document(svg);
+    let objs: Vec<&Object> = doc.all_objects().map(|(_, o)| o).collect();
+    assert_eq!(objs.len(), 2, "missing clip refs keep content unclipped");
+    assert!(
+        objs.iter()
+            .all(|o| !matches!(o.object_type, ObjectType::ClippingMask { .. }))
+    );
+}

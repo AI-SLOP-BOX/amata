@@ -551,33 +551,47 @@ impl LayerPanel {
                 TreeAction::ToggleVis(id) => {
                     if let Some(rest) = id.strip_prefix("layer:") {
                         if let Ok(li) = rest.parse::<usize>() {
+                            if let Some(l) = state.document.layers.get(li) {
+                                let lid = l.id.clone();
+                                state.ensure_layer_snapshot(&lid);
+                            }
                             if let Some(l) = state.document.layers.get_mut(li) {
                                 l.visible = !l.visible;
                             }
+                            state.commit_layer_edits("Toggle Layer Visibility");
                         }
                     } else {
+                        state.ensure_object_snapshot(&id);
                         for (_, obj) in state.document.all_objects_mut() {
                             if obj.id == id {
                                 obj.visible = !obj.visible;
                                 break;
                             }
                         }
+                        state.commit_object_edits("Toggle Object Visibility");
                     }
                 }
                 TreeAction::ToggleLock(id) => {
                     if let Some(rest) = id.strip_prefix("layer:") {
                         if let Ok(li) = rest.parse::<usize>() {
+                            if let Some(l) = state.document.layers.get(li) {
+                                let lid = l.id.clone();
+                                state.ensure_layer_snapshot(&lid);
+                            }
                             if let Some(l) = state.document.layers.get_mut(li) {
                                 l.locked = !l.locked;
                             }
+                            state.commit_layer_edits("Toggle Layer Lock");
                         }
                     } else {
+                        state.ensure_object_snapshot(&id);
                         for (_, obj) in state.document.all_objects_mut() {
                             if obj.id == id {
                                 obj.locked = !obj.locked;
                                 break;
                             }
                         }
+                        state.commit_object_edits("Toggle Object Lock");
                     }
                 }
                 TreeAction::Delete(id) => {
@@ -841,9 +855,12 @@ impl ClippingMaskPanel {
 
         ui.label("Select a mask shape (top) and content objects (below).");
         ui.label(
-            RichText::new("Ctrl+7 or click below to create mask")
-                .weak()
-                .size(11.0),
+            RichText::new(format!(
+                "{}+7 or click below to create mask",
+                crate::app::control_bar::mod_key()
+            ))
+            .weak()
+            .size(11.0),
         );
         ui.add_space(4.0);
 
@@ -882,11 +899,19 @@ impl ClippingMaskPanel {
                     ..Object::new_rect("Clipping Mask", 0.0, 0.0, 100.0, 100.0, 0.0)
                 };
 
-                for remove_id in &ids_to_remove {
-                    state.document.remove_object(remove_id);
-                }
-
-                let cmd = Box::new(crate::core::history::AddObjectCommand::new(clipping));
+                // Snapshot locations BEFORE removal; one ReplaceObjects
+                // command both removes the sources and adds the mask so
+                // undo restores every original object (the old path called
+                // remove_object outside any command — permanent data loss).
+                let located = crate::core::history::collect_located_objects(
+                    &state.document,
+                    &ids_to_remove,
+                );
+                let cmd = Box::new(crate::core::history::ReplaceObjectsCommand::new(
+                    "Create Clipping Mask",
+                    located,
+                    vec![clipping],
+                ));
                 state.undo_manager.execute(cmd, &mut state.document);
             }
         }

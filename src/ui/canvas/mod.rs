@@ -547,6 +547,16 @@ impl CanvasWidget {
             if !obj.visible {
                 continue;
             }
+            // Hidden layers must not render (opacity was honored before,
+            // visibility was not).
+            if state
+                .document
+                .layers
+                .get(layer_idx)
+                .is_some_and(|l| !l.visible)
+            {
+                continue;
+            }
             if cull_enabled {
                 if let Some((bb_min, bb_max)) = obj.bounding_box() {
                     if bb_max.x < vw0 || bb_min.x > vw1 || bb_max.y < vh0 || bb_min.y > vh1 {

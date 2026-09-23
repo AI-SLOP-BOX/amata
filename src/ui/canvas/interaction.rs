@@ -314,20 +314,37 @@ impl CanvasWidget {
                 None => return,
             };
 
-            // Get current bounding box
-            let (bb_min, bb_max) =
-                if let Some((_, obj)) = state.document.all_objects().find(|(_, o)| o.id == id) {
-                    if let Some((min, max)) = obj.bounding_box() {
-                        (min, max)
-                    } else {
+            // Dimensions and transform at gesture start (not the live AABB):
+            // recomputing scale from the already-scaled AABB every frame
+            // amplified the resize exponentially while dragging.
+            let start_snapshot = state
+                .pending_transforms
+                .iter()
+                .find(|(pid, _)| pid == &id)
+                .map(|(_, t)| t.clone())
+                .and_then(|t| {
+                    let obj = state.document.find_object(&id)?;
+                    let local = obj.to_path_data().bounding_box()?;
+                    Some((t, local))
+                });
+            // Fall back to current values if the snapshot is missing.
+            let (start_t, (local_min, local_max)) = match start_snapshot {
+                Some(pair) => pair,
+                None => {
+                    let Some(obj) = state.document.find_object(&id) else {
                         return;
-                    }
-                } else {
-                    return;
-                };
-
-            let bb_w = bb_max.x - bb_min.x;
-            let bb_h = bb_max.y - bb_min.y;
+                    };
+                    let Some(l) = obj.to_path_data().bounding_box() else {
+                        return;
+                    };
+                    (obj.transform.clone(), l)
+                }
+            };
+            // World-space size at gesture start (axis-aligned start transform).
+            let local_w = (local_max.x - local_min.x).max(1e-9);
+            let local_h = (local_max.y - local_min.y).max(1e-9);
+            let bb_w = local_w * start_t.scale_x.abs();
+            let bb_h = local_h * start_t.scale_y.abs();
             if bb_w < 1.0 || bb_h < 1.0 {
                 return;
             }
@@ -336,55 +353,56 @@ impl CanvasWidget {
             let dy = wy - start_wy;
 
             if let Some(obj) = state.document.find_object_mut(&id) {
-                    match corner {
-                        HandleCorner::BottomRight => {
-                            let new_w = (bb_w + dx).max(5.0);
-                            let new_h = (bb_h + dy).max(5.0);
-                            obj.transform.scale_x = new_w / bb_w;
-                            obj.transform.scale_y = new_h / bb_h;
-                        }
-                        HandleCorner::TopLeft => {
-                            let new_w = (bb_w - dx).max(5.0);
-                            let new_h = (bb_h - dy).max(5.0);
-                            obj.transform.x += bb_w - new_w;
-                            obj.transform.y += bb_h - new_h;
-                            obj.transform.scale_x = new_w / bb_w;
-                            obj.transform.scale_y = new_h / bb_h;
-                        }
-                        HandleCorner::TopRight => {
-                            let new_w = (bb_w + dx).max(5.0);
-                            let new_h = (bb_h - dy).max(5.0);
-                            obj.transform.y += bb_h - new_h;
-                            obj.transform.scale_x = new_w / bb_w;
-                            obj.transform.scale_y = new_h / bb_h;
-                        }
-                        HandleCorner::BottomLeft => {
-                            let new_w = (bb_w - dx).max(5.0);
-                            let new_h = (bb_h + dy).max(5.0);
-                            obj.transform.x += bb_w - new_w;
-                            obj.transform.scale_x = new_w / bb_w;
-                            obj.transform.scale_y = new_h / bb_h;
-                        }
-                        HandleCorner::Top => {
-                            let new_h = (bb_h - dy).max(5.0);
-                            obj.transform.y += bb_h - new_h;
-                            obj.transform.scale_y = new_h / bb_h;
-                        }
-                        HandleCorner::Bottom => {
-                            let new_h = (bb_h + dy).max(5.0);
-                            obj.transform.scale_y = new_h / bb_h;
-                        }
-                        HandleCorner::Left => {
-                            let new_w = (bb_w - dx).max(5.0);
-                            obj.transform.x += bb_w - new_w;
-                            obj.transform.scale_x = new_w / bb_w;
-                        }
-                        HandleCorner::Right => {
-                            let new_w = (bb_w + dx).max(5.0);
-                            obj.transform.scale_x = new_w / bb_w;
-                        }
-                        _ => {}
+                match corner {
+                    HandleCorner::BottomRight => {
+                        let new_w = (bb_w + dx).max(5.0);
+                        let new_h = (bb_h + dy).max(5.0);
+                        obj.transform.scale_x = start_t.scale_x.signum() * (new_w / local_w);
+                        obj.transform.scale_y = start_t.scale_y.signum() * (new_h / local_h);
                     }
+                    HandleCorner::TopLeft => {
+                        let new_w = (bb_w - dx).max(5.0);
+                        let new_h = (bb_h - dy).max(5.0);
+                        // Anchor the opposite (bottom-right) corner in place.
+                        obj.transform.x = start_t.x + (bb_w - new_w) * start_t.scale_x.signum();
+                        obj.transform.y = start_t.y + (bb_h - new_h) * start_t.scale_y.signum();
+                        obj.transform.scale_x = start_t.scale_x.signum() * (new_w / local_w);
+                        obj.transform.scale_y = start_t.scale_y.signum() * (new_h / local_h);
+                    }
+                    HandleCorner::TopRight => {
+                        let new_w = (bb_w + dx).max(5.0);
+                        let new_h = (bb_h - dy).max(5.0);
+                        obj.transform.y = start_t.y + (bb_h - new_h) * start_t.scale_y.signum();
+                        obj.transform.scale_x = start_t.scale_x.signum() * (new_w / local_w);
+                        obj.transform.scale_y = start_t.scale_y.signum() * (new_h / local_h);
+                    }
+                    HandleCorner::BottomLeft => {
+                        let new_w = (bb_w - dx).max(5.0);
+                        let new_h = (bb_h + dy).max(5.0);
+                        obj.transform.x = start_t.x + (bb_w - new_w) * start_t.scale_x.signum();
+                        obj.transform.scale_x = start_t.scale_x.signum() * (new_w / local_w);
+                        obj.transform.scale_y = start_t.scale_y.signum() * (new_h / local_h);
+                    }
+                    HandleCorner::Top => {
+                        let new_h = (bb_h - dy).max(5.0);
+                        obj.transform.y = start_t.y + (bb_h - new_h) * start_t.scale_y.signum();
+                        obj.transform.scale_y = start_t.scale_y.signum() * (new_h / local_h);
+                    }
+                    HandleCorner::Bottom => {
+                        let new_h = (bb_h + dy).max(5.0);
+                        obj.transform.scale_y = start_t.scale_y.signum() * (new_h / local_h);
+                    }
+                    HandleCorner::Left => {
+                        let new_w = (bb_w - dx).max(5.0);
+                        obj.transform.x = start_t.x + (bb_w - new_w) * start_t.scale_x.signum();
+                        obj.transform.scale_x = start_t.scale_x.signum() * (new_w / local_w);
+                    }
+                    HandleCorner::Right => {
+                        let new_w = (bb_w + dx).max(5.0);
+                        obj.transform.scale_x = start_t.scale_x.signum() * (new_w / local_w);
+                    }
+                    _ => {}
+                }
             }
         }
     }

@@ -69,9 +69,23 @@ fn embed_image_for_pattern(
 }
 
 pub fn export_svg(doc: &Document) -> String {
+    export_svg_with_profile(doc, None)
+}
+
+/// Emit SVG, optionally recording an ICC profile name as a comment so
+/// downstream tools (and our own re-import) can recover the intent.
+/// Actual ICC embedding requires profile blobs we do not vendor yet.
+pub fn export_svg_with_profile(doc: &Document, color_profile: Option<&str>) -> String {
+    let profile_comment = color_profile
+        .filter(|p| !p.trim().is_empty())
+        .map(|p| {
+            let escaped = p.replace("--", "- -");
+            format!("<!-- color-profile: {escaped} -->\n")
+        })
+        .unwrap_or_default();
     let mut svg = format!(
         r#"<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="{}" height="{}" viewBox="0 0 {} {}">
+{profile_comment}<svg xmlns="http://www.w3.org/2000/svg" width="{}" height="{}" viewBox="0 0 {} {}">
 "#,
         doc.width, doc.height, doc.width, doc.height
     );
@@ -201,6 +215,12 @@ fn transform_has_linear_part(t: &Transform) -> bool {
 
 fn svg_transform_attr(t: &Transform) -> String {
     if !transform_has_linear_part(t) {
+        // Pure translation still needs a transform on containers (<g>,
+        // clip wrappers): they have no x/y attributes of their own, so a
+        // moved group used to export at the origin.
+        if t.x.abs() > 1e-9 || t.y.abs() > 1e-9 {
+            return format!(" transform=\"translate({} {})\"", t.x, t.y);
+        }
         return String::new();
     }
     let m = t.matrix();
@@ -382,7 +402,7 @@ fn render_object_to_svg(
     };
 
     let id_attr = if !obj.id.is_empty() {
-        format!(" id=\"{}\"", obj.id)
+        format!(" id=\"{}\"", xml_escape(&obj.id))
     } else {
         String::new()
     };
@@ -393,10 +413,13 @@ fn render_object_to_svg(
             width,
             height,
         } => {
-            let href_attr = if href.starts_with('#') {
-                href.clone()
-            } else {
-                format!("#{href}")
+            let href_attr = {
+                let raw = if href.starts_with('#') {
+                    href.clone()
+                } else {
+                    format!("#{href}")
+                };
+                xml_escape(&raw)
             };
             let dim_str = match (width, height) {
                 (Some(w), Some(h)) => format!(" width=\"{w}\" height=\"{h}\""),
@@ -632,7 +655,7 @@ fn render_object_to_svg(
             let font_fam = if style.font_family.is_empty() {
                 "Inter, sans-serif".to_string()
             } else {
-                style.font_family.clone()
+                xml_escape(&style.font_family)
             };
 
             let mut extra_attrs = String::new();
@@ -665,9 +688,11 @@ fn render_object_to_svg(
             if !style.variations.is_empty() {
                 // Standard CSS property; also our round-trip channel (parse
                 // reads font-variation-settings back into TextStyle.variations).
+                // The CSS uses double quotes (`"wght" 700`) — escape them or
+                // the whole SVG becomes malformed and every exporter fails.
                 extra_attrs.push_str(&format!(
                     " font-variation-settings=\"{}\"",
-                    style.variation_settings_css()
+                    xml_escape(&style.variation_settings_css())
                 ));
             }
             if style.text_anchor != TextAnchor::Start {
@@ -683,7 +708,10 @@ fn render_object_to_svg(
                 extra_attrs.push_str(" font-variant-ligatures=\"none\"");
             }
             if let Some(nf) = next_frame {
-                extra_attrs.push_str(&format!(" data-text-thread=\"{nf}\""));
+                extra_attrs.push_str(&format!(
+                    " data-text-thread=\"{}\"",
+                    xml_escape(nf)
+                ));
             }
 
             // Explicit line breaks become positioned tspans (line-height advance,

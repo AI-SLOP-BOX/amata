@@ -119,12 +119,13 @@ fn render_obj_pdf(obj: &Object, parent: &[f64; 6], stream_content: &mut String) 
         ObjectType::GradientMesh(m) => {
             // Bake flat quads (same approach as the SVG exporter: mesh
             // shadings don't exist in the PDF imaging model as such).
-            let tm = obj.transform.matrix();
+            // Corners go through `world` only — applying obj.transform on top
+            // of world double-transformed every mesh.
             for (corners, color) in m.quads(6) {
                 let mut path = PathData::new();
                 for (i, p) in corners.iter().enumerate() {
-                    let x = tm[0] * p.x + tm[2] * p.y + tm[4];
-                    let y = tm[1] * p.x + tm[3] * p.y + tm[5];
+                    let x = world[0] * p.x + world[2] * p.y + world[4];
+                    let y = world[1] * p.x + world[3] * p.y + world[5];
                     if i == 0 {
                         path.push_move_to(x, y);
                     } else {
@@ -133,7 +134,6 @@ fn render_obj_pdf(obj: &Object, parent: &[f64; 6], stream_content: &mut String) 
                 }
                 path.elements.push(PathElement::ClosePath);
                 path.fill = Some(FillStyle::solid(color));
-                path.transform(&world);
                 emit_filled_path(stream_content, &path);
             }
         }
@@ -153,6 +153,12 @@ fn render_obj_pdf(obj: &Object, parent: &[f64; 6], stream_content: &mut String) 
 
 /// Export Document into pure standards-compliant Vector PDF format
 pub fn export_pdf(doc: &Document) -> Vec<u8> {
+    export_pdf_with_profile(doc, None)
+}
+
+/// Emit a PDF, optionally recording the requested ICC profile name as a
+/// PDF comment (real ICC embedding needs profile blobs we do not vendor).
+pub fn export_pdf_with_profile(doc: &Document, color_profile: Option<&str>) -> Vec<u8> {
     let w = doc.width.max(10.0);
     let h = doc.height.max(10.0);
 
@@ -177,6 +183,11 @@ pub fn export_pdf(doc: &Document) -> Vec<u8> {
     // Assemble complete PDF file
     let mut pdf = Vec::new();
     pdf.extend_from_slice(b"%PDF-1.4\n%\xE2\xE3\xCF\xD3\n");
+    if let Some(profile) = color_profile.filter(|p| !p.trim().is_empty()) {
+        // PDF comments start with `%`; keep them on one line.
+        let sanitized: String = profile.chars().map(|c| if c == '\n' || c == '\r' { ' ' } else { c }).collect();
+        pdf.extend_from_slice(format!("% color-profile: {sanitized}\n").as_bytes());
+    }
 
     let mut offsets = Vec::new();
 

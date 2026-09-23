@@ -97,7 +97,9 @@ impl HomeView {
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
                     // Left Global Navigation Bar (180px)
-                    self.show_sidebar(ui, new_doc_modal);
+                    if let Some(a) = self.show_sidebar(ui, new_doc_modal) {
+                        action = Some(a);
+                    }
 
                     ui.add_space(8.0);
 
@@ -105,27 +107,77 @@ impl HomeView {
                     egui::ScrollArea::vertical()
                         .auto_shrink([false; 2])
                         .show(ui, |ui| {
-                            ui.horizontal_top(|ui| {
-                                // Main Content (Welcome, New Doc Presets, Recent Files)
+                            let avail_w = ui.available_width();
+                            let right_w = 280.0;
+                            let gap = 16.0;
+                            // Two columns when there is room for a usable main
+                            // column plus the right rail; otherwise stack so
+                            // the tutorial rail is never clipped away.
+                            let two_col = avail_w >= 420.0 + gap + right_w;
+
+                            if two_col {
+                                ui.horizontal_top(|ui| {
+                                    // Main Content (Welcome, New Doc Presets, Recent Files)
+                                    let main_w = (avail_w - gap - right_w).min(780.0);
+                                    ui.allocate_ui_with_layout(
+                                        Vec2::new(main_w, ui.available_height()),
+                                        egui::Layout::top_down(egui::Align::Min),
+                                        |ui| {
+                                            ui.set_width(main_w);
+                                            if let Some(a) = self.show_recovery_banner(ui) {
+                                                action = Some(a);
+                                            }
+                                            self.show_welcome_banner(ui);
+                                            ui.add_space(16.0);
+                                            self.show_preset_section(ui, state, new_doc_modal);
+                                            ui.add_space(20.0);
+                                            if let Some(a) = self.show_recent_files(ui, state) {
+                                                action = Some(a);
+                                            }
+                                        },
+                                    );
+
+                                    ui.add_space(gap);
+
+                                    // Right Information Panel (Smooth workflow, tips, recent list)
+                                    ui.allocate_ui_with_layout(
+                                        Vec2::new(right_w, ui.available_height()),
+                                        egui::Layout::top_down(egui::Align::Min),
+                                        |ui| {
+                                            ui.set_width(right_w);
+                                            self.show_tutorial_widget(ui, tour_guide_open);
+                                            ui.add_space(14.0);
+                                            self.show_tips_widget(ui);
+                                            ui.add_space(14.0);
+                                            if let Some(a) =
+                                                self.show_recent_projects_list(ui, state)
+                                            {
+                                                action = Some(a);
+                                            }
+                                        },
+                                    );
+                                });
+                            } else {
+                                // Narrow: stack main above the right rail so
+                                // the tutorial stays reachable.
                                 ui.vertical(|ui| {
-                                    ui.set_max_width(780.0);
                                     if let Some(a) = self.show_recovery_banner(ui) {
                                         action = Some(a);
                                     }
                                     self.show_welcome_banner(ui);
                                     ui.add_space(16.0);
-                                    self.show_preset_section(ui, state);
+                                    self.show_preset_section(ui, state, new_doc_modal);
                                     ui.add_space(20.0);
                                     if let Some(a) = self.show_recent_files(ui, state) {
                                         action = Some(a);
                                     }
                                 });
-
-                                ui.add_space(16.0);
-
-                                // Right Information Panel (Smooth workflow, tips, recent list)
+                                ui.add_space(gap);
+                                ui.separator();
+                                ui.add_space(gap);
                                 ui.vertical(|ui| {
-                                    ui.set_width(280.0);
+                                    let rail_w = avail_w.min(right_w);
+                                    ui.set_width(rail_w);
                                     self.show_tutorial_widget(ui, tour_guide_open);
                                     ui.add_space(14.0);
                                     self.show_tips_widget(ui);
@@ -134,7 +186,7 @@ impl HomeView {
                                         action = Some(a);
                                     }
                                 });
-                            });
+                            }
                         });
                 });
             });
@@ -166,7 +218,12 @@ impl HomeView {
         action
     }
 
-    fn show_sidebar(&mut self, ui: &mut Ui, new_doc_modal: &mut crate::ui::NewDocModal) {
+    fn show_sidebar(
+        &mut self,
+        ui: &mut Ui,
+        new_doc_modal: &mut crate::ui::NewDocModal,
+    ) -> Option<HomeAction> {
+        let mut action = None;
         ui.vertical(|ui| {
             ui.add_space(10.0);
 
@@ -260,9 +317,18 @@ impl HomeView {
                     .corner_radius(16.0)
                     .min_size(Vec2::new(140.0, 30.0));
             if ui.add(open_btn).clicked() {
-                // Open file dialog
+                if let Some(path) = rfd::FileDialog::new()
+                    .add_filter(
+                        "Amata / SVG / PDF / Images",
+                        &["amata", "json", "svg", "pdf", "png", "jpg", "jpeg", "webp"],
+                    )
+                    .pick_file()
+                {
+                    action = Some(HomeAction::OpenFile(path));
+                }
             }
         });
+        action
     }
 
     fn show_welcome_banner(&self, ui: &mut Ui) {
@@ -314,7 +380,12 @@ impl HomeView {
         );
     }
 
-    fn show_preset_section(&mut self, ui: &mut Ui, state: &mut AppState) {
+    fn show_preset_section(
+        &mut self,
+        ui: &mut Ui,
+        _state: &mut AppState,
+        new_doc_modal: &mut crate::ui::NewDocModal,
+    ) {
         ui.label(
             RichText::new("新規ドキュメントを作成")
                 .strong()
@@ -353,20 +424,51 @@ impl HomeView {
 
         ui.add_space(8.0);
 
-        // 6 Preset Cards
+        // 6 Preset Cards — units matter: routing through NewDocModal
+        // applies mm/in/pt → px conversion (writing raw 210×297 into the
+        // document used to create a 210px "A4").
         let presets = [
-            ("doc", "A4", "210 × 297 mm", 595.0, 842.0),
-            ("doc", "US レター", "8.5 × 11 in", 612.0, 792.0),
-            ("desktop", "Web (横長)", "1920 × 1080 px", 1920.0, 1080.0),
-            ("phone", "iPhone 15", "1179 × 2556 px", 1179.0, 2556.0),
-            ("camera", "Instagram 投稿", "1080 × 1080 px", 1080.0, 1080.0),
-            ("more", "その他のプリセット", "カスタム", 800.0, 600.0),
+            ("doc", "A4", "210 × 297 mm", 210.0, 297.0, "ミリメートル"),
+            ("doc", "US レター", "8.5 × 11 in", 612.0, 792.0, "ポイント"),
+            (
+                "desktop",
+                "Web (横長)",
+                "1920 × 1080 px",
+                1920.0,
+                1080.0,
+                "ピクセル",
+            ),
+            (
+                "phone",
+                "iPhone 15",
+                "1179 × 2556 px",
+                1179.0,
+                2556.0,
+                "ピクセル",
+            ),
+            (
+                "camera",
+                "Instagram 投稿",
+                "1080 × 1080 px",
+                1080.0,
+                1080.0,
+                "ピクセル",
+            ),
+            (
+                "more",
+                "その他のプリセット",
+                "カスタム",
+                800.0,
+                600.0,
+                "ピクセル",
+            ),
         ];
 
-        ui.horizontal(|ui| {
-            for (icon_type, title, dim, w, h) in presets {
+        ui.horizontal_wrapped(|ui| {
+            for (icon_type, title, dim, w, h, unit) in presets {
+                let card_w = ui.available_width().min(115.0);
                 let (rect, resp) =
-                    ui.allocate_exact_size(Vec2::new(115.0, 110.0), egui::Sense::click());
+                    ui.allocate_exact_size(Vec2::new(card_w, 110.0), egui::Sense::click());
                 let hovered = resp.hovered();
 
                 let bg = if hovered {
@@ -421,9 +523,24 @@ impl HomeView {
                 );
 
                 if resp.clicked() {
-                    state.document.width = w;
-                    state.document.height = h;
-                    self.is_open = false; // Enter canvas
+                    // Prefill and open the New Document dialog so unit
+                    // conversion, bleed and artboard count stay consistent
+                    // with File → New (the old path wrote raw values and
+                    // closed the home screen with no confirmation).
+                    new_doc_modal.is_open = true;
+                    new_doc_modal.width = w;
+                    new_doc_modal.height = h;
+                    new_doc_modal.unit = unit.to_string();
+                    new_doc_modal.orientation = if h >= w {
+                        crate::ui::new_doc_modal::Orientation::Portrait
+                    } else {
+                        crate::ui::new_doc_modal::Orientation::Landscape
+                    };
+                    new_doc_modal.doc_name = if title == "その他のプリセット" {
+                        "名称未設定".to_string()
+                    } else {
+                        title.to_string()
+                    };
                 }
             }
         });
@@ -461,13 +578,18 @@ impl HomeView {
 
         ui.add_space(6.0);
 
-        // 2 rows of 4 cards
+        // Card grid: column count tracks pane width so cards never clip.
+        let card_w = 175.0_f32;
+        let spacing = 14.0_f32;
+        let cols = (((ui.available_width() + spacing) / (card_w + spacing)).floor() as usize)
+            .clamp(1, 4);
         egui::Grid::new("recent_files_grid")
-            .spacing(Vec2::new(14.0, 14.0))
+            .num_columns(cols)
+            .spacing(Vec2::new(spacing, spacing))
             .show(ui, |ui| {
                 for (i, file) in self.recent_files.iter().enumerate() {
                     let (rect, resp) =
-                        ui.allocate_exact_size(Vec2::new(175.0, 140.0), egui::Sense::click());
+                        ui.allocate_exact_size(Vec2::new(card_w, 140.0), egui::Sense::click());
                     let hovered = resp.hovered();
 
                     let bg = if hovered {
@@ -516,7 +638,7 @@ impl HomeView {
                         action = Some(HomeAction::OpenFile(file.path.clone()));
                     }
 
-                    if (i + 1) % 4 == 0 {
+                    if (i + 1) % cols == 0 {
                         ui.end_row();
                     }
                 }
@@ -525,7 +647,8 @@ impl HomeView {
     }
 
     fn show_tutorial_widget(&self, ui: &mut Ui, tour_guide_open: &mut bool) {
-        let (rect, _) = ui.allocate_exact_size(Vec2::new(265.0, 200.0), egui::Sense::hover());
+        let w = ui.available_width().min(265.0);
+        let (rect, _) = ui.allocate_exact_size(Vec2::new(w, 200.0), egui::Sense::hover());
         ui.painter()
             .rect_filled(rect, 6.0, Color32::from_rgb(33, 33, 36));
 
@@ -602,7 +725,8 @@ impl HomeView {
     }
 
     fn show_tips_widget(&self, ui: &mut Ui) {
-        let (rect, _) = ui.allocate_exact_size(Vec2::new(265.0, 160.0), egui::Sense::hover());
+        let w = ui.available_width().min(265.0);
+        let (rect, _) = ui.allocate_exact_size(Vec2::new(w, 160.0), egui::Sense::hover());
         ui.painter()
             .rect_filled(rect, 6.0, Color32::from_rgb(33, 33, 36));
 
@@ -671,7 +795,8 @@ impl HomeView {
         _state: &mut AppState,
     ) -> Option<HomeAction> {
         let mut action = None;
-        let (rect, _) = ui.allocate_exact_size(Vec2::new(265.0, 170.0), egui::Sense::hover());
+        let w = ui.available_width().min(265.0);
+        let (rect, _) = ui.allocate_exact_size(Vec2::new(w, 170.0), egui::Sense::hover());
         ui.painter()
             .rect_filled(rect, 6.0, Color32::from_rgb(33, 33, 36));
 

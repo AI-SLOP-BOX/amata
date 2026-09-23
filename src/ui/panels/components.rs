@@ -29,10 +29,29 @@ impl ComponentPanel {
                 .add_enabled(has_sel, egui::Button::new("❖ 選択からコンポーネントを作成"))
                 .clicked()
             {
+                // Snapshot selected objects first: create_component removes
+                // them from the layers, and we need one undo step that
+                // restores both the objects and the symbols list.
+                let located = crate::core::history::collect_located_objects(
+                    &state.document,
+                    &state.selected_ids,
+                );
+                let symbols_before = state.document.symbols.clone();
                 if let Some(symbol_id) = state
                     .document
                     .create_component_from_selection(&state.selected_ids)
                 {
+                    state.undo_manager.execute(
+                        Box::new(crate::core::history::ComponentCommand::create(
+                            "Create Component",
+                            located,
+                            symbols_before,
+                            state.document.symbols.clone(),
+                            state.document.find_object(&symbol_id).cloned(),
+                        )),
+                        &mut state.document,
+                    );
+                    state.selected_ids.clear();
                     state.notify_info(format!(
                         "コンポーネント <symbol id=\"{}\"> を作成しました",
                         symbol_id
@@ -105,7 +124,15 @@ impl ComponentPanel {
             });
 
         if let Some(id) = to_remove_id {
+            let before = state.document.symbols.clone();
             state.document.symbols.retain(|s| s.id != id);
+            let after = state.document.symbols.clone();
+            let cmd = Box::new(crate::core::history::SetSymbolsCommand::new(
+                "Delete Component Master",
+                before,
+                after,
+            ));
+            state.undo_manager.execute(cmd, &mut state.document);
             state.notify_info("コンポーネント定義を削除しました");
         }
 

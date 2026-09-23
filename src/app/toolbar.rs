@@ -1,3 +1,4 @@
+use super::control_bar::mod_key;
 use super::icons::{icon_button, tool_icon_button};
 use super::zoom_to_fit;
 use super::IrasuApp;
@@ -11,17 +12,30 @@ impl IrasuApp {
         egui::TopBottomPanel::top("document_tab_bar")
             .resizable(false)
             .show(ctx, |ui| {
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     ui.spacing_mut().item_spacing = Vec2::new(4.0, 2.0);
                     let doc_name = if self.state.document.name.is_empty() {
                         "名称未設定-1"
                     } else {
                         &self.state.document.name
                     };
+                    // Keep the tab on one row on narrow windows.
+                    let max_name = 24usize;
+                    let shown_name: String = doc_name.chars().take(max_name).collect();
+                    let suffix = if doc_name.chars().count() > max_name {
+                        "…"
+                    } else {
+                        ""
+                    };
+                    let dirty = if self.state.is_dirty() { "*" } else { "" };
+                    let color_mode = self.state.document.color_mode;
                     let tab_title = format!(
-                        "{}* @ {:.0}% (RGB/プレビュー)",
-                        doc_name,
-                        self.state.zoom * 100.0
+                        "{}{}{} @ {:.0}% ({}/プレビュー)",
+                        shown_name,
+                        suffix,
+                        dirty,
+                        self.state.zoom * 100.0,
+                        color_mode
                     );
 
                     // Active Tab Button with dark filled tab background
@@ -48,7 +62,7 @@ impl IrasuApp {
         egui::TopBottomPanel::bottom("status_bar")
             .resizable(false)
             .show(ctx, |ui| {
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     // Zoom Presets Dropdown
                     egui::ComboBox::from_id_salt("zoom_select")
                         .selected_text(format!("{:.0}%", self.state.zoom * 100.0))
@@ -90,7 +104,10 @@ impl IrasuApp {
                             {
                                 set_zoom(&mut self.state, 4.0);
                             }
-                            if ui.button("画面に合わせる (Cmd+0)").clicked() {
+                            if ui
+                                .button(format!("画面に合わせる ({}+0)", mod_key()))
+                                .clicked()
+                            {
                                 self.state.start_zoom = self.state.zoom;
                                 self.state.start_pan_x = self.state.pan_x;
                                 self.state.start_pan_y = self.state.pan_y;

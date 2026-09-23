@@ -343,6 +343,7 @@ impl ShortcutsHelpPanel {
         ui.heading(RichText::new("⌨ Keyboard Shortcuts").strong());
         ui.add_space(4.0);
 
+        let mk = crate::app::control_bar::mod_key();
         let shortcuts: [(&str, &str); 32] = [
             ("V", "Select Tool"),
             ("A", "Node / Direct Select"),
@@ -364,21 +365,22 @@ impl ShortcutsHelpPanel {
             ("Delete", "Delete Selected"),
             ("Escape", "Deselect / Cancel"),
             ("Enter", "Finish Pen Path"),
-            ("Ctrl+Z", "Undo"),
-            ("Ctrl+Y", "Redo"),
-            ("Ctrl+A", "Select All"),
-            ("Ctrl+G", "Group"),
-            ("Ctrl+Shift+G", "Ungroup"),
-            ("Ctrl+D", "Duplicate"),
-            ("Ctrl+C", "Copy"),
-            ("Ctrl+V", "Paste"),
-            ("Ctrl+0", "Zoom to Fit"),
-            ("Ctrl+1", "Zoom 100%"),
-            ("Ctrl+7", "Clipping Mask"),
+            ("__MK__+Z", "Undo"),
+            ("__MK__+Y", "Redo"),
+            ("__MK__+A", "Select All"),
+            ("__MK__+G", "Group"),
+            ("__MK__+Shift+G", "Ungroup"),
+            ("__MK__+D", "Duplicate"),
+            ("__MK__+C", "Copy"),
+            ("__MK__+V", "Paste"),
+            ("__MK__+0", "Zoom to Fit"),
+            ("__MK__+1", "Zoom 100%"),
+            ("__MK__+7", "Clipping Mask"),
             ("Arrow Keys", "Nudge (Shift=10x)"),
         ];
 
         for (key, action) in shortcuts {
+            let key = key.replace("__MK__", mk);
             ui.horizontal(|ui| {
                 ui.label(RichText::new(key).strong().monospace().size(11.0));
                 ui.separator();

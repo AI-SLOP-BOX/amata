@@ -27,14 +27,44 @@ impl IrasuApp {
                     ("変更履歴", ActiveTab::VersionHistory),
                 ];
 
-                let tab_w = 68.0_f32;
                 let accent = Color32::from_rgb(20, 115, 230);
+                let tab_font = egui::FontId::proportional(11.5);
+                let more_w = 28.0_f32;
+                let avail = strip_rect.width();
+                let mut tab_widths: Vec<f32> = tabs
+                    .iter()
+                    .map(|(label, _)| {
+                        let tw = ui.fonts(|f| {
+                            f.layout_no_wrap((*label).to_string(), tab_font.clone(), Color32::WHITE)
+                                .size()
+                                .x
+                        });
+                        (tw + 24.0).max(56.0)
+                    })
+                    .collect();
 
-                for (i, (label, variant)) in tabs.iter().enumerate() {
+                // Drop trailing tabs when the strip would collide with ⋯.
+                let max_tabs = {
+                    let mut used = 0.0_f32;
+                    let mut n = 0;
+                    for w in &tab_widths {
+                        if used + *w > avail - more_w - 4.0 {
+                            break;
+                        }
+                        used += *w;
+                        n += 1;
+                    }
+                    n.max(1).min(tabs.len())
+                };
+                tab_widths.truncate(max_tabs);
+
+                let mut x = strip_rect.min.x;
+                for ((label, variant), tab_w) in tabs.iter().zip(tab_widths.iter()) {
                     let tab_rect = Rect::from_min_size(
-                        Pos2::new(strip_rect.min.x + tab_w * i as f32, strip_rect.min.y),
-                        Vec2::new(tab_w, tab_h),
+                        Pos2::new(x, strip_rect.min.y),
+                        Vec2::new(*tab_w, tab_h),
                     );
+                    x += *tab_w;
                     let is_active = self.active_tab == *variant;
 
                     // Hit test & hover
@@ -59,7 +89,7 @@ impl IrasuApp {
                         tab_rect.center(),
                         egui::Align2::CENTER_CENTER,
                         *label,
-                        egui::FontId::proportional(11.5),
+                        tab_font.clone(),
                         text_color,
                     );
 
@@ -94,7 +124,10 @@ impl IrasuApp {
                 );
                 let more_resp = ui.allocate_rect(more_rect, egui::Sense::click());
                 if more_resp.clicked() {
-                    // Handled below via popup
+                    // popup_below_widget only opens when memory toggles it.
+                    ui.ctx().memory_mut(|m| {
+                        m.toggle_popup(egui::Id::new("dock_more_popup"));
+                    });
                 }
 
                 // Separator below tabs

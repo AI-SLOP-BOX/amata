@@ -50,6 +50,13 @@ pub fn parse_pdf_bytes(bytes: &[u8]) -> Result<(Document, Vec<String>), String> 
 /// new byte buffer (original + appended xref/trailer) or `None` when the
 /// file has nothing salvageable.
 fn repair_xref(bytes: &[u8]) -> Option<Vec<u8>> {
+    // Refuse multi-hundred-MB blobs: we clone the whole file below, and
+    // a corrupt input of that size is more likely truncated garbage than
+    // a salvageable PDF (OOM guard for adversarial uploads).
+    const MAX_REPAIR_BYTES: usize = 64 * 1024 * 1024;
+    if bytes.len() > MAX_REPAIR_BYTES {
+        return None;
+    }
     // Collect (number, generation, offset) for `N G obj` at line starts.
     let mut objs: Vec<(u32, u32, usize)> = Vec::new();
     let mut i = 0;
@@ -275,7 +282,13 @@ struct Importer<'a> {
     warned: std::collections::HashSet<&'static str>,
     seq: usize,
     page_no: usize,
+    /// Form XObject nesting depth — a cyclic / self-referential Form
+    /// would otherwise recurse until the stack overflows.
+    form_depth: usize,
 }
+
+/// Hard cap on Form XObject nesting (PDF 32000-1 §8.10.1 Form XObjects).
+const MAX_FORM_DEPTH: usize = 32;
 
 impl<'a> Importer<'a> {
     fn new(doc: &'a lopdf::Document) -> Self {
@@ -288,6 +301,7 @@ impl<'a> Importer<'a> {
             warned: std::collections::HashSet::new(),
             seq: 0,
             page_no: 0,
+            form_depth: 0,
         }
     }
 
@@ -822,6 +836,13 @@ impl<'a> Importer<'a> {
             .and_then(|o| name_str(self.resolve(o)))
             .unwrap_or_default();
         if subtype == "Form" {
+            if self.form_depth >= MAX_FORM_DEPTH {
+                self.warn(
+                    "form_depth",
+                    format!("Form再帰が深すぎます（{MAX_FORM_DEPTH}層）ためスキップ"),
+                );
+                return Ok(());
+            }
             // Recurse with concatenated matrix.
             let mat = stream
                 .dict
@@ -849,7 +870,9 @@ impl<'a> Importer<'a> {
                 Self::stream_bytes(&stream).map_err(|e| format!("Form{e}"))?;
             let content =
                 Content::decode(&bytes).map_err(|e| format!("Form解析失敗: {e}"))?;
+            self.form_depth += 1;
             let r = self.run_ops(&content.operations, &sub_res, st, suffix);
+            self.form_depth -= 1;
             st.ctm = saved;
             return r;
         }
@@ -878,7 +901,9 @@ impl<'a> Importer<'a> {
         let w = get_num(b"Width").unwrap_or(0.0) as u32;
         let h = get_num(b"Height").unwrap_or(0.0) as u32;
         let bpc = get_num(b"BitsPerComponent").unwrap_or(8.0) as u32;
-        if w == 0 || h == 0 || w * h > 16_777_216 {
+        // checked_mul: untrusted Width×Height must not wrap before the cap.
+        let px = w.checked_mul(h).unwrap_or(u32::MAX);
+        if w == 0 || h == 0 || px > 16_777_216 {
             self.warn("image-size", format!("異常な画像サイズ ({w}x{h}) をスキップ"));
             return Ok(());
         }
@@ -947,13 +972,21 @@ impl<'a> Importer<'a> {
                 return Ok(());
             }
         } else {
-            let raw = stream
-                .decompressed_content()
-                .map_err(|e| format!("画像展開失敗: {e}"))?;
-            samples_to_png(&raw, w, h, channels, bpc).ok_or_else(|| {
-                self.warn("samples", format!("画像サンプル解釈失敗 ({name})"));
-                "画像サンプル解釈失敗".to_string()
-            })?
+            // No filter / unknown filter: raw samples, but a broken stream
+            // must not abort the whole import — warn and skip this image.
+            match stream.decompressed_content() {
+                Ok(raw) => samples_to_png(&raw, w, h, channels, bpc).ok_or_else(|| {
+                    self.warn("samples", format!("画像サンプル解釈失敗 ({name})"));
+                    "画像サンプル解釈失敗".to_string()
+                })?,
+                Err(e) => {
+                    self.warn(
+                        "image-stream",
+                        format!("画像展開失敗のためスキップ ({name}): {e}"),
+                    );
+                    return Ok(());
+                }
+            }
         };
         let (pw, ph, placed) = crate::io::raster::decode_placed_image(&png_bytes)
             .map_err(|e| format!("画像配置失敗: {e}"))?;
@@ -1009,7 +1042,11 @@ fn path_current(path: &PathData) -> Option<AnchorPoint> {
 fn samples_to_png(raw: &[u8], w: u32, h: u32, channels: u32, bpc: u32) -> Option<Vec<u8>> {
     use image::codecs::png::PngEncoder;
     use image::ImageEncoder;
-    let px = (w as usize) * (h as usize);
+    let px = (w as usize).checked_mul(h as usize)?;
+    // Callers already cap pixel count; re-check so this helper is safe alone.
+    if px > 16_777_216 {
+        return None;
+    }
     let rgb: Vec<u8> = match (channels, bpc) {
         (3, 8) if raw.len() >= px * 3 => raw[..px * 3].to_vec(),
         (1, 8) if raw.len() >= px => {

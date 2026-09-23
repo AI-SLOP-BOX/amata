@@ -525,12 +525,13 @@ fn render_obj(ctx: &mut Ctx, obj: &Object, parent: &[f64; 6], out: &mut String) 
         ObjectType::GradientMesh(m) => {
             // Flat quads through the regular painter (CMYK/spots/opacity
             // handled per quad like any solid fill).
-            let tm = obj.transform.matrix();
+            // Corners go through `world` only — applying obj.transform on top
+            // of world double-transformed every mesh.
             for (corners, color) in m.quads(6) {
                 let mut path = PathData::new();
                 for (i, p) in corners.iter().enumerate() {
-                    let x = tm[0] * p.x + tm[2] * p.y + tm[4];
-                    let y = tm[1] * p.x + tm[3] * p.y + tm[5];
+                    let x = world[0] * p.x + world[2] * p.y + world[4];
+                    let y = world[1] * p.x + world[3] * p.y + world[5];
                     if i == 0 {
                         path.push_move_to(x, y);
                     } else {
@@ -539,7 +540,6 @@ fn render_obj(ctx: &mut Ctx, obj: &Object, parent: &[f64; 6], out: &mut String) 
                 }
                 path.elements.push(PathElement::ClosePath);
                 path.fill = Some(FillStyle::solid(color));
-                path.transform(&world);
                 emit_painted_path(ctx, obj, &path, out);
             }
         }
@@ -987,29 +987,67 @@ fn render_marks(ctx: &mut Ctx, tw: f64, th: f64, ox: f64, oy: f64, out: &mut Str
         );
     }
     // Registration targets: left/right center in the slug.
-    for (rx, ry) in [(ox - 9.0, oy + th / 2.0), (ox + tw + 9.0, oy + th / 2.0)] {
-        let _ = writeln!(
-            out,
-            "{} {} m {} {} l S",
-            f2(rx - 6.0),
-            f2(ry),
-            f2(rx + 6.0),
-            f2(ry)
-        );
-        let _ = writeln!(
-            out,
-            "{} {} m {} {} l S",
-            f2(rx),
-            f2(ry - 6.0),
-            f2(rx),
-            f2(ry + 6.0)
-        );
-        let _ = writeln!(
-            out,
-            "{} {} 4.5 0 360 arc S",
-            f2(rx),
-            f2(ry)
-        );
-    }
+        // PDF has no `arc` operator — emit a 4-segment cubic circle instead
+        // (kappa = 0.5522847498). The old `… 4.5 0 360 arc S` was invalid.
+        let k = 4.5_f64 * 0.552_284_749_8;
+        for (rx, ry) in [(ox - 9.0, oy + th / 2.0), (ox + tw + 9.0, oy + th / 2.0)] {
+            let _ = writeln!(
+                out,
+                "{} {} m {} {} l S",
+                f2(rx - 6.0),
+                f2(ry),
+                f2(rx + 6.0),
+                f2(ry)
+            );
+            let _ = writeln!(
+                out,
+                "{} {} m {} {} l S",
+                f2(rx),
+                f2(ry - 6.0),
+                f2(rx),
+                f2(ry + 6.0)
+            );
+            let _ = writeln!(out, "{} {} m", f2(rx), f2(ry + 4.5));
+            let _ = writeln!(
+                out,
+                "{} {} {} {} {} {} c",
+                f2(rx + k),
+                f2(ry + 4.5),
+                f2(rx + 4.5),
+                f2(ry + k),
+                f2(rx + 4.5),
+                f2(ry)
+            );
+            let _ = writeln!(
+                out,
+                "{} {} {} {} {} {} c",
+                f2(rx + 4.5),
+                f2(ry - k),
+                f2(rx + k),
+                f2(ry - 4.5),
+                f2(rx),
+                f2(ry - 4.5)
+            );
+            let _ = writeln!(
+                out,
+                "{} {} {} {} {} {} c",
+                f2(rx - k),
+                f2(ry - 4.5),
+                f2(rx - 4.5),
+                f2(ry - k),
+                f2(rx - 4.5),
+                f2(ry)
+            );
+            let _ = writeln!(
+                out,
+                "{} {} {} {} {} {} c S",
+                f2(rx - 4.5),
+                f2(ry + k),
+                f2(rx - k),
+                f2(ry + 4.5),
+                f2(rx),
+                f2(ry + 4.5)
+            );
+        }
     let _ = writeln!(out, "Q");
 }

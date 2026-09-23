@@ -609,6 +609,32 @@ impl AppState {
         }
     }
 
+    /// Snapshot objects before a non-drag document mutation (batch flips,
+    /// stroke presets, etc.) then record as one undo step.
+    pub fn undoable_snapshot(&mut self, label: &str, ids: &[String], f: impl FnOnce(&mut Document)) {
+        for id in ids {
+            self.ensure_object_snapshot(id);
+        }
+        f(&mut self.document);
+        self.commit_object_edits(label);
+    }
+
+    /// Record a full artboards list replacement as one undo step.
+    pub fn push_artboards_undo(
+        &mut self,
+        label: &str,
+        before: Vec<crate::core::document::Artboard>,
+        after: Vec<crate::core::document::Artboard>,
+    ) {
+        if before == after {
+            return;
+        }
+        let cmd = Box::new(crate::core::history::SetArtboardsCommand::new(
+            label, before, after,
+        ));
+        self.undo_manager.execute(cmd, &mut self.document);
+    }
+
     /// Snapshot a layer before a panel edit (see object variant).
     pub fn ensure_layer_snapshot(&mut self, id: &str) {
         if !self.pending_layers.iter().any(|(lid, _)| lid == id) {

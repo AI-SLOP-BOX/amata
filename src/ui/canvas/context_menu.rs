@@ -1,4 +1,5 @@
 use super::CanvasWidget;
+use crate::app::control_bar::mod_key;
 use crate::core::document::ObjectType;
 use crate::core::state::AppState;
 use egui::{Pos2, Response, Ui};
@@ -11,6 +12,7 @@ impl CanvasWidget {
         response: &Response,
         _origin: Pos2,
     ) {
+        let mk = mod_key();
         // Right-Click Context Menu (Illustrator style)
         response.context_menu(|ui| {
             let has_sel = !state.selected_ids.is_empty();
@@ -20,19 +22,40 @@ impl CanvasWidget {
                 ui.label(egui::RichText::new("選択項目").weak().size(10.0));
                 ui.separator();
 
-                if ui.button("カット (切り取り)   Cmd+X").clicked() {
+                if ui
+                    .button(format!("カット (切り取り)   {mk}+X"))
+                    .clicked()
+                {
                     state.clipboard.clear();
                     let ids = state.selected_ids.clone();
+                    let mut cmds: Vec<Box<dyn crate::core::history::Command>> = Vec::new();
                     for id in &ids {
-                        if let Some(obj) = state.document.remove_object(id) {
-                            state.clipboard.push(obj);
+                        if let Some(obj) = state.document.find_object(id).cloned() {
+                            state.clipboard.push(obj.clone());
+                            cmds.push(Box::new(
+                                crate::core::history::RemoveObjectCommand::located(
+                                    obj,
+                                    &state.document,
+                                ),
+                            ));
                         }
+                    }
+                    if cmds.len() == 1 {
+                        state
+                            .undo_manager
+                            .execute(cmds.pop().unwrap(), &mut state.document);
+                    } else if !cmds.is_empty() {
+                        let batch = Box::new(crate::core::history::BatchCommand::new(
+                            "Cut Objects",
+                            cmds,
+                        ));
+                        state.undo_manager.execute(batch, &mut state.document);
                     }
                     state.selected_ids.clear();
                     ui.close_menu();
                 }
 
-                if ui.button("コピー   Cmd+C").clicked() {
+                if ui.button(format!("コピー   {mk}+C")).clicked() {
                     state.clipboard.clear();
                     for id in &state.selected_ids {
                         if let Some((_, obj)) =
@@ -44,7 +67,10 @@ impl CanvasWidget {
                     ui.close_menu();
                 }
 
-                if ui.button("ペースト (貼り付け)   Cmd+V").clicked() {
+                if ui
+                    .button(format!("ペースト (貼り付け)   {mk}+V"))
+                    .clicked()
+                {
                     state.selected_ids.clear();
                     let mut offset = 0.0;
                     for obj in &state.clipboard {
@@ -64,7 +90,7 @@ impl CanvasWidget {
 
                 ui.separator();
 
-                if ui.button("複製   Cmd+D").clicked() {
+                if ui.button(format!("複製   {mk}+D")).clicked() {
                     let ids = state.selected_ids.clone();
                     let mut new_objs = Vec::new();
                     for id in &ids {
@@ -118,7 +144,10 @@ impl CanvasWidget {
 
                 ui.separator();
                 ui.menu_button("重ね順 (Arrange)", |ui| {
-                    if ui.button("最前面へ   Cmd+Shift+]").clicked() {
+                    if ui
+                        .button(format!("最前面へ   {mk}+Shift+]"))
+                        .clicked()
+                    {
                         let sel = state.selected_ids.clone();
                         state.reorder_objects_undoable("Bring to Front", |doc| {
                             for id in &sel {
@@ -135,7 +164,7 @@ impl CanvasWidget {
                         });
                         ui.close_menu();
                     }
-                    if ui.button("前面へ   Cmd+]").clicked() {
+                    if ui.button(format!("前面へ   {mk}+]")).clicked() {
                         let sel = state.selected_ids.clone();
                         state.reorder_objects_undoable("Bring Forward", |doc| {
                             for id in &sel {
@@ -153,7 +182,7 @@ impl CanvasWidget {
                         });
                         ui.close_menu();
                     }
-                    if ui.button("背面へ   Cmd+[").clicked() {
+                    if ui.button(format!("背面へ   {mk}+[")).clicked() {
                         let sel = state.selected_ids.clone();
                         state.reorder_objects_undoable("Send Backward", |doc| {
                             for id in &sel {
@@ -171,7 +200,10 @@ impl CanvasWidget {
                         });
                         ui.close_menu();
                     }
-                    if ui.button("最背面へ   Cmd+Shift+[").clicked() {
+                    if ui
+                        .button(format!("最背面へ   {mk}+Shift+["))
+                        .clicked()
+                    {
                         let sel = state.selected_ids.clone();
                         state.reorder_objects_undoable("Send to Back", |doc| {
                             for id in &sel {
@@ -192,7 +224,7 @@ impl CanvasWidget {
 
                 if multi_sel {
                     ui.separator();
-                    if ui.button("グループ化   Cmd+G").clicked() {
+                    if ui.button(format!("グループ化   {mk}+G")).clicked() {
                         state.replace_selected("Group", |objects| {
                             if objects.len() >= 2 {
                                 let grp = crate::core::document::Object::new_group(
@@ -215,7 +247,11 @@ impl CanvasWidget {
                             o.id == *id && matches!(o.object_type, ObjectType::Group(_))
                         })
                     });
-                    if has_group && ui.button("グループ解除   Cmd+Shift+G").clicked() {
+                    if has_group
+                        && ui
+                            .button(format!("グループ解除   {mk}+Shift+G"))
+                            .clicked()
+                    {
                         state.replace_selected("Ungroup", |objects| {
                             let mut added = Vec::new();
                             let mut new_ids = Vec::new();
@@ -238,7 +274,10 @@ impl CanvasWidget {
             } else {
                 ui.label(egui::RichText::new("キャンバス").weak().size(10.0));
                 ui.separator();
-                if ui.button("画面に合わせる (フィット)   Cmd+0").clicked() {
+                if ui
+                    .button(format!("画面に合わせる (フィット)   {mk}+0"))
+                    .clicked()
+                {
                     state.start_zoom = state.zoom;
                     state.start_pan_x = state.pan_x;
                     state.start_pan_y = state.pan_y;
@@ -246,7 +285,10 @@ impl CanvasWidget {
                     state.zoom_animation_progress = 0.0;
                     ui.close_menu();
                 }
-                if ui.button("等倍表示 (100%)   Cmd+1").clicked() {
+                if ui
+                    .button(format!("等倍表示 (100%)   {mk}+1"))
+                    .clicked()
+                {
                     state.start_zoom = state.zoom;
                     state.start_pan_x = state.pan_x;
                     state.start_pan_y = state.pan_y;

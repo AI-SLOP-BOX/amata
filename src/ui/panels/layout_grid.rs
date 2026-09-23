@@ -29,7 +29,10 @@ impl LayoutGridPanel {
 
         if !enabled {
             if ui.button("レイアウトグリッドを追加").clicked() {
+                let before = state.document.artboards.clone();
                 state.document.artboards[idx].layout_grid = Some(LayoutGrid::default());
+                let after = state.document.artboards.clone();
+                state.push_artboards_undo("Add Layout Grid", before, after);
                 state.notify_success("レイアウトグリッドを追加しました");
             }
             ui.label(
@@ -80,10 +83,16 @@ impl LayoutGridPanel {
         });
 
         if grid != before {
+            let art_before = state.document.artboards.clone();
             state.document.artboards[idx].layout_grid = Some(grid);
+            let art_after = state.document.artboards.clone();
+            state.push_artboards_undo("Edit Layout Grid", art_before, art_after);
         }
         if ui.button("削除").clicked() {
+            let art_before = state.document.artboards.clone();
             state.document.artboards[idx].layout_grid = None;
+            let art_after = state.document.artboards.clone();
+            state.push_artboards_undo("Remove Layout Grid", art_before, art_after);
         }
     }
 }

@@ -149,7 +149,11 @@ fn test_marks_change_output() {
         &PrintPdfOptions { marks: false, bleed: Some(0.0), pdfx: false },
     );
     assert!(with_marks.len() > plain.len(), "marks add content");
-    assert!(String::from_utf8_lossy(&with_marks).contains("arc"), "registration targets");
+    // Registration targets are drawn as crosshairs + a cubic-circle ring
+    // (PDF has no `arc` operator; the old invalid `… arc S` was replaced).
+    let marks = String::from_utf8_lossy(&with_marks);
+    assert!(marks.contains("c S"), "registration ring uses cubic curves");
+    assert!(marks.contains("m"), "crop/registration crosshairs");
 }
 
 #[test]

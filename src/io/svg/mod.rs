@@ -20,7 +20,7 @@ mod util;
 // independently of the library and may not consume every item, hence the
 // allow on the re-export block.
 #[allow(unused_imports)]
-pub use export::export_svg;
+pub use export::{export_svg, export_svg_with_profile};
 #[allow(unused_imports)]
 pub use parse::{parse_svg_color, parse_svg_document, parse_svg_path_data, try_parse_svg_document};
 #[allow(unused_imports)]

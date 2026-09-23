@@ -311,6 +311,13 @@ impl VersionHistoryPanel {
                             }
                             state.document = doc;
                             state.adopt_doc_extras();
+                            // Whole-document swap: pending snapshots and the
+                            // undo stack no longer match the on-screen doc.
+                            state.pending_objects.clear();
+                            state.pending_layers.clear();
+                            state.pending_transforms.clear();
+                            state.undo_manager.clear();
+                            state.selected_ids.clear();
                             state.notify_info(format!(
                                 "バージョン {} をプレビュー中",
                                 &rev[..7.min(rev.len())]
