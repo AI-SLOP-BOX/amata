@@ -19,11 +19,15 @@ pub enum PrefCategory {
 ///
 /// The dialog owns no preference values of its own: every control writes
 /// straight into [`AppState::prefs`], the single struct the renderer reads
-/// live and that is persisted to `preferences.json` when the dialog closes.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// live and that is persisted to `preferences.json` when the dialog closes
+/// (*キャンセル* / Escape restore the snapshot taken on open instead).
+#[derive(Debug, Clone, PartialEq)]
 pub struct PreferencesDialog {
     pub is_open: bool,
     pub selected_category: PrefCategory,
+    /// Preferences as they were when the dialog opened — *キャンセル* and
+    /// Escape discard the live edits back to this.
+    open_snapshot: Option<Prefs>,
 }
 
 impl Default for PreferencesDialog {
@@ -31,34 +35,68 @@ impl Default for PreferencesDialog {
         Self {
             is_open: false,
             selected_category: PrefCategory::General,
+            open_snapshot: None,
         }
     }
 }
 
 impl PreferencesDialog {
     /// Push the preferences that live *outside* `AppState::prefs` into the
-    /// running session: the smart-guides mirror and the runtime stack limits.
-    /// Called once at startup and again whenever the dialog closes.
+    /// running session: the mirrored session toggles and the runtime stack
+    /// limits. Called once at startup and again whenever the dialog closes.
     pub fn apply_to_session(state: &mut AppState) {
         state.show_smart_guides = state.prefs.show_smart_guides_on_transform;
+        state.show_grid = state.prefs.show_grid;
+        state.grid_size = state.prefs.grid_size;
+        state.snap_to_grid = state.prefs.snap_to_grid;
+        state.snap_to_objects = state.prefs.snap_to_objects;
+        state.snap_to_guides = state.prefs.snap_to_guides;
+        state.snap_to_points = state.prefs.snap_to_points;
+        state.snap_to_pixels = state.prefs.snap_to_pixels;
+        state.show_rulers = state.prefs.show_rulers;
         crate::io::recent::set_recent_limit(state.prefs.recent_files_count);
         state
             .undo_manager
             .set_max_steps(state.prefs.history_states_count);
     }
 
+    /// Session → prefs for the mirrored toggles. Runs when the dialog opens
+    /// (so the controls reflect what *View* / the panels last set) and every
+    /// frame it is up (those menus stay usable behind the window).
+    fn mirror_session(state: &mut AppState) {
+        state.prefs.show_smart_guides_on_transform = state.show_smart_guides;
+        state.prefs.show_grid = state.show_grid;
+        state.prefs.grid_size = state.grid_size;
+        state.prefs.snap_to_grid = state.snap_to_grid;
+        state.prefs.snap_to_objects = state.snap_to_objects;
+        state.prefs.snap_to_guides = state.snap_to_guides;
+        state.prefs.snap_to_points = state.snap_to_points;
+        state.prefs.snap_to_pixels = state.snap_to_pixels;
+        state.prefs.show_rulers = state.show_rulers;
+    }
+
     pub fn show(&mut self, ctx: &egui::Context, state: &mut AppState) {
         if !self.is_open {
+            // Closed from outside this function (Escape / a menu): discard
+            // the live edits, exactly like *キャンセル*.
+            if let Some(snapshot) = self.open_snapshot.take() {
+                state.prefs = snapshot;
+                Self::apply_to_session(state);
+            }
             return;
         }
 
-        // Smart guides are session state (View menu / panels / `U` toggle them
-        // directly) — mirror the live value into prefs so the checkbox and the
-        // persisted default never drift apart.
-        state.prefs.show_smart_guides_on_transform = state.show_smart_guides;
+        // Grid / snap / rulers / smart guides are session state (View menu,
+        // panels and `U` toggle them directly) — mirror the live values into
+        // prefs so the controls and the persisted default never drift apart.
+        Self::mirror_session(state);
+        if self.open_snapshot.is_none() {
+            self.open_snapshot = Some(state.prefs.clone());
+        }
 
         let mut is_open = self.is_open;
-        let mut close_clicked = false;
+        let mut ok_clicked = false;
+        let mut cancel_clicked = false;
         let screen = ctx.screen_rect();
         let (size, min_size, pos) = crate::ui::window_defaults(
             screen,
@@ -123,19 +161,19 @@ impl PreferencesDialog {
                                 )
                                 .clicked()
                             {
-                                close_clicked = true;
+                                ok_clicked = true;
                             }
                             if ui
                                 .add(egui::Button::new("キャンセル").min_size(Vec2::new(80.0, 26.0)))
                                 .clicked()
                             {
-                                close_clicked = true;
+                                cancel_clicked = true;
                             }
                         });
                         return;
                     }
                     ui.set_width(total_w);
-                    self.show_content(ui, total_w, &mut state.prefs);
+                    self.show_content(ui, total_w, state);
                     ui.add_space(8.0);
                     if ui
                         .button(RichText::new("すべての環境設定をリセット").size(10.5))
@@ -146,24 +184,33 @@ impl PreferencesDialog {
                     }
                 });
             });
-        if close_clicked {
+        if ok_clicked || cancel_clicked {
             self.is_open = false;
         } else {
             self.is_open = is_open;
         }
         if self.is_open {
-            // Live: prefs → the mirrored session toggle while the dialog is up.
-            state.show_smart_guides = state.prefs.show_smart_guides_on_transform;
+            // Live: prefs → the mirrored session toggles while the dialog is up.
+            Self::apply_to_session(state);
+        } else if cancel_clicked {
+            // *キャンセル*: forget the edits — restore what was there on open
+            // and push it back into the session.
+            if let Some(snapshot) = self.open_snapshot.take() {
+                state.prefs = snapshot;
+            }
+            Self::apply_to_session(state);
         } else {
-            // Reached exactly once — the function returns early on the frames
-            // after the dialog has closed.
+            // OK / window close. Reached exactly once — the function returns
+            // early on the frames after the dialog has closed.
+            self.open_snapshot = None;
             state.prefs.save();
             Self::apply_to_session(state);
         }
     }
 
-    fn show_content(&mut self, ui: &mut egui::Ui, content_w: f32, prefs: &mut Prefs) {
+    fn show_content(&mut self, ui: &mut egui::Ui, content_w: f32, state: &mut AppState) {
         ui.set_width(content_w);
+        let prefs = &mut state.prefs;
         match self.selected_category {
             PrefCategory::General => {
                 ui.label(RichText::new("一般").strong().size(14.0));
@@ -351,6 +398,54 @@ impl PreferencesDialog {
                     &mut prefs.notify_plugin_load,
                     "プラグインの読み込みに関するメッセージ",
                 );
+            }
+            PrefCategory::GuidesAndGrid => {
+                ui.label(RichText::new("ガイド・グリッド").strong().size(14.0));
+                ui.add_space(6.0);
+                ui.label(
+                    RichText::new("グリッド")
+                        .strong()
+                        .size(11.5)
+                        .color(Color32::from_rgb(180, 180, 180)),
+                );
+                ui.checkbox(&mut prefs.show_grid, "グリッドを表示");
+                ui.horizontal_wrapped(|ui| {
+                    ui.label(RichText::new("グリッドの間隔:").size(11.0));
+                    ui.add(
+                        egui::DragValue::new(&mut prefs.grid_size)
+                            .speed(1.0)
+                            .range(1.0..=500.0)
+                            .suffix(" px"),
+                    );
+                });
+
+                ui.add_space(6.0);
+                ui.separator();
+                ui.add_space(6.0);
+
+                ui.label(
+                    RichText::new("スナップ")
+                        .strong()
+                        .size(11.5)
+                        .color(Color32::from_rgb(180, 180, 180)),
+                );
+                ui.checkbox(&mut prefs.snap_to_grid, "グリッドにスナップ");
+                ui.checkbox(&mut prefs.snap_to_objects, "オブジェクトにスナップ");
+                ui.checkbox(&mut prefs.snap_to_guides, "ガイドにスナップ");
+                ui.checkbox(&mut prefs.snap_to_points, "アンカーポイントにスナップ");
+                ui.checkbox(&mut prefs.snap_to_pixels, "ピクセルにスナップ");
+
+                ui.add_space(6.0);
+                ui.separator();
+                ui.add_space(6.0);
+
+                ui.label(
+                    RichText::new("定規")
+                        .strong()
+                        .size(11.5)
+                        .color(Color32::from_rgb(180, 180, 180)),
+                );
+                ui.checkbox(&mut prefs.show_rulers, "定規を表示");
             }
             other => {
                 ui.label(

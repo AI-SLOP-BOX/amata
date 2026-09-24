@@ -59,6 +59,24 @@ pub struct Prefs {
     /// Show `name (W × H px)` on the artboard header.
     pub show_dimension_labels: bool,
 
+    // ── ガイド・グリッド ──────────────────────────────────────────────────
+    ///
+    /// The grid/snap/ruler toggles are *session* state (`AppState::show_grid`
+    /// and friends, changed live by *View* and the panels). These fields are
+    /// their startup default and their control inside the dialog: the dialog
+    /// mirrors session → prefs while it is open and pushes prefs → session
+    /// on every frame and again when it closes (see
+    /// [`PreferencesDialog`](crate::ui::PreferencesDialog)).
+    pub show_grid: bool,
+    /// Grid spacing in document units (`AppState::grid_size`).
+    pub grid_size: f64,
+    pub snap_to_grid: bool,
+    pub snap_to_objects: bool,
+    pub snap_to_guides: bool,
+    pub snap_to_points: bool,
+    pub snap_to_pixels: bool,
+    pub show_rulers: bool,
+
     // ── 通知 ─────────────────────────────────────────────────────────────
     /// Report skipped constructs when importing a (PDF) file.
     pub notify_file_compat: bool,
@@ -92,6 +110,16 @@ impl Default for Prefs {
             artboard_bg_mode: "透明グリッド".to_string(),
             show_boundary_lines: true,
             show_dimension_labels: true,
+            // Defaults mirror `AppState`'s so applying them at startup
+            // changes nothing.
+            show_grid: true,
+            grid_size: 50.0,
+            snap_to_grid: false,
+            snap_to_objects: true,
+            snap_to_guides: true,
+            snap_to_points: true,
+            snap_to_pixels: false,
+            show_rulers: true,
             notify_file_compat: true,
             notify_font_substitute: true,
             notify_plugin_load: true,

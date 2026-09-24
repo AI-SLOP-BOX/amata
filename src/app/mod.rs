@@ -203,8 +203,10 @@ impl Default for IrasuApp {
         // Preferences load exactly once, here: the dialog edits
         // `state.prefs` in place, so the startup-only values (home screen,
         // mirrored session toggles, stack limits) are applied from here.
-        let mut state = AppState::default();
-        state.prefs = crate::core::prefs::Prefs::load();
+        let mut state = AppState {
+            prefs: crate::core::prefs::Prefs::load(),
+            ..Default::default()
+        };
         crate::ui::PreferencesDialog::apply_to_session(&mut state);
         // Font substitutions discovered while installing the UI fonts.
         if state.prefs.notify_font_substitute {
@@ -213,8 +215,10 @@ impl Default for IrasuApp {
                 state.notify_info(warns.join("\n"));
             }
         }
-        let mut home_view = HomeView::default();
-        home_view.is_open = state.prefs.show_home_on_startup;
+        let home_view = HomeView {
+            is_open: state.prefs.show_home_on_startup,
+            ..Default::default()
+        };
         Self {
             state,
             canvas: CanvasWidget::new(),

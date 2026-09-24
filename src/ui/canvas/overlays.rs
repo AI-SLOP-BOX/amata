@@ -1,4 +1,8 @@
 use super::{CanvasWidget, DragState, HANDLE_HIT_RADIUS, RULER_WIDTH};
+use crate::core::document::{Object, ObjectType};
+use crate::core::path::PathData;
+use crate::core::state::AppState;
+use egui::{Color32, FontId, Pos2, Rect, Stroke, StrokeKind, Vec2};
 
 /// `(fill, stroke)` for points and handles — `point_handle_color_mode`.
 /// The default matches what the renderer has always drawn (white fill with an
@@ -10,10 +14,6 @@ fn handle_palette(state: &AppState) -> (Color32, Color32) {
         (Color32::WHITE, Color32::from_rgb(20, 115, 230))
     }
 }
-use crate::core::document::{Object, ObjectType};
-use crate::core::path::PathData;
-use crate::core::state::AppState;
-use egui::{Color32, FontId, Pos2, Rect, Stroke, StrokeKind, Vec2};
 
 impl CanvasWidget {
     /// Perspective guide overlay: horizon, fan rays clipped to the view,
