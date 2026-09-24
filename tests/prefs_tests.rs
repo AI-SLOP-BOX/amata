@@ -4,12 +4,11 @@
 use irasu_illustrator::core::document::{Guide, GuideOrientation};
 use irasu_illustrator::core::prefs::Prefs;
 use irasu_illustrator::core::state::AppState;
+use irasu_illustrator::core::unit::LengthUnit;
 use irasu_illustrator::ui::PreferencesDialog;
 
 #[test]
 fn default_prefs_match_session_defaults() {
-    // Prefs is the *startup* value of the session state: applying the defaults
-    // to a fresh AppState must change nothing.
     // Prefs is the *startup* value of the session state: applying the defaults
     // to a fresh AppState must change nothing.
     let mut state = AppState::default();
@@ -196,4 +195,56 @@ fn snap_to_object_edges_returns_none_on_miss() {
         "a point exactly on the left edge is a hit, not a miss"
     );
     state.snap_to_objects = false;
+}
+
+// ── 単位 ─────────────────────────────────────────────────────────────────
+
+#[test]
+fn default_units_change_nothing_already_printed() {
+    let d = Prefs::default();
+    // Coordinates and stroke widths printed raw px before units existed —
+    // the defaults must keep them on px so every field reads the same.
+    assert_eq!(d.ruler_unit, LengthUnit::Px);
+    assert_eq!(d.stroke_unit, LengthUnit::Px);
+    // …but the new-document dialog has offered millimetres since day one.
+    assert_eq!(d.default_doc_unit, LengthUnit::Mm);
+}
+
+#[test]
+fn unit_prefs_survive_a_json_round_trip_as_labels() {
+    let p = Prefs {
+        ruler_unit: LengthUnit::Mm,
+        stroke_unit: LengthUnit::Pt,
+        default_doc_unit: LengthUnit::In,
+        ..Default::default()
+    };
+    let json = serde_json::to_string(&p).unwrap();
+    // Stored as the same Japanese labels the selectors show, so a hand-edited
+    // preferences.json stays readable.
+    assert!(json.contains("\"ミリメートル\""), "{json}");
+    assert!(json.contains("\"ポイント\""), "{json}");
+    assert!(json.contains("\"インチ\""), "{json}");
+    assert_eq!(serde_json::from_str::<Prefs>(&json).unwrap(), p);
+}
+
+#[test]
+fn legacy_json_without_units_gets_the_px_defaults() {
+    let legacy = r#"{"show_home_on_startup": false}"#;
+    let p: Prefs = serde_json::from_str(legacy).unwrap();
+    assert_eq!(p.ruler_unit, LengthUnit::Px);
+    assert_eq!(p.stroke_unit, LengthUnit::Px);
+    assert_eq!(p.default_doc_unit, LengthUnit::Mm);
+}
+
+#[test]
+fn a_garbage_unit_label_falls_back_to_px_instead_of_failing_to_load() {
+    // A unit is a *display* choice: a hand-edited file must not be able to
+    // take the whole preferences load down with it.
+    let bad = r#"{"ruler_unit": "観光", "stroke_unit": 42}"#;
+    // A non-string is a hard serde error for that field; `Prefs::load`
+    // already swallows those and returns Default. What must *not* happen is
+    // a panic, and a wrong-but-string label must load as px.
+    assert!(serde_json::from_str::<Prefs>(bad).is_err());
+    let bad_label: Prefs = serde_json::from_str(r#"{"ruler_unit": "観光"}"#).unwrap();
+    assert_eq!(bad_label.ruler_unit, LengthUnit::Px);
 }

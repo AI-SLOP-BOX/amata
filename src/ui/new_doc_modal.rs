@@ -92,6 +92,11 @@ impl NewDocModal {
         state: &mut AppState,
     ) -> Option<NewDocRequest> {
         if !self.is_open {
+            // While closed, keep the preselected unit on the preference
+            // default. Home-screen presets write `unit` immediately before
+            // opening, and this runs on every frame *before* that, so a
+            // preset still wins for the preset it picked.
+            self.unit = state.prefs.default_doc_unit.label().to_string();
             return None;
         }
         // "新規ドキュメントを作成するときに設定ダイアログを表示" is off: the

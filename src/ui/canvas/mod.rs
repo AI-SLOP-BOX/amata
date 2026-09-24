@@ -497,11 +497,13 @@ impl CanvasWidget {
             // Artboard Header Tab Label (the size part is the dimension label)
             let tab_pos = Pos2::new(ab_rect.min.x, ab_rect.min.y - 18.0);
             let label = if state.prefs.show_dimension_labels {
+                let unit = state.prefs.ruler_unit;
                 format!(
-                    "{} ({} × {} px)",
+                    "{} ({} × {} {})",
                     ab.name,
-                    ab.width as i32,
-                    ab.height as i32
+                    unit.format(ab.width),
+                    unit.format(ab.height),
+                    unit.suffix()
                 )
             } else {
                 ab.name.clone()

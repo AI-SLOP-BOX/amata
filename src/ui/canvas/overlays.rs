@@ -125,6 +125,7 @@ impl CanvasWidget {
         let tick_major_color = Color32::from_rgb(140, 140, 140);
         let tick_minor_color = Color32::from_rgb(80, 80, 80);
         let font_id = FontId::proportional(8.5_f32);
+        let unit = state.prefs.ruler_unit;
 
         // Top ruler bar
         let top_ruler = Rect::from_min_size(rect.min, Vec2::new(rect.width(), RULER_WIDTH));
@@ -154,9 +155,19 @@ impl CanvasWidget {
             0.0_f32,
             Color32::from_rgb(28, 28, 28),
         );
+        // Active unit in the origin box, the way Illustrator labels it.
+        painter.text(
+            rect.min + Vec2::splat(RULER_WIDTH * 0.5),
+            egui::Align2::CENTER_CENTER,
+            unit.suffix(),
+            FontId::proportional(7.0),
+            tick_major_color,
+        );
 
-        // Scale steps
-        let step: f32 = if state.zoom > 3.0_f32 {
+        // Scale steps. The zoom ladder still picks a *rough* spacing in
+        // document px; the display unit then snaps it to a readable number
+        // of its own (100 px → 20 mm), so every label stays whole.
+        let rough: f32 = if state.zoom > 3.0_f32 {
             20.0_f32
         } else if state.zoom > 1.5_f32 {
             50.0_f32
@@ -165,6 +176,9 @@ impl CanvasWidget {
         } else {
             100.0_f32
         };
+        // `nice_step` is the identity for px, so the default unit keeps the
+        // exact 20/50/100/500 ladder it has always drawn.
+        let step: f32 = unit.nice_step(rough as f64) as f32;
         let step_px = step * state.zoom;
         let start_val = ((rect.min.x - origin.x) / step_px).floor() * step;
 
@@ -184,7 +198,7 @@ impl CanvasWidget {
                 painter.text(
                     Pos2::new(sx + 2.0_f32, rect.min.y + 1.5_f32),
                     egui::Align2::LEFT_TOP,
-                    format!("{val:.0}"),
+                    unit.format(val as f64),
                     font_id.clone(),
                     tick_major_color,
                 );
@@ -220,7 +234,7 @@ impl CanvasWidget {
                 painter.text(
                     Pos2::new(rect.min.x + 2.0_f32, sy + 1.5_f32),
                     egui::Align2::LEFT_TOP,
-                    format!("{val_y:.0}"),
+                    unit.format(val_y as f64),
                     font_id.clone(),
                     tick_major_color,
                 );
@@ -472,7 +486,7 @@ impl CanvasWidget {
                 measure_badge(
                     painter,
                     to_screen((x_l + s_min.x) * 0.5, s_cy),
-                    &fmt_measure(gap_l),
+                    &fmt_measure(gap_l, state),
                     guide_stroke.color,
                 );
                 // Right gap bar: selection's right edge → neighbour's left edge.
@@ -480,7 +494,7 @@ impl CanvasWidget {
                 measure_badge(
                     painter,
                     to_screen((s_max.x + x_r) * 0.5, s_cy),
-                    &fmt_measure(gap_r),
+                    &fmt_measure(gap_r, state),
                     guide_stroke.color,
                 );
             }
@@ -495,7 +509,7 @@ impl CanvasWidget {
                 measure_badge(
                     painter,
                     to_screen(s_cx, (y_t + s_min.y) * 0.5),
-                    &fmt_measure(gap_t),
+                    &fmt_measure(gap_t, state),
                     guide_stroke.color,
                 );
                 // Bottom gap bar: selection's bottom edge → neighbour's top edge.
@@ -503,7 +517,7 @@ impl CanvasWidget {
                 measure_badge(
                     painter,
                     to_screen(s_cx, (s_max.y + y_b) * 0.5),
-                    &fmt_measure(gap_b),
+                    &fmt_measure(gap_b, state),
                     guide_stroke.color,
                 );
             }
@@ -1286,9 +1300,19 @@ impl CanvasWidget {
         let w = s_max.0 - s_min.0;
         let h = s_max.1 - s_min.1;
         let cb = w2s((s_min.0 + s_max.0) * 0.5, s_max.1);
-        measure_badge(painter, Pos2::new(cb.x, cb.y + 10.0), &fmt_measure(w), mcol);
+        measure_badge(
+            painter,
+            Pos2::new(cb.x, cb.y + 10.0),
+            &fmt_measure(w, state),
+            mcol,
+        );
         let cr = w2s(s_max.0, (s_min.1 + s_max.1) * 0.5);
-        measure_badge(painter, Pos2::new(cr.x + 10.0, cr.y), &fmt_measure(h), mcol);
+        measure_badge(
+            painter,
+            Pos2::new(cr.x + 10.0, cr.y),
+            &fmt_measure(h, state),
+            mcol,
+        );
 
         // Candidate targets: other visible objects + artboard rects.
         let mut cands: Vec<((f64, f64), (f64, f64))> = Vec::new();
@@ -1365,7 +1389,7 @@ impl CanvasWidget {
             measure_badge(
                 painter,
                 Pos2::new((a.x + b.x) * 0.5, (a.y + b.y) * 0.5 - 9.0),
-                &fmt_measure(gap),
+                &fmt_measure(gap, state),
                 mcol,
             );
         }
@@ -1388,7 +1412,7 @@ impl CanvasWidget {
             measure_badge(
                 painter,
                 Pos2::new((a.x + b.x) * 0.5 + 9.0, (a.y + b.y) * 0.5),
-                &fmt_measure(gap),
+                &fmt_measure(gap, state),
                 mcol,
             );
         }
@@ -1571,12 +1595,11 @@ fn outer_radius_to_f64(r: f64) -> f64 {
     r
 }
 
-fn fmt_measure(v: f64) -> String {
-    if (v - v.round()).abs() < 0.05 {
-        format!("{}", v.round() as i64)
-    } else {
-        format!("{v:.1}")
-    }
+/// Format a document-px length for an on-canvas badge, in the display unit
+/// the ruler is using (they must agree — a gap bar next to a mm ruler
+/// reading px would be nonsense).
+fn fmt_measure(v: f64, state: &AppState) -> String {
+    state.prefs.ruler_unit.format(v)
 }
 
 fn measure_badge(painter: &egui::Painter, center: Pos2, text: &str, color: Color32) {

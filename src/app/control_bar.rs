@@ -174,18 +174,20 @@ impl IrasuApp {
                                 }
 
                                 // Stroke Width (label drops first at the
-                                // tightest tier; the " pt" suffix remains)
+                                // tightest tier; the unit suffix remains)
                                 if show_more {
                                     ui.label(egui::RichText::new("線:").size(11.0));
                                 }
-                                let mut sw = obj_sw;
+                                let su = self.state.prefs.stroke_unit;
+                                let mut sw = su.from_px(obj_sw);
                                 let sw_resp = ui.add(
                                     egui::DragValue::new(&mut sw)
-                                        .speed(0.1)
-                                        .range(0.0..=200.0)
-                                        .suffix(" pt"),
+                                        .speed(su.from_px(0.1))
+                                        .range(0.0..=su.from_px(200.0))
+                                        .suffix(su.suffix_label()),
                                 );
                                 if sw_resp.changed() {
+                                    let sw = su.to_px(sw);
                                     self.state.stroke_width = sw;
                                     let sel = self.state.selected_ids.clone();
                                     for id in &sel {
@@ -344,15 +346,24 @@ impl IrasuApp {
                                 if show_xy {
                                     ui.separator();
 
-                                    // Transform coordinates: X, Y, W, H
-                                    let mut tx = obj_tx;
+                                    // Transform coordinates: X, Y, W, H —
+                                    // shown in the ruler's display unit and
+                                    // converted back to document px on write.
+                                    let unit = self.state.prefs.ruler_unit;
+                                    let speed = unit.from_px(0.5);
+                                    let decimals = unit.field_decimals();
+                                    let suffix = unit.suffix_label();
+
+                                    let mut tx = unit.from_px(obj_tx);
                                     ui.label(egui::RichText::new("X").weak().size(11.0));
                                     let tx_resp = ui.add(
                                         egui::DragValue::new(&mut tx)
-                                            .speed(0.5)
-                                            .max_decimals(1),
+                                            .speed(speed)
+                                            .max_decimals(decimals)
+                                            .suffix(suffix.clone()),
                                     );
                                     if tx_resp.changed() {
+                                        let tx = unit.to_px(tx);
                                         let sel = self.state.selected_ids.clone();
                                         for id in &sel {
                                             self.state.ensure_object_snapshot(id);
@@ -369,14 +380,16 @@ impl IrasuApp {
                                         self.state.commit_object_edits("Edit Transform");
                                     }
 
-                                    let mut ty = obj_ty;
+                                    let mut ty = unit.from_px(obj_ty);
                                     ui.label(egui::RichText::new("Y").weak().size(11.0));
                                     let ty_resp = ui.add(
                                         egui::DragValue::new(&mut ty)
-                                            .speed(0.5)
-                                            .max_decimals(1),
+                                            .speed(speed)
+                                            .max_decimals(decimals)
+                                            .suffix(suffix.clone()),
                                     );
                                     if ty_resp.changed() {
+                                        let ty = unit.to_px(ty);
                                         let sel = self.state.selected_ids.clone();
                                         for id in &sel {
                                             self.state.ensure_object_snapshot(id);
@@ -393,16 +406,19 @@ impl IrasuApp {
                                         self.state.commit_object_edits("Edit Transform");
                                     }
 
-                                    let mut bw = obj_bw;
+                                    // W/H are scale ratios, and a ratio is
+                                    // unit-independent — only the bounds and
+                                    // the number shown need converting.
+                                    let mut bw = unit.from_px(obj_bw);
                                     ui.label(egui::RichText::new("W").weak().size(11.0));
                                     let bw_resp = ui.add(
                                         egui::DragValue::new(&mut bw)
-                                            .speed(0.5)
-                                            .max_decimals(1)
-                                            .range(0.1..=99999.0),
+                                            .speed(speed)
+                                            .max_decimals(decimals)
+                                            .range(unit.from_px(0.1)..=unit.from_px(99999.0)),
                                     );
                                     if bw_resp.changed() && obj_bw > 0.0 {
-                                        let scale = bw / obj_bw;
+                                        let scale = unit.to_px(bw) / obj_bw;
                                         let sel = self.state.selected_ids.clone();
                                         for id in &sel {
                                             self.state.ensure_object_snapshot(id);
@@ -417,16 +433,16 @@ impl IrasuApp {
                                         self.state.commit_object_edits("Edit Transform");
                                     }
 
-                                    let mut bh = obj_bh;
+                                    let mut bh = unit.from_px(obj_bh);
                                     ui.label(egui::RichText::new("H").weak().size(11.0));
                                     let bh_resp = ui.add(
                                         egui::DragValue::new(&mut bh)
-                                            .speed(0.5)
-                                            .max_decimals(1)
-                                            .range(0.1..=99999.0),
+                                            .speed(speed)
+                                            .max_decimals(decimals)
+                                            .range(unit.from_px(0.1)..=unit.from_px(99999.0)),
                                     );
                                     if bh_resp.changed() && obj_bh > 0.0 {
-                                        let scale = bh / obj_bh;
+                                        let scale = unit.to_px(bh) / obj_bh;
                                         let sel = self.state.selected_ids.clone();
                                         for id in &sel {
                                             self.state.ensure_object_snapshot(id);
@@ -497,20 +513,21 @@ impl IrasuApp {
                         }
 
                         // Stroke Width
+                        let su = self.state.prefs.stroke_unit;
                         if show_more {
                             ui.label(egui::RichText::new("線:").size(11.0));
                         }
-                        let mut sw = self.state.stroke_width;
+                        let mut sw = su.from_px(self.state.stroke_width);
                         if ui
                             .add(
                                 egui::DragValue::new(&mut sw)
-                                    .speed(0.1)
-                                    .range(0.0..=200.0)
-                                    .suffix(" pt"),
+                                    .speed(su.from_px(0.1))
+                                    .range(0.0..=su.from_px(200.0))
+                                    .suffix(su.suffix_label()),
                             )
                             .changed()
                         {
-                            self.state.stroke_width = sw;
+                            self.state.stroke_width = su.to_px(sw);
                         }
 
                         ui.separator();

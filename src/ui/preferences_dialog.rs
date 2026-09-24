@@ -1,5 +1,6 @@
 use crate::core::prefs::Prefs;
 use crate::core::state::AppState;
+use crate::core::unit::LengthUnit;
 use eframe::egui::{self, Color32, RichText, Vec2};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -447,6 +448,22 @@ impl PreferencesDialog {
                 );
                 ui.checkbox(&mut prefs.show_rulers, "定規を表示");
             }
+            PrefCategory::Units => {
+                ui.label(RichText::new("単位").strong().size(14.0));
+                ui.add_space(6.0);
+                ui.label(
+                    RichText::new(
+                        "座標やサイズは96dpiのピクセルとして保存されたまま \
+                         変わらず、ここでは表示単位だけを切り替えます。",
+                    )
+                    .size(11.0)
+                    .color(Color32::from_rgb(150, 150, 150)),
+                );
+                ui.add_space(8.0);
+                unit_row(ui, "定規・座標・サイズ", &mut prefs.ruler_unit);
+                unit_row(ui, "ストローク", &mut prefs.stroke_unit);
+                unit_row(ui, "新規ドキュメント", &mut prefs.default_doc_unit);
+            }
             other => {
                 ui.label(
                     RichText::new(format!("{:?}", other))
@@ -458,4 +475,20 @@ impl PreferencesDialog {
             }
         }
     }
+}
+
+/// One *label + ComboBox* row for a [`LengthUnit`] preference. The id salt is
+/// the row label, so the three rows on the 単位 page never collide.
+fn unit_row(ui: &mut egui::Ui, label: &str, value: &mut LengthUnit) {
+    ui.horizontal(|ui| {
+        ui.label(RichText::new(label).size(11.0));
+        egui::ComboBox::from_id_salt(label)
+            .selected_text(value.label())
+            .width(150.0)
+            .show_ui(ui, |ui| {
+                for unit in LengthUnit::ALL {
+                    ui.selectable_value(value, unit, unit.label());
+                }
+            });
+    });
 }

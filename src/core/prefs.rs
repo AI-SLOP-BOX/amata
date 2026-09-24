@@ -5,6 +5,7 @@
 //! [`IrasuApp`](crate::app::IrasuApp) applies the startup-only ones once at
 //! launch. Persisted as JSON in the user's config directory.
 
+use super::unit::LengthUnit;
 use serde::{Deserialize, Serialize};
 
 /// User-facing preferences (Illustrator-style *Preferences ▸ General*).
@@ -77,6 +78,27 @@ pub struct Prefs {
     pub snap_to_pixels: bool,
     pub show_rulers: bool,
 
+    // ── 単位 ─────────────────────────────────────────────────────────────
+    ///
+    /// Geometry is always *stored* in document px at 96 dpi —
+    /// `crate::core::unit::LengthUnit` is that conversion table. These fields
+    /// only pick what the ruler labels, the artboard dimension tag and the
+    /// numeric fields *show*; changing one re-reads the same numbers on the
+    /// next frame, so nothing on disk moves.
+    ///
+    /// Defaults are px, which is what every field printed before units were
+    /// configurable — including the two that were printing the wrong unit
+    /// over a px value (the property panel's hardcoded ` mm`, the stroke
+    /// fields' ` pt`). `default_doc_unit` is the one exception: the
+    /// new-document dialog has offered millimetres since day one.
+    ///
+    /// Unit for rulers, coordinates, sizes and the artboard dimension label.
+    pub ruler_unit: LengthUnit,
+    /// Unit for stroke widths.
+    pub stroke_unit: LengthUnit,
+    /// Unit preselected in the new-document dialog.
+    pub default_doc_unit: LengthUnit,
+
     // ── 通知 ─────────────────────────────────────────────────────────────
     /// Report skipped constructs when importing a (PDF) file.
     pub notify_file_compat: bool,
@@ -120,6 +142,12 @@ impl Default for Prefs {
             snap_to_points: true,
             snap_to_pixels: false,
             show_rulers: true,
+            // Document px: identical to what every field printed before
+            // units were configurable.
+            ruler_unit: LengthUnit::Px,
+            stroke_unit: LengthUnit::Px,
+            // Matches `NewDocModal`'s long-standing default.
+            default_doc_unit: LengthUnit::Mm,
             notify_file_compat: true,
             notify_font_substitute: true,
             notify_plugin_load: true,

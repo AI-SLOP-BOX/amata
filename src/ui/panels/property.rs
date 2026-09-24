@@ -94,6 +94,9 @@ impl PropertyPanel {
             );
             ui.add_space(4.0);
 
+            // Display unit for every coordinate/size field in this panel.
+            let unit = state.prefs.ruler_unit;
+
             ui.horizontal(|ui| {
                 // 9-point reference anchor proxy widget (Image 6 left of X/Y)
                 let (proxy_rect, _) =
@@ -127,16 +130,18 @@ impl PropertyPanel {
                                 .size(10.5)
                                 .color(Color32::from_rgb(150, 150, 150)),
                         );
-                        let mut x_val = tx;
+                        let mut x_val = unit.from_px(tx);
                         let x_resp = ui.add(
-                            egui::DragValue::new(&mut x_val).speed(0.5).suffix(" mm"),
+                            egui::DragValue::new(&mut x_val)
+                                .speed(unit.from_px(0.5))
+                                .suffix(unit.suffix_label()),
                         );
                         if x_resp.changed() {
                             // Move every selected object by the same delta so
                             // multi-selection keeps its relative layout.
                             // (Previously all objects were stacked onto the
                             // first object's absolute value.)
-                            let dx = x_val - tx;
+                            let dx = unit.to_px(x_val) - tx;
                             let sel = state.selected_ids.clone();
                             for id in &sel {
                                 state.ensure_transform_snapshot(id);
@@ -157,12 +162,14 @@ impl PropertyPanel {
                                 .size(10.5)
                                 .color(Color32::from_rgb(150, 150, 150)),
                         );
-                        let mut w_val = bw;
+                        let mut w_val = unit.from_px(bw);
                         let w_resp = ui.add(
-                            egui::DragValue::new(&mut w_val).speed(0.5).suffix(" mm"),
+                            egui::DragValue::new(&mut w_val)
+                                .speed(unit.from_px(0.5))
+                                .suffix(unit.suffix_label()),
                         );
                         if w_resp.changed() && bw > 0.0 {
-                            let scale = w_val / bw;
+                            let scale = unit.to_px(w_val) / bw;
                             let sel = state.selected_ids.clone();
                             for id in &sel {
                                 state.ensure_transform_snapshot(id);
@@ -185,12 +192,14 @@ impl PropertyPanel {
                                 .size(10.5)
                                 .color(Color32::from_rgb(150, 150, 150)),
                         );
-                        let mut y_val = ty;
+                        let mut y_val = unit.from_px(ty);
                         let y_resp = ui.add(
-                            egui::DragValue::new(&mut y_val).speed(0.5).suffix(" mm"),
+                            egui::DragValue::new(&mut y_val)
+                                .speed(unit.from_px(0.5))
+                                .suffix(unit.suffix_label()),
                         );
                         if y_resp.changed() {
-                            let dy = y_val - ty;
+                            let dy = unit.to_px(y_val) - ty;
                             let sel = state.selected_ids.clone();
                             for id in &sel {
                                 state.ensure_transform_snapshot(id);
@@ -211,12 +220,14 @@ impl PropertyPanel {
                                 .size(10.5)
                                 .color(Color32::from_rgb(150, 150, 150)),
                         );
-                        let mut h_val = bh;
+                        let mut h_val = unit.from_px(bh);
                         let h_resp = ui.add(
-                            egui::DragValue::new(&mut h_val).speed(0.5).suffix(" mm"),
+                            egui::DragValue::new(&mut h_val)
+                                .speed(unit.from_px(0.5))
+                                .suffix(unit.suffix_label()),
                         );
                         if h_resp.changed() && bh > 0.0 {
-                            let scale = h_val / bh;
+                            let scale = unit.to_px(h_val) / bh;
                             let sel = state.selected_ids.clone();
                             for id in &sel {
                                 state.ensure_transform_snapshot(id);
@@ -263,7 +274,7 @@ impl PropertyPanel {
             });
 
             // ─── 角丸 (Corner Radius) — Rectangle only ───
-            if let Some((rw, rh, mut cr)) = rect_wh {
+            if let Some((rw, rh, cr)) = rect_wh {
                 let max_r = rw.abs().min(rh.abs()) * 0.5;
                 ui.horizontal(|ui| {
                     ui.label(
@@ -271,14 +282,15 @@ impl PropertyPanel {
                             .size(10.5)
                             .color(Color32::from_rgb(150, 150, 150)),
                     );
+                    let mut cr_val = unit.from_px(cr);
                     let cr_resp = ui.add(
-                        egui::DragValue::new(&mut cr)
-                            .speed(0.5)
-                            .range(0.0..=max_r)
-                            .suffix(" mm"),
+                        egui::DragValue::new(&mut cr_val)
+                            .speed(unit.from_px(0.5))
+                            .range(0.0..=unit.from_px(max_r))
+                            .suffix(unit.suffix_label()),
                     );
                     if cr_resp.changed() {
-                        let cr = cr.clamp(0.0, max_r);
+                        let cr = unit.to_px(cr_val).clamp(0.0, max_r);
                         state.object_edit(&id, &cr_resp, |o| {
                             if let ObjectType::Rectangle {
                                 corner_radius, ..
@@ -379,17 +391,21 @@ impl PropertyPanel {
                 }
                 ui.label(RichText::new("線").size(11.0).color(Color32::WHITE));
 
-                let mut sw = stroke_opt
-                    .as_ref()
-                    .map(|s| s.width)
-                    .unwrap_or(state.stroke_width);
+                let su = state.prefs.stroke_unit;
+                let mut sw = su.from_px(
+                    stroke_opt
+                        .as_ref()
+                        .map(|s| s.width)
+                        .unwrap_or(state.stroke_width),
+                );
                 let sw_resp = ui.add(
                     egui::DragValue::new(&mut sw)
-                        .speed(0.2)
-                        .range(0.0..=100.0)
-                        .suffix(" pt"),
+                        .speed(su.from_px(0.2))
+                        .range(0.0..=su.from_px(100.0))
+                        .suffix(su.suffix_label()),
                 );
                 if sw_resp.changed() {
+                    let sw = su.to_px(sw);
                     state.stroke_width = sw;
                     let sc = state.stroke_color;
                     let sel = state.selected_ids.clone();
