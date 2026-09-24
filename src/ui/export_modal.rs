@@ -692,7 +692,8 @@ impl ExportModal {
                 {
                     let svg = crate::io::svg::export_svg_with_profile(
                         doc_ref,
-                        self.embed_color_profile.then(|| self.color_profile.as_str()),
+                        self.embed_color_profile
+                            .then_some(self.color_profile.as_str()),
                     );
                     match crate::io::atomic::atomic_write_str(&path, &svg) {
                         Ok(_) => state.notify_info(format!(
@@ -711,7 +712,8 @@ impl ExportModal {
                 {
                     let pdf_bytes = crate::io::pdf::export_pdf_with_profile(
                         doc_ref,
-                        self.embed_color_profile.then(|| self.color_profile.as_str()),
+                        self.embed_color_profile
+                            .then_some(self.color_profile.as_str()),
                     );
                     match crate::io::atomic::atomic_write_bytes(&path, &pdf_bytes) {
                         Ok(_) => state.notify_info(format!(

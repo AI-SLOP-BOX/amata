@@ -39,7 +39,8 @@ fn embed_image_for_pattern(
     let (bb_min, bb_max) = obj.to_path_data().bounding_box()?;
     let (bx, by) = (bb_min.x, bb_min.y);
     let (bw, bh) = (bb_max.x - bb_min.x, bb_max.y - bb_min.y);
-    if !(bw > 0.0) || !(bh > 0.0) {
+    // `> 0.0` is false for NaN, so this also rejects a degenerate box.
+    if !(bw > 0.0 && bh > 0.0) {
         return None;
     }
     let data_uri = format!("data:image/png;base64,{}", base64_encode(png_bytes));

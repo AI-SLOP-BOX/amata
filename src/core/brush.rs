@@ -215,6 +215,9 @@ fn frame_at(
 /// Map artwork-space point (x along length, y across) onto the spine.
 /// `x0/x1` bound the artwork's length axis; `y_center` is its across-axis
 /// origin; `y_scale` scales across (stroke-width fit for art brushes).
+// A pure math helper: the spine-frame inputs are natural as scalars, and
+// bundling them into a struct would obscure the call sites more than help.
+#[allow(clippy::too_many_arguments)]
 fn map_point(
     x: f64,
     y: f64,
@@ -314,7 +317,7 @@ pub fn apply_brush_to_polyline(
                 }
             }
             let mut merged = PathData::new();
-            for (band, _) in apply_bristle(&spine_only, *count, *scatter, *size, *opacity as f64) {
+            for (band, _) in apply_bristle(&spine_only, *count, *scatter, *size, *opacity) {
                 merged.elements.extend(band.elements);
             }
             if merged.elements.is_empty() {
@@ -444,7 +447,7 @@ pub fn apply_bristle(
     let count = count.clamp(1, 64);
     let size = size.max(0.5);
     let scatter = scatter.clamp(0.0, 1.0);
-    let opacity = (opacity as f64).clamp(0.0, 1.0);
+    let opacity = opacity.clamp(0.0, 1.0);
     let mut out = Vec::new();
     for (run_idx, (flat, closed)) in spine_runs(spine).iter().enumerate() {
         if flat.len() < 2 {

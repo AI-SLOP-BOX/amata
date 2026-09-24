@@ -1245,7 +1245,7 @@ fn extract_clip_path_id(tag: &str) -> Option<String> {
 /// Place an imported object: into the innermost open clip group, else the doc.
 fn emit_import_object(
     doc: &mut Document,
-    clip_frames: &mut Vec<(String, [f64; 6], Vec<Object>)>,
+    clip_frames: &mut [(String, [f64; 6], Vec<Object>)],
     obj: Object,
 ) {
     if let Some((_, _, parent)) = clip_frames.last_mut() {

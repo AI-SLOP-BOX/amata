@@ -156,7 +156,7 @@ impl PixelArt {
             }
             // Expand horizontally, then push the rows above/below.
             let mut left = x;
-            while left - 1 >= 0 && self.get(left - 1, y) == target {
+            while left > 0 && self.get(left - 1, y) == target {
                 left -= 1;
             }
             let mut right = x;

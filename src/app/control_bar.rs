@@ -215,7 +215,7 @@ impl IrasuApp {
                                         .first()
                                         .and_then(|id| self.state.document.find_object(id))
                                         .and_then(|o| o.width_profile.as_ref())
-                                        .map(|p| profile_display_name(p))
+                                        .map(profile_display_name)
                                         .unwrap_or_else(|| "均等".to_string());
                                     egui::ComboBox::from_id_salt("ctrl_profile_sel")
                                 .selected_text(&profile_name)
@@ -225,11 +225,9 @@ impl IrasuApp {
                                                 .state
                                                 .selected_ids
                                                 .first()
-                                                .and_then(|id| {
-                                                    self.state.document.find_object(id)
-                                                })
+                                                .and_then(|id| self.state.document.find_object(id))
                                                 .and_then(|o| o.width_profile.as_ref())
-                                                .map(|p| profile_display_name(p))
+                                                .map(profile_display_name)
                                                 .unwrap_or_else(|| "均等".to_string());
                                             for name in
                                                 ["均等", "線幅プロファイル 1", "線幅プロファイル 2"]
@@ -541,7 +539,7 @@ impl IrasuApp {
                                 .first()
                                 .and_then(|id| self.state.document.find_object(id))
                                 .and_then(|o| o.width_profile.as_ref())
-                                .map(|p| profile_display_name(p))
+                                .map(profile_display_name)
                                 .unwrap_or_else(|| "均等".to_string());
                             egui::ComboBox::from_id_salt("ctrl_profile")
                                 .selected_text(&profile_name)

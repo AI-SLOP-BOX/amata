@@ -56,10 +56,12 @@ impl CanvasWidget {
             painter.line_segment([to_screen(x0, y0), to_screen(x1, y1)], hz);
         }
         // VP diamonds (may sit outside the view; draw when visible).
-        for (vx, vy) in grid.two_point
-            .then(|| vec![grid.left_vp, grid.right_vp])
-            .unwrap_or_else(|| vec![grid.left_vp])
-        {
+        let vps = if grid.two_point {
+            vec![grid.left_vp, grid.right_vp]
+        } else {
+            vec![grid.left_vp]
+        };
+        for (vx, vy) in vps {
             let (sx, sy) = state.world_to_screen(vx, vy);
             let p = Pos2::new(sx, sy);
             if rect.contains(p) {
@@ -1339,13 +1341,13 @@ impl CanvasWidget {
             if oy1 > oy0 + 0.01 {
                 if cmax.0 <= s_min.0 {
                     let gap = s_min.0 - cmax.0;
-                    if gap > 0.5 && left.map_or(true, |(g, _, _)| gap < g) {
+                    if gap > 0.5 && left.is_none_or(|(g, _, _)| gap < g) {
                         left = Some((gap, oy0, oy1));
                     }
                 }
                 if cmin.0 >= s_max.0 {
                     let gap = cmin.0 - s_max.0;
-                    if gap > 0.5 && right.map_or(true, |(g, _, _)| gap < g) {
+                    if gap > 0.5 && right.is_none_or(|(g, _, _)| gap < g) {
                         right = Some((gap, oy0, oy1));
                     }
                 }
@@ -1355,13 +1357,13 @@ impl CanvasWidget {
             if ox1 > ox0 + 0.01 {
                 if cmax.1 <= s_min.1 {
                     let gap = s_min.1 - cmax.1;
-                    if gap > 0.5 && top.map_or(true, |(g, _, _)| gap < g) {
+                    if gap > 0.5 && top.is_none_or(|(g, _, _)| gap < g) {
                         top = Some((gap, ox0, ox1));
                     }
                 }
                 if cmin.1 >= s_max.1 {
                     let gap = cmin.1 - s_max.1;
-                    if gap > 0.5 && bottom.map_or(true, |(g, _, _)| gap < g) {
+                    if gap > 0.5 && bottom.is_none_or(|(g, _, _)| gap < g) {
                         bottom = Some((gap, ox0, ox1));
                     }
                 }

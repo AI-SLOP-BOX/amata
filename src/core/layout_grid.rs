@@ -3,17 +3,12 @@ use serde::{Deserialize, Serialize};
 /// Figma-style layout grid attached to an artboard: columns, rows, or a
 /// square cell grid. Stored per-artboard; `show = false` keeps the config
 /// without rendering.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum LayoutGridKind {
+    #[default]
     Columns,
     Rows,
     Grid,
-}
-
-impl Default for LayoutGridKind {
-    fn default() -> Self {
-        Self::Columns
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

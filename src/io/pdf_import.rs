@@ -24,7 +24,7 @@ pub fn parse_pdf_bytes(bytes: &[u8]) -> Result<(Document, Vec<String>), String> 
         Ok(doc) => {
             let mut imp = Importer::new(&doc);
             imp.run()?;
-            return Ok((imp.out, imp.warnings));
+            Ok((imp.out, imp.warnings))
         }
         Err(first) => {
             // Lenient fallback: hand-made tools often emit slightly-off
@@ -41,7 +41,7 @@ pub fn parse_pdf_bytes(bytes: &[u8]) -> Result<(Document, Vec<String>), String> 
                     return Ok((imp.out, imp.warnings));
                 }
             }
-            return Err(format!("PDFを開けません: {first}"));
+            Err(format!("PDFを開けません: {first}"))
         }
     }
 }
@@ -210,7 +210,7 @@ fn winansi_byte_to_char(b: u8) -> char {
         0x2039, 0x0152, 0xFFFD, 0x017D, 0xFFFD, 0xFFFD, 0x2018, 0x2019, 0x201C, 0x201D, 0x2022,
         0x2013, 0x2014, 0x02DC, 0x2122, 0x0161, 0x203A, 0x0153, 0xFFFD, 0x017E, 0x0178,
     ];
-    if b < 0x80 || b >= 0xA0 {
+    if !(0x80..0xA0).contains(&b) {
         b as char
     } else {
         char::from_u32(EXTRA[(b - 0x80) as usize]).unwrap_or('\u{FFFD}')
@@ -220,8 +220,9 @@ fn winansi_byte_to_char(b: u8) -> char {
 fn decode_pdf_string(bytes: &[u8]) -> String {
     if bytes.len() >= 2 && bytes[0] == 0xFE && bytes[1] == 0xFF {
         // UTF-16BE with BOM.
-        bytes[2..]
-            .chunks_exact(2)
+        let (units, _) = bytes[2..].as_chunks::<2>();
+        units
+            .iter()
             .map(|c| u16::from_be_bytes([c[0], c[1]]))
             .map(|u| char::from_u32(u as u32).unwrap_or('\u{FFFD}'))
             .collect()
@@ -292,8 +293,10 @@ const MAX_FORM_DEPTH: usize = 32;
 
 impl<'a> Importer<'a> {
     fn new(doc: &'a lopdf::Document) -> Self {
-        let mut out = Document::default();
-        out.name = "PDF Import".to_string();
+        let out = Document {
+            name: "PDF Import".to_string(),
+            ..Default::default()
+        };
         Self {
             doc,
             out,
@@ -349,7 +352,7 @@ impl<'a> Importer<'a> {
         let mut boxes = Vec::new();
         let mut total_h = 0.0;
         let mut max_w = 0.0;
-        for (_, id) in pages.iter() {
+        for id in pages.values() {
             let (w, h) = self.page_size(*id);
             if w > max_w {
                 max_w = w;
@@ -373,8 +376,10 @@ impl<'a> Importer<'a> {
             // Base: PDF y-up → canvas y-down, stacked at y_off.
             let (w, h) = self.page_size(b.id);
             let base: Affine = [1.0, 0.0, 0.0, -1.0, 0.0, b.y_off + h];
-            let mut st = GState::default();
-            st.ctm = base;
+            let mut st = GState {
+                ctm: base,
+                ..Default::default()
+            };
             let resources = self.page_resources(b.id);
             let contents = self.doc.get_page_contents(b.id);
             for cid in contents {
@@ -901,8 +906,8 @@ impl<'a> Importer<'a> {
         let w = get_num(b"Width").unwrap_or(0.0) as u32;
         let h = get_num(b"Height").unwrap_or(0.0) as u32;
         let bpc = get_num(b"BitsPerComponent").unwrap_or(8.0) as u32;
-        // checked_mul: untrusted Width×Height must not wrap before the cap.
-        let px = w.checked_mul(h).unwrap_or(u32::MAX);
+        // saturating_mul: untrusted Width×Height must not wrap before the cap.
+        let px = w.saturating_mul(h);
         if w == 0 || h == 0 || px > 16_777_216 {
             self.warn("image-size", format!("異常な画像サイズ ({w}x{h}) をスキップ"));
             return Ok(());
@@ -1068,7 +1073,7 @@ fn samples_to_png(raw: &[u8], w: u32, h: u32, channels: u32, bpc: u32) -> Option
     };
     // Opaque alpha.
     let mut rgba = Vec::with_capacity(px * 4);
-    for p in rgb.chunks_exact(3) {
+    for p in rgb.as_chunks::<3>().0 {
         rgba.extend_from_slice(&[p[0], p[1], p[2], 255]);
     }
     let mut png = Vec::new();

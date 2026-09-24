@@ -221,9 +221,10 @@ impl Default for RadialGradient {
 ///   aspect ratio ignored (SVG `"none"`).
 /// * [`ImageTileMode::Tile`] — repeat at natural pixel size (1px = 1 world
 ///   unit) anchored at the bbox origin (SVG `<pattern>` tiling).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum ImageTileMode {
     #[serde(rename = "cover")]
+    #[default]
     Cover,
     #[serde(rename = "contain")]
     Contain,
@@ -231,12 +232,6 @@ pub enum ImageTileMode {
     Fit,
     #[serde(rename = "tile")]
     Tile,
-}
-
-impl Default for ImageTileMode {
-    fn default() -> Self {
-        Self::Cover
-    }
 }
 
 /// An image used as a fill. The actual pixels live in the document's image

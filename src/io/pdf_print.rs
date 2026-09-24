@@ -307,9 +307,7 @@ pub fn export_pdf_print(doc: &Document, opts: &PrintPdfOptions) -> (Vec<u8>, Vec
     let mut catalog = String::from("<< /Type /Catalog /Pages 2 0 R");
     if opts.pdfx {
         catalog.push_str(" /GTS_PDFXVersion (PDF/X-1a:2001)");
-        catalog.push_str(&format!(
-            " /OutputIntents [<< /Type /OutputIntent /S /GTS_PDFX /OutputConditionIdentifier (Japan Color 2001 Coated) /RegistryName (http://www.color.org) /Info (press default) >>]"
-        ));
+        catalog.push_str(" /OutputIntents [<< /Type /OutputIntent /S /GTS_PDFX /OutputConditionIdentifier (Japan Color 2001 Coated) /RegistryName (http://www.color.org) /Info (press default) >>]");
         catalog.push_str(" /Trapped /False");
     }
     catalog.push_str(" >>");

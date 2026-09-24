@@ -2,16 +2,11 @@ use serde::{Deserialize, Serialize};
 
 /// Figma-style auto layout on a group: stack children along one axis with
 /// gap and padding. Sizing is hug-content (group bbox follows children).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum AutoLayoutDirection {
+    #[default]
     Horizontal,
     Vertical,
-}
-
-impl Default for AutoLayoutDirection {
-    fn default() -> Self {
-        Self::Horizontal
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]

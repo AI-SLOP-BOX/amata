@@ -1218,7 +1218,8 @@ impl CanvasWidget {
             Some(v) => v,
             None => return,
         };
-        if !(bw > 0.0) || !(bh > 0.0) {
+        // `> 0.0` is false for NaN, so this also rejects a degenerate box.
+        if !(bw > 0.0 && bh > 0.0) {
             return;
         }
         let tris: Vec<[(f64, f64); 3]> = obj
@@ -1275,8 +1276,7 @@ impl CanvasWidget {
             ImageTileMode::Tile => {
                 let nx = (bw / iw).ceil() as usize;
                 let ny = (bh / ih).ceil() as usize;
-                let too_many =
-                    nx == 0 || ny == 0 || nx.checked_mul(ny).unwrap_or(usize::MAX) > MAX_IMAGE_FILL_TILES;
+                let too_many = nx == 0 || ny == 0 || nx.saturating_mul(ny) > MAX_IMAGE_FILL_TILES;
                 if too_many {
                     // Pathological tiling (tiny tile, huge shape): degrade to
                     // a single Cover placement instead of stalling the frame.

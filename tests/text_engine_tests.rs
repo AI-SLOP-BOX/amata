@@ -210,7 +210,7 @@ fn test_kerning_applies_between_glyphs() {
         Ok(f) => f,
         Err(_) => return,
     };
-    let kern = match face.tables().kern.clone() {
+    let kern = match face.tables().kern {
         Some(k) => k,
         None => return,
     };

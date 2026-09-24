@@ -515,7 +515,7 @@ pub fn try_text_to_outline_path_with_style(
                     let mut combined = PathData::new();
                     let mut current_x = 0.0;
                     // `kern` (old-style TrueType kerning) table, when present.
-                    let kern_table = face.tables().kern.clone();
+                    let kern_table = face.tables().kern;
                     let mut prev_glyph: Option<ttf_parser::GlyphId> = None;
 
                     // Build a glyph-id run first so GSUB ligatures can collapse

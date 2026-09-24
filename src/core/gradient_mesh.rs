@@ -316,9 +316,9 @@ impl MeshGradient {
                 let i01 = i00 + gw;
                 let i11 = i01 + 1;
                 let mut col = [0.0; 4];
-                for k in 0..4 {
-                    col[k] =
-                        (verts[i00].1[k] + verts[i10].1[k] + verts[i01].1[k] + verts[i11].1[k])
+                for (c4, slot) in col.iter_mut().enumerate() {
+                    *slot =
+                        (verts[i00].1[c4] + verts[i10].1[c4] + verts[i01].1[c4] + verts[i11].1[c4])
                             / 4.0;
                 }
                 out.push((

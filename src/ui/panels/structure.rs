@@ -80,7 +80,6 @@ fn type_icon(obj: &Object) -> &'static str {
 
 fn flatten_tree(
     objects: &[Object],
-    layer_idx: usize,
     parent: Option<&str>,
     depth: usize,
     collapsed: &std::collections::HashSet<String>,
@@ -106,15 +105,7 @@ fn flatten_tree(
             selected: selected.contains(&obj.id),
         });
         if is_group && !collapsed.contains(&obj.id) {
-            flatten_tree(
-                children,
-                layer_idx,
-                Some(&obj.id),
-                depth + 1,
-                collapsed,
-                selected,
-                out,
-            );
+            flatten_tree(children, Some(&obj.id), depth + 1, collapsed, selected, out);
         }
     }
 }
@@ -127,9 +118,7 @@ fn plan_reparent(
     dragged: &str,
     target: &DropTarget,
 ) -> Option<crate::core::history::ReparentObjectCommand> {
-    if doc.find_object(dragged).is_none() {
-        return None;
-    }
+    doc.find_object(dragged)?;
     let (old_parent, old_layer, old_index) = doc.parent_of(dragged)?;
 
     let (new_parent, new_layer, raw_index): (Option<String>, usize, usize) = match target {
@@ -235,16 +224,8 @@ impl LayerPanel {
         let collapsed = state.tree_collapsed.clone();
         let selected = state.selected_ids.clone();
         let mut rows: Vec<TreeRow> = Vec::new();
-        for (li, layer) in state.document.layers.iter().enumerate() {
-            flatten_tree(
-                &layer.objects,
-                li,
-                None,
-                0,
-                &collapsed,
-                &selected,
-                &mut rows,
-            );
+        for layer in &state.document.layers {
+            flatten_tree(&layer.objects, None, 0, &collapsed, &selected, &mut rows);
         }
 
         for (i, layer) in state.document.layers.iter().enumerate() {
@@ -1398,7 +1379,7 @@ mod tests {
         let objects = vec![rect("Top"), group];
         let collapsed = std::collections::HashSet::new();
         let mut rows = Vec::new();
-        flatten_tree(&objects, 0, None, 0, &collapsed, &[], &mut rows);
+        flatten_tree(&objects, None, 0, &collapsed, &[], &mut rows);
 
         assert_eq!(rows.len(), 3);
         assert_eq!(rows[0].name, "Top");
@@ -1417,7 +1398,7 @@ mod tests {
         collapsed.insert(group.id.clone());
         let objects = vec![group];
         let mut rows = Vec::new();
-        flatten_tree(&objects, 0, None, 0, &collapsed, &[], &mut rows);
+        flatten_tree(&objects, None, 0, &collapsed, &[], &mut rows);
         assert_eq!(rows.len(), 1);
         assert!(rows[0].is_group);
     }

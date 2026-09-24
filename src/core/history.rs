@@ -811,9 +811,9 @@ impl Command for ModifyTextCommand {
             // Preserve the area container: this command only edits text
             // content and style (area edits use whole-object snapshots).
             let preserve = match &obj.object_type {
-                crate::core::document::ObjectType::Text { area, next_frame, .. } => {
-                    (area.clone(), next_frame.clone())
-                }
+                crate::core::document::ObjectType::Text {
+                    area, next_frame, ..
+                } => (*area, next_frame.clone()),
                 _ => (None, None),
             };
             let (area, next_frame) = preserve;
@@ -830,9 +830,9 @@ impl Command for ModifyTextCommand {
     fn undo(&mut self, doc: &mut Document) {
         if let Some(obj) = doc.find_object_mut(&self.object_id) {
             let preserve = match &obj.object_type {
-                crate::core::document::ObjectType::Text { area, next_frame, .. } => {
-                    (area.clone(), next_frame.clone())
-                }
+                crate::core::document::ObjectType::Text {
+                    area, next_frame, ..
+                } => (*area, next_frame.clone()),
                 _ => (None, None),
             };
             let (area, next_frame) = preserve;

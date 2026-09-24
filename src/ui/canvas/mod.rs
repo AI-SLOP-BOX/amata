@@ -217,8 +217,9 @@ impl CanvasWidget {
                         let raw = p.to_rgba8();
                         let (w, h) = (p.width as usize, p.height as usize);
                         if w > 0 && h > 0 && raw.len() == w * h * 4 {
-                            let pixels = raw
-                                .chunks_exact(4)
+                            let (chunks, _) = raw.as_chunks::<4>();
+                            let pixels = chunks
+                                .iter()
                                 .map(|px| {
                                     egui::Color32::from_rgba_unmultiplied(
                                         px[0], px[1], px[2], px[3],
