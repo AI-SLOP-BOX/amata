@@ -186,16 +186,7 @@ impl CanvasWidget {
             }
         });
 
-        let stroke_info = obj.stroke.as_ref().map(|s| {
-            let c = s.color;
-            let stroke_c = Color32::from_rgba_unmultiplied(
-                (c[0] * 255.0_f32) as u8,
-                (c[1] * 255.0_f32) as u8,
-                (c[2] * 255.0_f32) as u8,
-                ((c[3] * opacity) * 255.0_f32) as u8,
-            );
-            Stroke::new((s.width as f32 * state.zoom).max(1.0_f32), stroke_c)
-        });
+        let stroke_style = obj.stroke.as_ref();
 
         if let Some(ref sh) = obj.shadow {
             let sh_c = sh.color;
@@ -282,14 +273,14 @@ impl CanvasWidget {
                         }
                     }
                 }
-                if let Some(stroke) = stroke_info {
+                if let Some(style) = stroke_style {
                     // Variable-width profile: stroke becomes a filled ribbon
                     // honouring per-position multipliers.  Uses the raw
                     // StrokeStyle (document units), not the zoomed egui stroke.
                     let ribbon_profile = obj
                         .width_profile
                         .as_ref()
-                        .zip(obj.stroke.as_ref())
+                        .zip(stroke_style)
                         .filter(|(_, s)| s.width > 0.0);
                     for sp in &subpaths {
                         if sp.len() >= 2 {
@@ -306,12 +297,8 @@ impl CanvasWidget {
                                         .map(|p| to_screen(p.x, p.y))
                                         .collect();
                                     // Ribbon carries stroke color as fill.
-                                    let c = stroke_style.color;
-                                    let rc = Color32::from_rgba_unmultiplied(
-                                        (c[0] * 255.0) as u8,
-                                        (c[1] * 255.0) as u8,
-                                        (c[2] * 255.0) as u8,
-                                        ((c[3] * opacity) * 255.0) as u8,
+                                    let rc = crate::ui::canvas::stroke_paint::stroke_color(
+                                        stroke_style, opacity,
                                     );
                                     painter.add(egui::epaint::PathShape::convex_polygon(
                                         screen_pts,
@@ -320,9 +307,16 @@ impl CanvasWidget {
                                     ));
                                 }
                             } else {
-                                let screen_pts: Vec<Pos2> =
-                                    sp.iter().map(|p| to_screen(p.x, p.y)).collect();
-                                painter.add(egui::epaint::PathShape::line(screen_pts, stroke));
+                                // Dash / cap / join / miter limit are all
+                                // honoured here; egui's own Stroke can't be.
+                                crate::ui::canvas::stroke_paint::paint_stroke(
+                                    painter,
+                                    style,
+                                    sp,
+                                    path.closed,
+                                    opacity,
+                                    &to_screen,
+                                );
                             }
                         }
                     }
@@ -357,12 +351,17 @@ impl CanvasWidget {
                         ));
                     }
                 }
-                if let Some(stroke) = stroke_info {
+                if let Some(style) = stroke_style {
                     for sp in &subpaths {
                         if sp.len() >= 2 {
-                            let screen_pts: Vec<Pos2> =
-                                sp.iter().map(|p| to_screen(p.x, p.y)).collect();
-                            painter.add(egui::epaint::PathShape::line(screen_pts, stroke));
+                            crate::ui::canvas::stroke_paint::paint_stroke(
+                                painter,
+                                style,
+                                sp,
+                                path.closed,
+                                opacity,
+                                &to_screen,
+                            );
                         }
                     }
                 }
@@ -385,8 +384,10 @@ impl CanvasWidget {
                         Stroke::NONE,
                     ));
                 }
-                if let Some(stroke) = stroke_info {
-                    painter.add(egui::epaint::PathShape::closed_line(screen_pts, stroke));
+                if let Some(style) = stroke_style {
+                    crate::ui::canvas::stroke_paint::paint_path_stroke(
+                        painter, &path, style, opacity, &to_screen,
+                    );
                 }
             }
             ObjectType::Ellipse { rx, ry } => {
@@ -403,8 +404,10 @@ impl CanvasWidget {
                         Stroke::NONE,
                     ));
                 }
-                if let Some(stroke) = stroke_info {
-                    painter.add(egui::epaint::PathShape::closed_line(screen_pts, stroke));
+                if let Some(style) = stroke_style {
+                    crate::ui::canvas::stroke_paint::paint_path_stroke(
+                        painter, &path, style, opacity, &to_screen,
+                    );
                 }
             }
             ObjectType::Star {
@@ -425,8 +428,10 @@ impl CanvasWidget {
                         Stroke::NONE,
                     ));
                 }
-                if let Some(stroke) = stroke_info {
-                    painter.add(egui::epaint::PathShape::closed_line(screen_pts, stroke));
+                if let Some(style) = stroke_style {
+                    crate::ui::canvas::stroke_paint::paint_path_stroke(
+                        painter, &path, style, opacity, &to_screen,
+                    );
                 }
             }
             ObjectType::Polygon { sides, radius } => {
@@ -443,15 +448,33 @@ impl CanvasWidget {
                         Stroke::NONE,
                     ));
                 }
-                if let Some(stroke) = stroke_info {
-                    painter.add(egui::epaint::PathShape::closed_line(screen_pts, stroke));
+                if let Some(style) = stroke_style {
+                    crate::ui::canvas::stroke_paint::paint_path_stroke(
+                        painter, &path, style, opacity, &to_screen,
+                    );
                 }
             }
             ObjectType::Line { x2, y2 } => {
                 let p1 = to_screen(0.0, 0.0);
                 let p2 = to_screen(*x2, *y2);
-                let stroke = stroke_info.unwrap_or_else(|| Stroke::new(2.0_f32, Color32::BLACK));
-                painter.line_segment([p1, p2], stroke);
+                match stroke_style {
+                    Some(style) => crate::ui::canvas::stroke_paint::paint_stroke(
+                        painter,
+                        style,
+                        &[
+                            crate::core::path::AnchorPoint::new(0.0, 0.0),
+                            crate::core::path::AnchorPoint::new(*x2, *y2),
+                        ],
+                        false,
+                        opacity,
+                        &to_screen,
+                    ),
+                    // Lines created without a stroke style still have to be
+                    // visible: keep the plain 2 px screen-space segment.
+                    None => {
+                        painter.line_segment([p1, p2], Stroke::new(2.0_f32, Color32::BLACK));
+                    }
+                }
             }
             ObjectType::PixelArt(p) => {
                 // Same UV-mapped quad as placed images; the texture itself
@@ -953,18 +976,14 @@ impl CanvasWidget {
             }
         }
 
-        let stroke_info = obj.stroke.as_ref().map(|s| {
-            let c = s.color;
-            let stroke_c = Color32::from_rgba_unmultiplied(
-                (c[0] * 255.0) as u8,
-                (c[1] * 255.0) as u8,
-                (c[2] * 255.0) as u8,
-                ((c[3] * opacity) * 255.0) as u8,
+        // The gradient fill paints over the base stroke, so it has to be
+        // redrawn on top — with the same dash/cap/join/arrowhead treatment
+        // the base pass uses, otherwise gradient-filled objects would show a
+        // different line than solid-filled ones.
+        if let Some(style) = obj.stroke.as_ref() {
+            crate::ui::canvas::stroke_paint::paint_path_stroke(
+                painter, &path, style, opacity, &to_screen,
             );
-            Stroke::new((s.width as f32 * state.zoom).max(1.0_f32), stroke_c)
-        });
-        if let Some(stroke) = stroke_info {
-            painter.add(egui::epaint::PathShape::line(screen_pts, stroke));
         }
     }
 
@@ -1071,18 +1090,14 @@ impl CanvasWidget {
             }
         }
 
-        let stroke_info = obj.stroke.as_ref().map(|s| {
-            let c = s.color;
-            let stroke_c = Color32::from_rgba_unmultiplied(
-                (c[0] * 255.0) as u8,
-                (c[1] * 255.0) as u8,
-                (c[2] * 255.0) as u8,
-                ((c[3] * opacity) * 255.0) as u8,
+        // The gradient fill paints over the base stroke, so it has to be
+        // redrawn on top — with the same dash/cap/join/arrowhead treatment
+        // the base pass uses, otherwise gradient-filled objects would show a
+        // different line than solid-filled ones.
+        if let Some(style) = obj.stroke.as_ref() {
+            crate::ui::canvas::stroke_paint::paint_path_stroke(
+                painter, &path, style, opacity, &to_screen,
             );
-            Stroke::new((s.width as f32 * state.zoom).max(1.0_f32), stroke_c)
-        });
-        if let Some(stroke) = stroke_info {
-            painter.add(egui::epaint::PathShape::line(screen_pts, stroke));
         }
     }
 

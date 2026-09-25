@@ -4,6 +4,7 @@ pub mod interaction;
 pub mod overlays;
 pub mod pixel;
 pub mod rendering;
+pub mod stroke_paint;
 
 pub use rendering::sample_gradient_stops;
 
