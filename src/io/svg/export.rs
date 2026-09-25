@@ -1,7 +1,7 @@
 use crate::core::document::{Document, FontStyle, Object, ObjectType, TextAnchor, Transform};
 use crate::core::effects::color_adjust_matrix;
 use image::ImageEncoder;use crate::core::path::{
-    FillType, PathData, PathElement, StrokeStyle,
+    ArrowHead, FillType, PathData, PathElement, StrokeStyle,
 };
 use super::util::*;
 
@@ -228,6 +228,41 @@ fn stroke_svg_attrs(s: &StrokeStyle) -> String {
                 .collect::<Vec<_>>()
                 .join(" ")
         ));
+    }
+    out
+}
+
+/// Extra `<path>` elements for an object's arrowheads.
+///
+/// SVG spells these as `marker-start` / `marker-end`, but nothing in this
+/// codebase reads markers back, so a marker would be the single feature a
+/// round-trip silently drops.  Emitting the head as an ordinary filled path
+/// means the exported picture matches the canvas exactly, because both get
+/// their geometry from [`crate::core::stroke_tess`].
+fn arrowhead_paths(obj: &Object, effect_attr: &str) -> String {
+    let path = obj.to_path_data();
+    let Some(style) = obj.stroke.as_ref().or(path.stroke.as_ref()) else {
+        return String::new();
+    };
+    if style.arrow_start == ArrowHead::None && style.arrow_end == ArrowHead::None {
+        return String::new();
+    }
+    let m = obj.transform.matrix();
+    let fill = format!(" fill=\"{}\"", color_to_svg_str(&style.color));
+    let mut out = String::new();
+    for subpath in path.to_stroke_subpaths(16) {
+        for ring in crate::core::stroke_tess::arrowhead_rings(&subpath, path.closed, style) {
+            let mut d = String::from("M");
+            for (i, p) in ring.iter().enumerate() {
+                let tp = crate::core::geometry::transform_point_if_needed(p, &m);
+                if i > 0 {
+                    d.push_str(" L");
+                }
+                d.push_str(&format!(" {} {}", tp.x, tp.y));
+            }
+            d.push_str(" Z");
+            out.push_str(&format!("  <path d=\"{d}\"{fill}{effect_attr} />\n"));
+        }
     }
     out
 }
@@ -476,7 +511,7 @@ fn render_object_to_svg(
                 .filter(|(_, s)| s.width > 0.0)
                 .map(|(prof, s)| {
                     let mut combined = crate::core::path::PathData::new();
-                    for sp in path.to_subpaths(16) {
+                    for sp in path.to_stroke_subpaths(16) {
                         if sp.len() >= 2 {
                             let band = crate::core::offset::variable_width_outline(
                                 &sp,
@@ -928,6 +963,80 @@ fn render_object_to_svg(
                 render_object_to_svg(&proxy, doc, svg, defs, counter);
             }
         }
+    }
+
+    // Arrowheads sit on top of the shape they belong to.  Only the object
+    // types whose canvas stroke runs through `stroke_tess` qualify: closed
+    // shapes get nothing back from it, and text (whose stroke follows glyph
+    // outlines, not the layout path) would otherwise gain heads the canvas
+    // never draws.
+    if matches!(
+        obj.object_type,
+        ObjectType::Path { .. }
+            | ObjectType::Rectangle { .. }
+            | ObjectType::Ellipse { .. }
+            | ObjectType::Line { .. }
+            | ObjectType::Star { .. }
+            | ObjectType::Polygon { .. }
+    ) {
+        svg.push_str(&arrowhead_paths(obj, &effect_attr));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core::path::ArrowHead;
+
+    fn exported_line(start: ArrowHead, end: ArrowHead) -> String {
+        let mut doc = Document::default();
+        let mut obj = Object::new_line("l", 0.0, 0.0, 100.0, 0.0);
+        let stroke = obj.stroke.as_mut().expect("new_line strokes by default");
+        stroke.arrow_start = start;
+        stroke.arrow_end = end;
+        doc.add_object(obj);
+        export_svg(&doc)
+    }
+
+    fn path_count(svg: &str) -> usize {
+        svg.matches("<path").count()
+    }
+
+    #[test]
+    fn arrowheads_are_exported_as_the_paths_the_canvas_draws() {
+        // `<line>` carries the stroke itself, so every `<path>` in the output
+        // must be an arrowhead — one, at the far end of the line.
+        let svg = exported_line(ArrowHead::None, ArrowHead::Triangle);
+        assert_eq!(path_count(&svg), 1, "{svg}");
+        assert!(
+            svg.contains("d=\"M 100 0 "),
+            "tip must sit on the end point: {svg}"
+        );
+    }
+
+    #[test]
+    fn arrowheads_at_both_ends_are_both_exported() {
+        let svg = exported_line(ArrowHead::Triangle, ArrowHead::Triangle);
+        assert_eq!(path_count(&svg), 2, "{svg}");
+        assert!(svg.contains("d=\"M 100 0 "), "end head missing: {svg}");
+        assert!(svg.contains("d=\"M 0 0 "), "start head missing: {svg}");
+    }
+
+    #[test]
+    fn closed_shapes_get_no_arrowheads() {
+        let mut doc = Document::default();
+        let mut obj = Object::new_rect("r", 0.0, 0.0, 50.0, 50.0, 0.0);
+        let stroke = obj.stroke.as_mut().expect("new_rect strokes by default");
+        stroke.arrow_end = ArrowHead::Triangle;
+        doc.add_object(obj);
+        let svg = export_svg(&doc);
+        assert_eq!(path_count(&svg), 0, "{svg}");
+    }
+
+    #[test]
+    fn arrowheads_are_skipped_when_the_style_has_none() {
+        let svg = exported_line(ArrowHead::None, ArrowHead::None);
+        assert_eq!(path_count(&svg), 0, "{svg}");
     }
 }
 
