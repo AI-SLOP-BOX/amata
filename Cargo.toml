@@ -38,6 +38,8 @@ fontdb = { version = "0.24", features = ["fs", "memmap"] }
 ttf-parser = "0.25"
 lopdf = "0.35"
 flate2 = "1"
+lcms2 = { version = "6.2.0", features = ["static"] }
+lcms2-sys = "4.0.7"
 
 [dev-dependencies]
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "avif", "avif-native", "gif", "bmp"] }
