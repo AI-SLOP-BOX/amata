@@ -257,7 +257,7 @@ impl CanvasWidget {
 
         match &obj.object_type {
             ObjectType::Path(path) => {
-                let subpaths = path.to_subpaths(16);
+                let subpaths = path.to_stroke_subpaths(16);
                 let triangles = path.to_triangles(16);
                 if !triangles.is_empty() {
                     if let Some(fill) = fill_color {
@@ -337,7 +337,7 @@ impl CanvasWidget {
                     *start_offset,
                     *side,
                 );
-                let subpaths = path.to_subpaths(16);
+                let subpaths = path.to_stroke_subpaths(16);
                 let triangles = path.to_triangles(16);
                 if let Some(fill) = fill_color {
                     for tri in &triangles {

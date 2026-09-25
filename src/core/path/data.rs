@@ -219,6 +219,23 @@ impl PathData {
 
     /// Extract separate closed/open subpaths from PathElement sequences (handles holes/islands)
     pub fn to_subpaths(&self, segments_per_edge: u32) -> Vec<Vec<AnchorPoint>> {
+        self.collect_subpaths(segments_per_edge, 3)
+    }
+
+    /// [`to_subpaths`](Self::to_subpaths) for *stroking*.
+    ///
+    /// Triangulation needs three points per ring, so [`to_subpaths`](Self::to_subpaths)
+    /// drops two-point runs — which also meant a straight open path (the most
+    /// common thing a pen draws) produced no stroke at all.  Keep them here:
+    /// two points is exactly enough to lay a line down.
+    pub fn to_stroke_subpaths(&self, segments_per_edge: u32) -> Vec<Vec<AnchorPoint>> {
+        self.collect_subpaths(segments_per_edge, 2)
+    }
+
+    /// Shared body of [`to_subpaths`](Self::to_subpaths) and
+    /// [`to_stroke_subpaths`](Self::to_stroke_subpaths); `min_points` only
+    /// gates the `ClosePath` and trailing runs.
+    fn collect_subpaths(&self, segments_per_edge: u32, min_points: usize) -> Vec<Vec<AnchorPoint>> {
         let mut subpaths = Vec::new();
         let mut current = Vec::new();
 
@@ -241,14 +258,14 @@ impl PathData {
                     }
                 }
                 PathElement::ClosePath => {
-                    if current.len() >= 3 {
+                    if current.len() >= min_points {
                         // Remove trailing duplicate of first vertex if present
                         if let Some(first) = current.first().copied() {
                             if current.len() > 1 && current.last() == Some(&first) {
                                 current.pop();
                             }
                         }
-                        if current.len() >= 3 {
+                        if current.len() >= min_points {
                             subpaths.push(current);
                         }
                         current = Vec::new();
@@ -256,13 +273,13 @@ impl PathData {
                 }
             }
         }
-        if current.len() >= 3 {
+        if current.len() >= min_points {
             if let Some(first) = current.first().copied() {
                 if current.last() == Some(&first) {
                     current.pop();
                 }
             }
-            if current.len() >= 3 {
+            if current.len() >= min_points {
                 subpaths.push(current);
             }
         }

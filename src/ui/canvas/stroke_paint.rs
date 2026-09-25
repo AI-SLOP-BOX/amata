@@ -216,7 +216,7 @@ pub fn paint_path_stroke(
     opacity: f32,
     to_screen: &impl Fn(f64, f64) -> Pos2,
 ) {
-    for subpath in path.to_subpaths(16) {
+    for subpath in path.to_stroke_subpaths(16) {
         paint_stroke(painter, style, &subpath, path.closed, opacity, to_screen);
     }
 }

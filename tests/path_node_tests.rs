@@ -144,3 +144,23 @@ fn split_refuses_move_to_and_out_of_range() {
     assert!(!p.split_segment(99, 0.5));
     assert_eq!(p.anchor_count(), 4);
 }
+
+#[test]
+fn stroke_subpaths_keep_the_two_point_runs_that_fills_drop() {
+    // The most common thing a pen draws: an open path with two anchors.
+    let mut open = PathData::new();
+    open.push_move_to(0.0, 0.0);
+    open.push_line_to(50.0, 0.0);
+
+    // There is nothing to triangulate from two points…
+    assert!(open.to_subpaths(4).is_empty());
+    // …but a line still has to be drawn.
+    let runs = open.to_stroke_subpaths(4);
+    assert_eq!(runs.len(), 1, "the open run must survive");
+    assert_eq!(runs[0].len(), 2);
+
+    // Everything a fill can see, a stroke sees too.
+    let closed = line_path();
+    assert_eq!(closed.to_stroke_subpaths(4), closed.to_subpaths(4));
+    assert_eq!(closed.to_stroke_subpaths(4).len(), 1);
+}
