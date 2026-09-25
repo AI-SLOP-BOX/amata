@@ -181,29 +181,55 @@ fn path_to_svg_with_fill(
     let fill = obj_fill_attr;
     let stroke = obj_stroke
         .or(path.stroke.as_ref())
-        .map(|s| {
-            let dash_str = s
-                .dash_pattern
-                .as_ref()
-                .map(|dp| {
-                    format!(
-                        " stroke-dasharray=\"{}\"",
-                        dp.iter()
-                            .map(|n| n.to_string())
-                            .collect::<Vec<_>>()
-                            .join(" ")
-                    )
-                })
-                .unwrap_or_default();
-            format!(
-                " stroke=\"{}\" stroke-width=\"{}\"{dash_str}",
-                color_to_svg_str(&s.color),
-                s.width
-            )
-        })
+        .map(stroke_svg_attrs)
         .unwrap_or_default();
 
     format!("  <path d=\"{d}\"{fill}{stroke}{effect_attr} />\n")
+}
+
+/// Presentation attributes for a stroke: colour, width, dash array and — the
+/// parts that used to be dropped entirely — `stroke-linecap`,
+/// `stroke-linejoin` and `stroke-miterlimit`.
+///
+/// SVG's own defaults (`butt` / `miter` / miter-limit `4`) happen to match
+/// [`StrokeStyle::default`], but they are emitted unconditionally so a
+/// document that deviates from them survives export.  Every stroke-emitting
+/// site in this module funnels through here so the attribute set stays
+/// consistent (it previously existed as seven hand-written copies that only
+/// carried colour/width/dash).
+fn stroke_svg_attrs(s: &StrokeStyle) -> String {
+    let mut out = format!(
+        " stroke=\"{}\" stroke-width=\"{}\"",
+        color_to_svg_str(&s.color),
+        s.width
+    );
+    out.push_str(&format!(
+        " stroke-linecap=\"{}\"",
+        match s.cap {
+            crate::core::path::StrokeCap::Butt => "butt",
+            crate::core::path::StrokeCap::Round => "round",
+            crate::core::path::StrokeCap::Square => "square",
+        }
+    ));
+    out.push_str(&format!(
+        " stroke-linejoin=\"{}\"",
+        match s.join {
+            crate::core::path::StrokeJoin::Miter => "miter",
+            crate::core::path::StrokeJoin::Round => "round",
+            crate::core::path::StrokeJoin::Bevel => "bevel",
+        }
+    ));
+    out.push_str(&format!(" stroke-miterlimit=\"{}\"", s.miter_limit));
+    if let Some(dp) = s.dash_pattern.as_ref() {
+        out.push_str(&format!(
+            " stroke-dasharray=\"{}\"",
+            dp.iter()
+                .map(|n| n.to_string())
+                .collect::<Vec<_>>()
+                .join(" ")
+        ));
+    }
+    out
 }
 
 fn transform_has_linear_part(t: &Transform) -> bool {
@@ -489,26 +515,7 @@ fn render_object_to_svg(
                     .stroke
                     .as_ref()
                     .or(path.stroke.as_ref())
-                    .map(|s| {
-                        let dash_str = s
-                            .dash_pattern
-                            .as_ref()
-                            .map(|dp| {
-                                format!(
-                                    " stroke-dasharray=\"{}\"",
-                                    dp.iter()
-                                        .map(|n| n.to_string())
-                                        .collect::<Vec<_>>()
-                                        .join(" ")
-                                )
-                            })
-                            .unwrap_or_default();
-                        format!(
-                            " stroke=\"{}\" stroke-width=\"{}\"{dash_str}",
-                            color_to_svg_str(&s.color),
-                            s.width
-                        )
-                    })
+                    .map(stroke_svg_attrs)
                     .unwrap_or_default(),
             };
 
@@ -524,26 +531,7 @@ fn render_object_to_svg(
             let stroke = obj
                 .stroke
                 .as_ref()
-                .map(|s| {
-                    let dash_str = s
-                        .dash_pattern
-                        .as_ref()
-                        .map(|dp| {
-                            format!(
-                                " stroke-dasharray=\"{}\"",
-                                dp.iter()
-                                    .map(|n| n.to_string())
-                                    .collect::<Vec<_>>()
-                                    .join(" ")
-                            )
-                        })
-                        .unwrap_or_default();
-                    format!(
-                        " stroke=\"{}\" stroke-width=\"{}\"{dash_str}",
-                        color_to_svg_str(&s.color),
-                        s.width
-                    )
-                })
+                .map(stroke_svg_attrs)
                 .unwrap_or_default();
             let rx_str = if *corner_radius > 0.0 {
                 format!(" rx=\"{corner_radius}\" ry=\"{corner_radius}\"")
@@ -567,26 +555,7 @@ fn render_object_to_svg(
             let stroke = obj
                 .stroke
                 .as_ref()
-                .map(|s| {
-                    let dash_str = s
-                        .dash_pattern
-                        .as_ref()
-                        .map(|dp| {
-                            format!(
-                                " stroke-dasharray=\"{}\"",
-                                dp.iter()
-                                    .map(|n| n.to_string())
-                                    .collect::<Vec<_>>()
-                                    .join(" ")
-                            )
-                        })
-                        .unwrap_or_default();
-                    format!(
-                        " stroke=\"{}\" stroke-width=\"{}\"{dash_str}",
-                        color_to_svg_str(&s.color),
-                        s.width
-                    )
-                })
+                .map(stroke_svg_attrs)
                 .unwrap_or_default();
             if transform_has_linear_part(&obj.transform) {
                 let transform_attr = svg_transform_attr(&obj.transform);
@@ -605,26 +574,7 @@ fn render_object_to_svg(
             let stroke = obj
                 .stroke
                 .as_ref()
-                .map(|s| {
-                    let dash_str = s
-                        .dash_pattern
-                        .as_ref()
-                        .map(|dp| {
-                            format!(
-                                " stroke-dasharray=\"{}\"",
-                                dp.iter()
-                                    .map(|n| n.to_string())
-                                    .collect::<Vec<_>>()
-                                    .join(" ")
-                            )
-                        })
-                        .unwrap_or_default();
-                    format!(
-                        " stroke=\"{}\" stroke-width=\"{}\"{dash_str}",
-                        color_to_svg_str(&s.color),
-                        s.width
-                    )
-                })
+                .map(stroke_svg_attrs)
                 .unwrap_or_else(|| " stroke=\"#000000\" stroke-width=\"1\"".to_string());
             if transform_has_linear_part(&obj.transform) {
                 let transform_attr = svg_transform_attr(&obj.transform);
@@ -856,26 +806,7 @@ fn render_object_to_svg(
                 .stroke
                 .as_ref()
                 .or(path.stroke.as_ref())
-                .map(|s| {
-                    let dash_str = s
-                        .dash_pattern
-                        .as_ref()
-                        .map(|dp| {
-                            format!(
-                                " stroke-dasharray=\"{}\"",
-                                dp.iter()
-                                    .map(|n| n.to_string())
-                                    .collect::<Vec<_>>()
-                                    .join(" ")
-                            )
-                        })
-                        .unwrap_or_default();
-                    format!(
-                        " stroke=\"{}\" stroke-width=\"{}\"{dash_str}",
-                        color_to_svg_str(&s.color),
-                        s.width
-                    )
-                })
+                .map(stroke_svg_attrs)
                 .unwrap_or_default();
             svg.push_str(&format!(
                 "  <path{id_attr} d=\"{d}\"{fill}{stroke}{effect_attr} />\n"
@@ -985,13 +916,7 @@ fn render_object_to_svg(
             let stroke = obj
                 .stroke
                 .as_ref()
-                .map(|s| {
-                    format!(
-                        " stroke=\"{}\" stroke-width=\"{}\"",
-                        color_to_svg_str(&s.color),
-                        s.width
-                    )
-                })
+                .map(stroke_svg_attrs)
                 .unwrap_or_default();
             svg.push_str(&format!(
                 "  <path{id_attr} d=\"{d}\"{fill_attr}{stroke}{effect_attr} />\n"
