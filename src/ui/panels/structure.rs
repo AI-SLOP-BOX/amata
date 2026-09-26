@@ -870,7 +870,12 @@ impl ClippingMaskPanel {
                 ids_to_remove.extend(content_ids.clone());
 
                 let mask_path = mask.to_path_data();
-                let mut children = vec![Object::new_path("Mask", mask_path)];
+                let mut mask_child = Object::new_path("Mask", mask_path);
+                // Keep the mask where the user drew it: the path is local to
+                // the original object, so dropping its transform would slide
+                // the clip (and the exported <clipPath>) out of place.
+                mask_child.transform = mask.transform.clone();
+                let mut children = vec![mask_child];
                 children.extend(content_objs);
 
                 let clipping = Object {

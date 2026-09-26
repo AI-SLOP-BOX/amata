@@ -5,6 +5,7 @@ use crate::core::path::{
     PatternFill, RadialGradient,
 };
 use crate::core::state::AppState;
+use crate::ui::canvas::clip::{self, ClipRegion};
 use egui::{Color32, FontId, Pos2, Rect, Stroke, Vec2};
 
 /// Approximate a blend mode by adjusting the source color against the
@@ -140,6 +141,7 @@ pub(super) fn text_draw_lines(
 }
 
 impl CanvasWidget {
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn draw_object(
         &self,
         painter: &egui::Painter,
@@ -148,8 +150,21 @@ impl CanvasWidget {
         state: &AppState,
         parent: &[f64; 6],
         ancestor_opacity: f32,
+        clip: Option<&ClipRegion>,
     ) {
         let opacity = (obj.opacity * ancestor_opacity).clamp(0.0_f32, 1.0_f32);
+        // Narrow the painter as soon as a clip is in play: the mask's
+        // bounding box is exact for a rectangular mask and at least bounds
+        // everything the polygon itself cannot cut (text, images, gradient
+        // quads).  Fills and strokes are cut by `clip` proper below.
+        let clipped_painter;
+        let painter = match clip {
+            Some(c) => {
+                clipped_painter = painter.with_clip_rect(c.rect());
+                &clipped_painter
+            }
+            None => painter,
+        };
         // Compose ancestor (group) transforms: previously group transforms
         // were silently ignored, so moved/rotated groups rendered stale
         // while hit-testing and export used the new positions.
@@ -262,14 +277,12 @@ impl CanvasWidget {
                 if !triangles.is_empty() {
                     if let Some(fill) = fill_color {
                         for tri in &triangles {
-                            let p0 = to_screen(tri[0].x, tri[0].y);
-                            let p1 = to_screen(tri[1].x, tri[1].y);
-                            let p2 = to_screen(tri[2].x, tri[2].y);
-                            painter.add(egui::epaint::PathShape::convex_polygon(
-                                vec![p0, p1, p2],
-                                fill,
-                                Stroke::NONE,
-                            ));
+                            let screen = [
+                                to_screen(tri[0].x, tri[0].y),
+                                to_screen(tri[1].x, tri[1].y),
+                                to_screen(tri[2].x, tri[2].y),
+                            ];
+                            clip::paint_fill(painter, &screen, fill, clip);
                         }
                     }
                 }
@@ -300,11 +313,7 @@ impl CanvasWidget {
                                     let rc = crate::ui::canvas::stroke_paint::stroke_color(
                                         stroke_style, opacity,
                                     );
-                                    painter.add(egui::epaint::PathShape::convex_polygon(
-                                        screen_pts,
-                                        rc,
-                                        Stroke::NONE,
-                                    ));
+                                    clip::paint_fill(painter, &screen_pts, rc, clip);
                                 }
                             } else {
                                 // Dash / cap / join / miter limit are all
@@ -316,6 +325,7 @@ impl CanvasWidget {
                                     path.closed,
                                     opacity,
                                     &to_screen,
+                                    clip,
                                 );
                             }
                         }
@@ -341,14 +351,12 @@ impl CanvasWidget {
                 let triangles = path.to_triangles(16);
                 if let Some(fill) = fill_color {
                     for tri in &triangles {
-                        let p0 = to_screen(tri[0].x, tri[0].y);
-                        let p1 = to_screen(tri[1].x, tri[1].y);
-                        let p2 = to_screen(tri[2].x, tri[2].y);
-                        painter.add(egui::epaint::PathShape::convex_polygon(
-                            vec![p0, p1, p2],
-                            fill,
-                            Stroke::NONE,
-                        ));
+                        let screen = [
+                            to_screen(tri[0].x, tri[0].y),
+                            to_screen(tri[1].x, tri[1].y),
+                            to_screen(tri[2].x, tri[2].y),
+                        ];
+                        clip::paint_fill(painter, &screen, fill, clip);
                     }
                 }
                 if let Some(style) = stroke_style {
@@ -361,6 +369,7 @@ impl CanvasWidget {
                                 path.closed,
                                 opacity,
                                 &to_screen,
+                                clip,
                             );
                         }
                     }
@@ -378,15 +387,11 @@ impl CanvasWidget {
                     .map(|p| to_screen(p.x, p.y))
                     .collect();
                 if let Some(fill) = fill_color {
-                    painter.add(egui::epaint::PathShape::convex_polygon(
-                        screen_pts.clone(),
-                        fill,
-                        Stroke::NONE,
-                    ));
+                    clip::paint_fill(painter, &screen_pts, fill, clip);
                 }
                 if let Some(style) = stroke_style {
                     crate::ui::canvas::stroke_paint::paint_path_stroke(
-                        painter, &path, style, opacity, &to_screen,
+                        painter, &path, style, opacity, &to_screen, clip,
                     );
                 }
             }
@@ -398,15 +403,11 @@ impl CanvasWidget {
                     .map(|p| to_screen(p.x, p.y))
                     .collect();
                 if let Some(fill) = fill_color {
-                    painter.add(egui::epaint::PathShape::convex_polygon(
-                        screen_pts.clone(),
-                        fill,
-                        Stroke::NONE,
-                    ));
+                    clip::paint_fill(painter, &screen_pts, fill, clip);
                 }
                 if let Some(style) = stroke_style {
                     crate::ui::canvas::stroke_paint::paint_path_stroke(
-                        painter, &path, style, opacity, &to_screen,
+                        painter, &path, style, opacity, &to_screen, clip,
                     );
                 }
             }
@@ -422,15 +423,11 @@ impl CanvasWidget {
                     .map(|p| to_screen(p.x, p.y))
                     .collect();
                 if let Some(fill) = fill_color {
-                    painter.add(egui::epaint::PathShape::convex_polygon(
-                        screen_pts.clone(),
-                        fill,
-                        Stroke::NONE,
-                    ));
+                    clip::paint_fill(painter, &screen_pts, fill, clip);
                 }
                 if let Some(style) = stroke_style {
                     crate::ui::canvas::stroke_paint::paint_path_stroke(
-                        painter, &path, style, opacity, &to_screen,
+                        painter, &path, style, opacity, &to_screen, clip,
                     );
                 }
             }
@@ -442,15 +439,11 @@ impl CanvasWidget {
                     .map(|p| to_screen(p.x, p.y))
                     .collect();
                 if let Some(fill) = fill_color {
-                    painter.add(egui::epaint::PathShape::convex_polygon(
-                        screen_pts.clone(),
-                        fill,
-                        Stroke::NONE,
-                    ));
+                    clip::paint_fill(painter, &screen_pts, fill, clip);
                 }
                 if let Some(style) = stroke_style {
                     crate::ui::canvas::stroke_paint::paint_path_stroke(
-                        painter, &path, style, opacity, &to_screen,
+                        painter, &path, style, opacity, &to_screen, clip,
                     );
                 }
             }
@@ -468,6 +461,7 @@ impl CanvasWidget {
                         false,
                         opacity,
                         &to_screen,
+                        clip,
                     ),
                     // Lines created without a stroke style still have to be
                     // visible: keep the plain 2 px screen-space segment.
@@ -575,7 +569,15 @@ impl CanvasWidget {
                 // Live deform renders through a plain-Path proxy (same
                 // paint, transform and ancestry).
                 if let Some(proxy) = obj.envelope_proxy() {
-                    self.draw_object(painter, &proxy, origin, state, parent, ancestor_opacity);
+                    self.draw_object(
+                        painter,
+                        &proxy,
+                        origin,
+                        state,
+                        parent,
+                        ancestor_opacity,
+                        clip,
+                    );
                 }
             }
             ObjectType::Image { width, height, .. } => {
@@ -797,12 +799,55 @@ impl CanvasWidget {
             }
             ObjectType::Group(children) => {
                 for child in children {
-                    self.draw_object(painter, child, origin, state, &composed, ancestor_opacity);
+                    self.draw_object(
+                        painter,
+                        child,
+                        origin,
+                        state,
+                        &composed,
+                        ancestor_opacity,
+                        clip,
+                    );
                 }
             }
             ObjectType::ClippingMask { children } => {
-                for child in children {
-                    self.draw_object(painter, child, origin, state, &composed, ancestor_opacity);
+                // children[0] is the mask (see ClippingMaskPanel), the rest is
+                // the content it cuts.  Flatten the mask at the current zoom
+                // so the cut lands where the SVG exporter's <clipPath> does.
+                if let Some((mask, content)) = children.split_first() {
+                    let mask_composed = affine_mul(&composed, &mask.transform.matrix());
+                    let mask_to_screen = |wx: f64, wy: f64| -> Pos2 {
+                        let (sx, sy) = affine_apply(&mask_composed, wx, wy);
+                        Pos2::new(
+                            origin.x + sx as f32 * state.zoom,
+                            origin.y + sy as f32 * state.zoom,
+                        )
+                    };
+                    let mask_poly: Vec<Pos2> = mask
+                        .to_path_data()
+                        .to_polygon(24)
+                        .iter()
+                        .map(|p| mask_to_screen(p.x, p.y))
+                        .collect();
+                    // A mask inside another mask narrows to the overlap;
+                    // `None` from either side means nothing is left visible.
+                    let region = match clip {
+                        Some(outer) => outer.intersect(&mask_poly),
+                        None => ClipRegion::new(mask_poly),
+                    };
+                    if let Some(region) = region {
+                        for child in content {
+                            self.draw_object(
+                                painter,
+                                child,
+                                origin,
+                                state,
+                                &composed,
+                                ancestor_opacity,
+                                Some(&region),
+                            );
+                        }
+                    }
                 }
             }
             ObjectType::Use { href, .. } => {
@@ -818,6 +863,7 @@ impl CanvasWidget {
                         state,
                         parent,
                         ancestor_opacity,
+                        clip,
                     );
                 }
             }
@@ -982,7 +1028,7 @@ impl CanvasWidget {
         // different line than solid-filled ones.
         if let Some(style) = obj.stroke.as_ref() {
             crate::ui::canvas::stroke_paint::paint_path_stroke(
-                painter, &path, style, opacity, &to_screen,
+                painter, &path, style, opacity, &to_screen, None,
             );
         }
     }
@@ -1096,7 +1142,7 @@ impl CanvasWidget {
         // different line than solid-filled ones.
         if let Some(style) = obj.stroke.as_ref() {
             crate::ui::canvas::stroke_paint::paint_path_stroke(
-                painter, &path, style, opacity, &to_screen,
+                painter, &path, style, opacity, &to_screen, None,
             );
         }
     }

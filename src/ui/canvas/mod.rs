@@ -1,3 +1,4 @@
+pub mod clip;
 pub mod context_menu;
 pub mod drag;
 pub mod interaction;
@@ -593,6 +594,7 @@ impl CanvasWidget {
                 state,
                 &crate::ui::canvas::rendering::IDENTITY_AFFINE,
                 layer_op,
+                None,
             );
         }
 
@@ -615,6 +617,7 @@ impl CanvasWidget {
                 state,
                 &crate::ui::canvas::rendering::IDENTITY_AFFINE,
                 layer_op,
+                None,
             );
         }
 

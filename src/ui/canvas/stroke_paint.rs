@@ -17,6 +17,8 @@ use crate::core::stroke_tess;
 use egui::epaint::{Mesh, Shape};
 use egui::{Color32, Pos2};
 
+use super::clip::ClipRegion;
+
 /// Push a vertex and return its index (`Mesh::colored_vertex` doesn't).
 fn add_vertex(mesh: &mut Mesh, pos: Pos2, color: Color32) -> u32 {
     let idx = mesh.vertices.len() as u32;
@@ -185,7 +187,8 @@ pub fn build_mesh(rings: &[Vec<Pos2>], color: Color32) -> Mesh {
 /// arrowheads — into `painter`.
 ///
 /// `to_screen` must be the same transform the object's fill uses, so the
-/// stroke hugs the fill at every zoom and rotation.
+/// stroke hugs the fill at every zoom and rotation.  `clip` cuts the finished
+/// rings against a clipping mask the same way the fill is cut.
 pub fn paint_stroke(
     painter: &egui::Painter,
     style: &StrokeStyle,
@@ -193,6 +196,7 @@ pub fn paint_stroke(
     closed: bool,
     opacity: f32,
     to_screen: &impl Fn(f64, f64) -> Pos2,
+    clip: Option<&ClipRegion>,
 ) {
     let color = stroke_color(style, opacity);
     if color.a() == 0 {
@@ -205,6 +209,9 @@ pub fn paint_stroke(
     for head in stroke_tess::arrowhead_rings(pts, closed, style) {
         rings.push(head.iter().map(|p| to_screen(p.x, p.y)).collect());
     }
+    if let Some(c) = clip {
+        rings = rings.iter().flat_map(|r| c.clip_polygon(r)).collect();
+    }
     fill_rings(painter, &rings, color);
 }
 
@@ -215,9 +222,18 @@ pub fn paint_path_stroke(
     style: &StrokeStyle,
     opacity: f32,
     to_screen: &impl Fn(f64, f64) -> Pos2,
+    clip: Option<&ClipRegion>,
 ) {
     for subpath in path.to_stroke_subpaths(16) {
-        paint_stroke(painter, style, &subpath, path.closed, opacity, to_screen);
+        paint_stroke(
+            painter,
+            style,
+            &subpath,
+            path.closed,
+            opacity,
+            to_screen,
+            clip,
+        );
     }
 }
 
