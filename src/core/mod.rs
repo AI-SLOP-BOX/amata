@@ -17,6 +17,7 @@ pub mod geometry;
 pub mod gradient_mesh;
 pub mod halftone;
 pub mod history;
+pub mod icc;
 pub mod isometric;
 pub mod knife;
 pub mod layout_grid;
