@@ -1,16 +1,18 @@
 //! Print PDF export: CMYK/separations, images, shadings, clip, opacity,
-//! bleed boxes, crop marks and PDF/X markers.
+//! bleed boxes, crop marks, PDF/X markers and the embedded ICC OutputIntent.
 //!
 //! The legacy [`crate::io::pdf::export_pdf`] stays byte-stable for existing
-//! flows; this is the press path. CMYK conversion is the documented
-//! naive-UCR model (no ICC engine vendored) with total-ink reporting.
+//! flows; this is the press path. CMYK conversion goes through the ICC engine
+//! of [`crate::core::icc`] (with the documented naive-UCR model as its
+//! fallback), and PDF/X output carries total-ink reporting.
 
 use crate::core::document::{ColorMode, Document, Object, ObjectType};
+use crate::core::icc::rgb_to_cmyk;
 use crate::core::path::{
     FillRule, FillStyle, FillType, LinearGradient, PathData, PathElement, RadialGradient,
     StrokeCap, StrokeJoin,
 };
-use crate::core::print::{limit_ink, rgb_to_cmyk_ink, total_ink, SpotColor, MAX_TOTAL_INK};
+use crate::core::print::{limit_ink, total_ink, SpotColor, MAX_TOTAL_INK};
 use std::collections::HashMap;
 use std::fmt::Write as _;
 
@@ -20,7 +22,9 @@ pub struct PrintPdfOptions {
     pub marks: bool,
     /// Bleed override in points (`None` = document bleed).
     pub bleed: Option<f64>,
-    /// PDF/X-1a markers + OutputIntent (Japan Color 2001 Coated).
+    /// PDF/X-1a markers + an OutputIntent whose `/DestOutputProfile` is an
+    /// embedded ICC profile (Japan Color 2001 Coated for plates, sRGB for
+    /// RGB documents).
     pub pdfx: bool,
 }
 
@@ -121,7 +125,7 @@ impl<'a> Ctx<'a> {
             self.warn("spot-missing", format!("特色「{name}」がライブラリにないためプロセス色で出力"));
         }
         if self.cmyk {
-            let ink = limit_ink(rgb_to_cmyk_ink(color[0], color[1], color[2]), 4.0);
+            let ink = limit_ink(rgb_to_cmyk([color[0], color[1], color[2], 1.0]), 4.0);
             // Report-only cap at TAC: export stays faithful, preflight warns.
             let t = total_ink(ink);
             if t > MAX_TOTAL_INK {
@@ -287,10 +291,29 @@ pub fn export_pdf_print(doc: &Document, opts: &PrintPdfOptions) -> (Vec<u8>, Vec
     for (i, pat) in ctx.patterns.iter().enumerate() {
         pattern_res.push_str(&format!("/P{} {} ", i + 1, pat));
     }
+    // Profile bytes for the PDF/X OutputIntent, fetched before the catalog so
+    // its object number can be referenced. PDF/X wants the profile *in* the
+    // file: a bare `/OutputConditionIdentifier (Japan Color …)` with no
+    // `/DestOutputProfile` claims a press it cannot prove.
+    let icc_profile: Option<(Vec<u8>, u8, &'static str)> = if opts.pdfx {
+        crate::core::icc::output_intent_icc_bytes(ctx.cmyk).map(|bytes| {
+            if ctx.cmyk {
+                (bytes, 4, "DeviceCMYK")
+            } else {
+                (bytes, 3, "DeviceRGB")
+            }
+        })
+    } else {
+        None
+    };
+    // Fixed layout: 1 catalog, 2 pages, 3 page, 4 content, 5 ICC profile when
+    // embedded, then images — so images start at 6 or 5 accordingly.
+    let img_base = if icc_profile.is_some() { 6 } else { 5 };
+
     // Images.
     let mut image_res = String::new();
     for i in 0..ctx.images.len() {
-        image_res.push_str(&format!("/Im{} {} 0 R ", i + 1, 5 + i));
+        image_res.push_str(&format!("/Im{} {} 0 R ", i + 1, img_base + i));
     }
 
     let resources = format!(
@@ -307,7 +330,24 @@ pub fn export_pdf_print(doc: &Document, opts: &PrintPdfOptions) -> (Vec<u8>, Vec
     let mut catalog = String::from("<< /Type /Catalog /Pages 2 0 R");
     if opts.pdfx {
         catalog.push_str(" /GTS_PDFXVersion (PDF/X-1a:2001)");
-        catalog.push_str(" /OutputIntents [<< /Type /OutputIntent /S /GTS_PDFX /OutputConditionIdentifier (Japan Color 2001 Coated) /RegistryName (http://www.color.org) /Info (press default) >>]");
+        let condition = if ctx.cmyk {
+            "Japan Color 2001 Coated"
+        } else {
+            "sRGB IEC61966-2.1"
+        };
+        let info = if ctx.cmyk {
+            "press default"
+        } else {
+            "sRGB default"
+        };
+        let dest = if icc_profile.is_some() {
+            " /DestOutputProfile 5 0 R"
+        } else {
+            ""
+        };
+        catalog.push_str(&format!(
+            " /OutputIntents [<< /Type /OutputIntent /S /GTS_PDFX /OutputConditionIdentifier ({condition}) /RegistryName (http://www.color.org) /Info ({info}){dest} >>]"
+        ));
         catalog.push_str(" /Trapped /False");
     }
     catalog.push_str(" >>");
@@ -342,9 +382,26 @@ pub fn export_pdf_print(doc: &Document, opts: &PrintPdfOptions) -> (Vec<u8>, Vec
     pdf.extend_from_slice(cbytes);
     pdf.extend_from_slice(b"\nendstream\nendobj\n");
 
-    // 5.. images (+masks inline as further objects).
-    // Object layout: 1 catalog, 2 pages, 3 page, 4 content, 5.. images,
-    // then one mask object per masked image, then info.
+    // 5 ICC profile stream (the OutputIntent's /DestOutputProfile).
+    if let Some((bytes, n_comp, alternate)) = icc_profile {
+        let n5 = begin(&mut pdf, &mut offsets, &mut obj_no);
+        debug_assert_eq!(n5, 5);
+        let body = flate_compress(&bytes);
+        pdf.extend_from_slice(
+            format!(
+                "5 0 obj\n<< /N {n_comp} /Alternate /{alternate} /Filter /FlateDecode /Length {} >>\nstream\n",
+                body.len()
+            )
+            .as_bytes(),
+        );
+        pdf.extend_from_slice(&body);
+        pdf.extend_from_slice(b"\nendstream\nendobj\n");
+    }
+
+    // 6.. images (+masks inline as further objects).
+    // Object layout: 1 catalog, 2 pages, 3 page, 4 content, 5 ICC profile
+    // (only when embedded), then images, then one mask object per masked
+    // image, then info.
     let n_images = ctx.images.len();
     // Pre-compress masks so declared /Length values are exact.
     let mut mask_data: Vec<Option<Vec<u8>>> = Vec::with_capacity(n_images);
@@ -352,7 +409,7 @@ pub fn export_pdf_print(doc: &Document, opts: &PrintPdfOptions) -> (Vec<u8>, Vec
         mask_data.push(img.mask.as_ref().map(|m| flate_compress(m)));
     }
     let mut mask_no_of: Vec<Option<usize>> = vec![None; n_images];
-    let mut next_no = 5 + n_images;
+    let mut next_no = img_base + n_images;
     for (i, m) in mask_data.iter().enumerate() {
         if m.is_some() {
             mask_no_of[i] = Some(next_no);
@@ -361,7 +418,7 @@ pub fn export_pdf_print(doc: &Document, opts: &PrintPdfOptions) -> (Vec<u8>, Vec
     }
     for (i, img) in ctx.images.iter().enumerate() {
         offsets.push(pdf.len());
-        debug_assert_eq!(offsets.len(), 4 + i + 1);
+        debug_assert_eq!(offsets.len(), img_base + i);
         let smask = match mask_no_of[i] {
             Some(mn) => format!(" /SMask {mn} 0 R"),
             None => String::new(),
@@ -369,7 +426,7 @@ pub fn export_pdf_print(doc: &Document, opts: &PrintPdfOptions) -> (Vec<u8>, Vec
         pdf.extend_from_slice(
             format!(
                 "{} 0 obj\n<< /Type /XObject /Subtype /Image /Width {} /Height {} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode{smask} /Length {} >>\nstream\n",
-                5 + i, img.w, img.h, img.jpeg.len()
+                img_base + i, img.w, img.h, img.jpeg.len()
             )
             .as_bytes(),
         );
@@ -415,8 +472,9 @@ pub fn export_pdf_print(doc: &Document, opts: &PrintPdfOptions) -> (Vec<u8>, Vec
         format!("trailer\n<< /Size {total} /Root 1 0 R /Info {info_no} 0 R >>\nstartxref\n{xref_at}\n%%EOF\n").as_bytes(),
     );
 
-    // Sanity: object-number bookkeeping above assumed images start at 5.
-    // (debug_asserts guard the layout in debug builds.)
+    // Sanity: object-number bookkeeping above assumed images start right
+    // after the content (and ICC) objects.  (debug_asserts guard the layout
+    // in debug builds.)
     (pdf, ctx.warnings)
 }
 
@@ -690,7 +748,7 @@ fn gradient_colors(
         .iter()
         .map(|s| {
             let c = if ctx.cmyk {
-                let ink = crate::core::print::rgb_to_cmyk_ink(s.color[0], s.color[1], s.color[2]);
+                let ink = rgb_to_cmyk([s.color[0], s.color[1], s.color[2], 1.0]);
                 [ink[0], ink[1], ink[2], ink[3]]
             } else {
                 [s.color[0], s.color[1], s.color[2], 1.0]

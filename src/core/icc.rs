@@ -41,8 +41,9 @@ use std::ptr;
 use std::sync::OnceLock;
 
 /// CLUT resolution of the synthetic CMYK profile's `BToA0` LUT
-/// (17³ nodes × 4 outputs ≈ 38 KiB of table).
-const GRID: usize = 17;
+/// (33³ nodes × 4 outputs ≈ 287 KiB of table — the resolution real press
+/// profiles ship, and what keeps grid interpolation off the exported inks).
+const GRID: usize = 33;
 
 /// Coarser grid for the reverse (`A2B0`) LUT: 9⁴ nodes × 3 outputs ≈ 38 KiB.
 /// It is only read for proofing/black-point style look-ups, never for
@@ -146,6 +147,14 @@ fn ucr(r: f64, g: f64, b: f64) -> [f64; 4] {
 
 /// PCS Lab → CMYK for the `B2A0` LUT (this is the press model, see module docs).
 fn lab_to_cmyk(l: f64, a: f64, b: f64) -> [f64; 4] {
+    // Zero luminance with non-zero chroma is not a colour any press can lay
+    // down. XYZ→sRGB there returns denormal channel values, and the UCR
+    // division by (1 − max) would amplify them into phantom CMY exactly at
+    // the point where the model promises paper-free black — which is what
+    // every neutral in the document samples against.
+    if l <= 0.0 {
+        return [0.0, 0.0, 0.0, 1.0];
+    }
     let [x, y, z] = lab_to_xyz(l, a, b);
     let lin = mat3(&XYZ_TO_SRGB_D50, [x, y, z]);
     let enc = [
@@ -586,6 +595,34 @@ mod tests {
         assert!((l2 - 50.0).abs() < 5.0);
         assert!((a2 - 20.0).abs() < 10.0);
         assert!((b2 + 30.0).abs() < 10.0);
+    }
+
+    #[test]
+    fn rgb_to_cmyk_stays_on_the_legacy_model() {
+        // The ICC path must be a drop-in for the UCR model it embeds in the
+        // profile: 8-bit LUT quantisation is allowed to nudge the answer,
+        // a different separation is not.
+        let cases = [
+            [1.0, 1.0, 1.0, 1.0],
+            [0.0, 0.0, 0.0, 1.0],
+            [1.0, 0.0, 0.0, 1.0],
+            [0.5, 0.5, 0.5, 1.0],
+            [0.2, 0.4, 0.8, 1.0],
+        ];
+        for rgb in cases {
+            let icc = rgb_to_cmyk(rgb);
+            let legacy = rgb_to_cmyk_fallback(rgb);
+            for i in 0..4 {
+                assert!(
+                    (icc[i] - legacy[i]).abs() < 0.06,
+                    "rgb_to_cmyk({rgb:?})[{i}] = {} vs legacy {}",
+                    icc[i],
+                    legacy[i]
+                );
+            }
+        }
+        // Alpha is never part of the conversion, in either path.
+        assert!(rgb_to_cmyk([1.0, 1.0, 1.0, 0.25])[3] < 0.01);
     }
 
     #[test]

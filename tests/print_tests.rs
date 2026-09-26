@@ -111,6 +111,93 @@ fn test_press_pdf_boxes_and_output_intent() {
     assert!(catalog.get(b"OutputIntents").is_ok());
 }
 
+/// Resolve the single OutputIntent's `/DestOutputProfile` and decompress it,
+/// returning the declared channel count alongside the ICC bytes.
+fn output_intent_profile(doc: &lopdf::Document) -> (i64, Vec<u8>) {
+    let catalog = doc
+        .get_object(doc.trailer.get(b"Root").unwrap().as_reference().unwrap())
+        .unwrap();
+    let catalog = match catalog {
+        lopdf::Object::Dictionary(d) => d.clone(),
+        _ => panic!("catalog"),
+    };
+    let intents = match catalog.get(b"OutputIntents").unwrap() {
+        lopdf::Object::Array(a) => a.clone(),
+        _ => panic!("output intents array"),
+    };
+    assert_eq!(intents.len(), 1, "exactly one OutputIntent");
+    let intent = match &intents[0] {
+        lopdf::Object::Dictionary(d) => d.clone(),
+        _ => panic!("output intent dict"),
+    };
+    let dest = intent
+        .get(b"DestOutputProfile")
+        .expect("PDF/X intent carries an embedded profile")
+        .as_reference()
+        .unwrap();
+    let profile = match doc.get_object(dest).unwrap() {
+        lopdf::Object::Stream(s) => s.clone(),
+        _ => panic!("profile is a stream"),
+    };
+    let n = match profile.dict.get(b"N").unwrap() {
+        lopdf::Object::Integer(n) => *n,
+        _ => panic!("/N is an integer"),
+    };
+    (
+        n,
+        profile
+            .decompressed_content()
+            .expect("profile decompresses"),
+    )
+}
+
+#[test]
+fn test_pdfx_embeds_the_dest_output_profile() {
+    let (pdf, _) = export_pdf_print(&press_doc(), &PrintPdfOptions::default());
+    let doc = parse(&pdf);
+    let (n, icc) = output_intent_profile(&doc);
+    assert_eq!(n, 4, "CMYK document tags a four-channel profile");
+    assert!(icc.len() > 128, "profile payload present");
+    assert_eq!(&icc[36..40], b"acsp", "ICC magic number");
+    assert_eq!(&icc[16..20], b"CMYK", "profile space matches the plates");
+}
+
+#[test]
+fn test_rgb_output_intent_is_tagged_srgb() {
+    let mut doc = Document::default();
+    doc.width = 100.0;
+    doc.height = 100.0;
+    let (pdf, _) = export_pdf_print(&doc, &PrintPdfOptions::default());
+    let parsed = parse(&pdf);
+    let (n, icc) = output_intent_profile(&parsed);
+    assert_eq!(n, 3, "RGB document tags a three-channel profile");
+    assert_eq!(&icc[36..40], b"acsp", "ICC magic number");
+    assert_eq!(&icc[16..20], b"RGB ", "profile space is RGB");
+    // …and the intent name must agree with the bytes behind it.
+    let text = String::from_utf8_lossy(&pdf);
+    assert!(text.contains("(sRGB IEC61966-2.1)"), "condition names sRGB");
+    assert!(!text.contains("DeviceCMYK"), "no CMYK in RGB export");
+}
+
+#[test]
+fn test_no_output_intent_without_pdfx_flag() {
+    let (pdf, _) = export_pdf_print(
+        &press_doc(),
+        &PrintPdfOptions {
+            marks: false,
+            bleed: Some(0.0),
+            pdfx: false,
+        },
+    );
+    let text = String::from_utf8_lossy(&pdf);
+    assert!(
+        !text.contains("/OutputIntents"),
+        "no intent when PDF/X is off"
+    );
+    assert!(!text.contains("/DestOutputProfile"), "no profile either");
+    parse(&pdf);
+}
+
 #[test]
 fn test_press_pdf_separations_overprint_images_shadings() {
     let (pdf, warnings) = export_pdf_print(&press_doc(), &PrintPdfOptions::default());

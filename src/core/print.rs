@@ -53,6 +53,10 @@ pub fn default_spots() -> Vec<SpotColor> {
 }
 
 /// Naive-UCR RGB → CMYK. Deterministic; matches the pickers.
+///
+/// This is the *model*, not the export path: [`crate::core::icc::rgb_to_cmyk`]
+/// runs the ICC transform first and lands here whenever the C engine is
+/// unavailable, so ink math keeps one documented definition either way.
 pub fn rgb_to_cmyk_ink(r: f32, g: f32, b: f32) -> [f32; 4] {
     let k = 1.0 - r.max(g).max(b);
     if k >= 1.0 {
@@ -275,7 +279,9 @@ fn check_fill_stroke(
         if is_cmyk {
             *rgb_count += 1;
         }
-        let ink = rgb_to_cmyk_ink(c[0], c[1], c[2]);
+        // Same conversion the exporter writes, so the report cannot disagree
+        // with the plates it is describing.
+        let ink = crate::core::icc::rgb_to_cmyk([c[0], c[1], c[2], 1.0]);
         let t = total_ink(ink);
         if t > *worst_ink {
             *worst_ink = t;

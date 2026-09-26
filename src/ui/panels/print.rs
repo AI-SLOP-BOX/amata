@@ -88,7 +88,9 @@ impl PrintPanel {
         }
         if ui.button("現在の塗り色を特色登録").clicked() {
             let c = state.fill_color;
-            let ink = print::rgb_to_cmyk_ink(c[0], c[1], c[2]);
+            // Register with the same ink the exporter would write, so the
+            // spot's process fallback and the plates cannot drift apart.
+            let ink = crate::core::icc::rgb_to_cmyk([c[0], c[1], c[2], 1.0]);
             let n = state.document.spots.len() + 1;
             let name = format!("Spot {n}");
             state.document.spots.push(print::SpotColor::new(name.clone(), ink));
