@@ -676,12 +676,22 @@ impl PropertyPanel {
             ui.add_space(4.0);
             if ui
                 .add(
-                    egui::Button::new(RichText::new("アートボードを編集").size(11.0))
-                        .min_size(Vec2::new(ui.available_width(), 24.0)),
+                    egui::Button::new(
+                        RichText::new(if state.artboard_edit_open {
+                            "アートボード編集を閉じる"
+                        } else {
+                            "アートボードを編集"
+                        })
+                        .size(11.0),
+                    )
+                    .min_size(Vec2::new(ui.available_width(), 24.0)),
                 )
                 .clicked()
             {
-                // Toggle artboard editing
+                state.artboard_edit_open = !state.artboard_edit_open;
+            }
+            if state.artboard_edit_open {
+                Self::show_artboard_editor(ui, state);
             }
 
             ui.add_space(6.0);
@@ -815,5 +825,137 @@ impl PropertyPanel {
             ui.checkbox(&mut dummy_scale_corners, "角を拡大・縮小");
             ui.checkbox(&mut dummy_scale_strokes, "線幅と効果を拡大・縮小");
         }
+    }
+
+    /// Inline artboard editor behind the "アートボードを編集" button:
+    /// rename, move and resize the active artboard, plus add / remove.
+    /// Each gesture collapses into a single undo step through
+    /// [`AppState::artboard_edit`] / [`AppState::commit_artboard_edits`].
+    fn show_artboard_editor(ui: &mut Ui, state: &mut AppState) {
+        ui.add_space(4.0);
+
+        // A fresh document only carries an *implicit* artboard derived from
+        // the document size; materialize it so the edits have somewhere to
+        // live (same approach as the layout-grid panel).
+        if state.document.artboards.is_empty() {
+            let w = state.document.width;
+            let h = state.document.height;
+            state
+                .document
+                .artboards
+                .push(crate::core::document::Artboard::new(
+                    "Artboard 1",
+                    0.0,
+                    0.0,
+                    w,
+                    h,
+                ));
+        }
+        if state.active_artboard_idx >= state.document.artboards.len() {
+            state.active_artboard_idx = state.document.artboards.len() - 1;
+        }
+        let idx = state.active_artboard_idx;
+
+        let mut name = state.document.artboards[idx].name.clone();
+        let name_resp = ui.add(egui::TextEdit::singleline(&mut name).hint_text("アートボード名"));
+        if name_resp.changed() {
+            state.artboard_edit(&name_resp, "Rename Artboard", |abs| {
+                if let Some(ab) = abs.get_mut(idx) {
+                    ab.name = name;
+                }
+            });
+        }
+
+        let mut x = state.document.artboards[idx].x;
+        let mut y = state.document.artboards[idx].y;
+        let mut w = state.document.artboards[idx].width;
+        let mut h = state.document.artboards[idx].height;
+
+        let mut changed = false;
+        let mut dragging = false;
+        let mut stopped = false;
+        let mut track = |r: &egui::Response| {
+            changed |= r.changed();
+            dragging |= r.dragged();
+            stopped |= r.drag_stopped();
+        };
+
+        ui.horizontal(|ui| {
+            ui.label("X:");
+            track(&ui.add(egui::DragValue::new(&mut x).speed(1.0)));
+            ui.label("Y:");
+            track(&ui.add(egui::DragValue::new(&mut y).speed(1.0)));
+        });
+        ui.horizontal(|ui| {
+            ui.label("幅:");
+            track(
+                &ui.add(
+                    egui::DragValue::new(&mut w)
+                        .speed(1.0)
+                        .range(1.0..=100_000.0),
+                ),
+            );
+            ui.label("高さ:");
+            track(
+                &ui.add(
+                    egui::DragValue::new(&mut h)
+                        .speed(1.0)
+                        .range(1.0..=100_000.0),
+                ),
+            );
+        });
+
+        if changed {
+            state.ensure_artboard_snapshot();
+            if let Some(ab) = state.document.artboards.get_mut(idx) {
+                ab.x = x;
+                ab.y = y;
+                ab.width = w;
+                ab.height = h;
+            }
+            if !dragging {
+                state.commit_artboard_edits("Edit Artboard");
+            }
+        }
+        if stopped {
+            state.commit_artboard_edits("Edit Artboard");
+        }
+
+        ui.horizontal(|ui| {
+            if ui.button("アートボードを追加").clicked() {
+                let before = state.document.artboards.clone();
+                let cur = state.document.artboards[idx].clone();
+                let count = state.document.artboards.len() + 1;
+                state
+                    .document
+                    .artboards
+                    .push(crate::core::document::Artboard::new(
+                        &format!("Artboard {count}"),
+                        cur.x + cur.width + 20.0,
+                        cur.y,
+                        cur.width,
+                        cur.height,
+                    ));
+                state.active_artboard_idx = state.document.artboards.len() - 1;
+                let after = state.document.artboards.clone();
+                state.push_artboards_undo("Add Artboard", before, after);
+                state.notify_success("アートボードを追加しました");
+            }
+            let removable = state.document.artboards.len() > 1;
+            if ui
+                .add_enabled(removable, egui::Button::new("削除"))
+                .on_disabled_hover_text("アートボードは最低1枚必要です")
+                .clicked()
+            {
+                let before = state.document.artboards.clone();
+                state.document.artboards.remove(idx);
+                if state.active_artboard_idx >= state.document.artboards.len() {
+                    state.active_artboard_idx = state.document.artboards.len() - 1;
+                }
+                let after = state.document.artboards.clone();
+                state.push_artboards_undo("Remove Artboard", before, after);
+                state.notify_success("アートボードを削除しました");
+            }
+        });
     }
 }

@@ -161,6 +161,8 @@ pub struct AppState {
     pub show_timeline: bool,
     // Artboard navigation
     pub active_artboard_idx: usize,
+    /// Property panel: show the artboard editor (size / position / name).
+    pub artboard_edit_open: bool,
     // Symbols
     pub symbols: Vec<crate::core::document::Symbol>,
     // Guides
@@ -235,6 +237,9 @@ pub struct AppState {
     pub pending_objects: Vec<(String, Object)>,
     // Same for whole-layer edits (opacity).
     pub pending_layers: Vec<(String, Layer)>,
+    /// Artboard edits (property panel): the artboard list as it was before the
+    /// edit started, so a drag collapses into one undo step.
+    pub pending_artboards: Option<Vec<crate::core::document::Artboard>>,
     /// Layer-tree collapsed group ids (open when absent from this set).
     pub tree_collapsed: std::collections::HashSet<String>,
     /// Inline rename in the layer tree: (object id, text buffer).
@@ -297,6 +302,7 @@ impl Default for AppState {
             timeline: super::timeline::Timeline::default(),
             show_timeline: true,
             active_artboard_idx: 0,
+            artboard_edit_open: false,
             symbols: vec![
                 crate::core::document::Symbol::new(
                     "ハート (Heart)",
@@ -391,6 +397,7 @@ impl Default for AppState {
             pending_transforms: Vec::new(),
             pending_objects: Vec::new(),
             pending_layers: Vec::new(),
+            pending_artboards: None,
             tree_collapsed: std::collections::HashSet::new(),
             tree_rename: None,
             tree_rename_focused: false,
@@ -638,6 +645,40 @@ impl AppState {
             label, before, after,
         ));
         self.undo_manager.execute(cmd, &mut self.document);
+    }
+
+    /// Snapshot the artboard list before an artboard edit (see the object
+    /// variant).  A drag therefore becomes a single undo step instead of one
+    /// step per frame.
+    pub fn ensure_artboard_snapshot(&mut self) {
+        if self.pending_artboards.is_none() {
+            self.pending_artboards = Some(self.document.artboards.clone());
+        }
+    }
+
+    /// Apply an artboard edit.  Changes commit immediately, except while the
+    /// widget is mid-drag, where [`Self::commit_artboard_edits`] closes the
+    /// gesture out (call it from `drag_stopped`).
+    pub fn artboard_edit(
+        &mut self,
+        resp: &egui::Response,
+        label: &str,
+        f: impl FnOnce(&mut Vec<crate::core::document::Artboard>),
+    ) {
+        self.ensure_artboard_snapshot();
+        f(&mut self.document.artboards);
+        if !resp.dragged() {
+            self.commit_artboard_edits(label);
+        }
+    }
+
+    /// Push the pending artboard snapshot as one undo step.  No-op when the
+    /// list did not actually change.
+    pub fn commit_artboard_edits(&mut self, label: &str) {
+        let Some(before) = self.pending_artboards.take() else {
+            return;
+        };
+        self.push_artboards_undo(label, before, self.document.artboards.clone());
     }
 
     /// Snapshot a layer before a panel edit (see object variant).
