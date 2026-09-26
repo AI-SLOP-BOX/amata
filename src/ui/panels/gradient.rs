@@ -1,3 +1,4 @@
+use crate::core::effects::{AppearanceStack, BlurEffect, ColorAdjustEffect, VectorEffect};
 use crate::core::path::{FillStyle, FillType, GradientStop, LinearGradient, RadialGradient};
 use crate::core::state::AppState;
 use crate::ui::canvas::sample_gradient_stops;
@@ -368,17 +369,27 @@ impl EffectsPanel {
         if let Some(id) = state.selected_ids.first().cloned() {
             let mut shadow = None;
             let mut glow = None;
+            let mut appearance = AppearanceStack::default();
 
             for (_, obj) in state.document.all_objects() {
                 if obj.id == id {
                     shadow = obj.shadow.clone();
                     glow = obj.glow.clone();
+                    appearance = obj.appearance.clone();
                     break;
                 }
             }
 
             let mut has_shadow = shadow.is_some();
             let mut current_shadow = shadow.unwrap_or_default();
+
+            // Appearance-stack effects: the model (and the SVG exporter) have
+            // carried Gaussian blur and colour adjustments all along — only
+            // the panel was missing, which made them unreachable features.
+            let mut has_blur = appearance.has_blur().is_some();
+            let mut blur_radius = appearance.has_blur().unwrap_or(5.0);
+            let mut has_adjust = appearance.has_color_adjust().is_some();
+            let mut current_adjust = appearance.has_color_adjust().cloned().unwrap_or_default();
 
             // Any widget interaction marks the effect dirty; drags coalesce
             // into one undo step committed on drag-stop.
@@ -456,6 +467,50 @@ impl EffectsPanel {
                 });
             }
 
+            track(&ui.checkbox(&mut has_blur, "Gaussian Blur"));
+            if has_blur {
+                ui.horizontal(|ui| {
+                    ui.label("Radius:");
+                    let r = ui.add(
+                        egui::DragValue::new(&mut blur_radius)
+                            .speed(0.5)
+                            .range(0.0..=200.0),
+                    );
+                    track(&r);
+                });
+                ui.label(
+                    RichText::new("縁をぼかします。書き出しでは feGaussianBlur を使います。")
+                        .weak()
+                        .size(11.0),
+                );
+            }
+
+            track(&ui.checkbox(&mut has_adjust, "Color Adjust"));
+            if has_adjust {
+                ui.horizontal(|ui| {
+                    ui.label("明度:");
+                    let r = ui.add(egui::Slider::new(
+                        &mut current_adjust.brightness,
+                        -1.0..=1.0,
+                    ));
+                    track(&r);
+                    ui.label("彩度:");
+                    let r = ui.add(egui::Slider::new(&mut current_adjust.saturation, 0.0..=3.0));
+                    track(&r);
+                });
+                ui.horizontal(|ui| {
+                    ui.label("コントラスト:");
+                    let r = ui.add(egui::Slider::new(&mut current_adjust.contrast, 0.0..=3.0));
+                    track(&r);
+                    ui.label("色相:");
+                    let r = ui.add(egui::Slider::new(
+                        &mut current_adjust.hue_rotate,
+                        0.0..=360.0,
+                    ));
+                    track(&r);
+                });
+            }
+
             if fx_changed {
                 state.ensure_object_snapshot(&id);
                 if let Some(o) = state.document.find_object_mut(&id) {
@@ -465,6 +520,24 @@ impl EffectsPanel {
                         None
                     };
                     o.glow = if has_glow { Some(current_glow) } else { None };
+                    // Blur and colour adjust live in the appearance stack,
+                    // which the SVG exporter has always read: `upsert`
+                    // replaces the existing entry instead of stacking a
+                    // second one on every slider tick.
+                    let mut stack = appearance.clone();
+                    if has_blur {
+                        stack.upsert(VectorEffect::Blur(BlurEffect {
+                            radius: blur_radius,
+                        }));
+                    } else {
+                        stack.remove_kind(&VectorEffect::Blur(BlurEffect::default()));
+                    }
+                    if has_adjust {
+                        stack.upsert(VectorEffect::ColorAdjust(current_adjust.clone()));
+                    } else {
+                        stack.remove_kind(&VectorEffect::ColorAdjust(ColorAdjustEffect::default()));
+                    }
+                    o.appearance = stack;
                 }
                 if !fx_dragging {
                     state.commit_object_edits("Edit Object");

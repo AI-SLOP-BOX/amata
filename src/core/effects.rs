@@ -268,3 +268,70 @@ pub fn color_adjust_matrix(adj: &ColorAdjustEffect) -> Option<[f32; 20]> {
     out[19] = 0.0;
     Some(out)
 }
+
+/// Apply a [`color_adjust_matrix`] to one straight-alpha RGBA color (0..1).
+///
+/// SVG runs the matrix per pixel; the canvas runs it per color, which is the
+/// same answer for flat artwork and cheap enough to do every frame.  Both
+/// paths therefore show the identical adjustment instead of two
+/// implementations drifting apart.
+pub fn apply_color_adjust_matrix(m: &[f32; 20], rgba: [f32; 4]) -> [f32; 4] {
+    let mut out = [0.0f32; 4];
+    for (row, v) in out.iter_mut().enumerate() {
+        let base = row * 5;
+        *v = m[base] * rgba[0]
+            + m[base + 1] * rgba[1]
+            + m[base + 2] * rgba[2]
+            + m[base + 3] * rgba[3]
+            + m[base + 4];
+    }
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn identity_adjust() -> ColorAdjustEffect {
+        ColorAdjustEffect {
+            brightness: 0.0,
+            contrast: 1.0,
+            saturation: 1.0,
+            hue_rotate: 0.0,
+        }
+    }
+
+    #[test]
+    fn identity_adjustment_emits_no_matrix() {
+        assert!(color_adjust_matrix(&identity_adjust()).is_none());
+    }
+
+    #[test]
+    fn brightness_offset_applies_and_leaves_alpha_alone() {
+        let adj = ColorAdjustEffect {
+            brightness: 0.5,
+            ..identity_adjust()
+        };
+        let m = color_adjust_matrix(&adj).expect("non-identity adjustment emits a matrix");
+        let out = apply_color_adjust_matrix(&m, [0.2, 0.4, 0.6, 1.0]);
+        assert!((out[0] - 0.7).abs() < 1e-5, "{out:?}");
+        assert!((out[1] - 0.9).abs() < 1e-5, "{out:?}");
+        assert!((out[2] - 1.1).abs() < 1e-5, "{out:?}");
+        assert_eq!(out[3], 1.0, "alpha row must be untouched");
+    }
+
+    #[test]
+    fn saturation_reaches_gray_without_touching_alpha() {
+        let adj = ColorAdjustEffect {
+            saturation: 0.0,
+            ..identity_adjust()
+        };
+        let m = color_adjust_matrix(&adj).expect("non-identity adjustment emits a matrix");
+        let out = apply_color_adjust_matrix(&m, [1.0, 0.0, 0.0, 0.5]);
+        let lum = 0.213;
+        assert!((out[0] - lum).abs() < 1e-5, "{out:?}");
+        assert!((out[1] - lum).abs() < 1e-5, "{out:?}");
+        assert!((out[2] - lum).abs() < 1e-5, "{out:?}");
+        assert_eq!(out[3], 0.5, "alpha row must be untouched");
+    }
+}

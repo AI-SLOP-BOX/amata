@@ -142,6 +142,37 @@ impl CanvasWidget {
 
         let fill_color = obj.fill.as_ref().and_then(|f| fill_type_color(f, opacity));
 
+        // Illustrator's colour adjustments filter the *rendered* object; the
+        // canvas previews them at the color level through the very matrix the
+        // SVG export emits (`core::effects::color_adjust_matrix`), so screen
+        // and file cannot drift apart.  Exact for flat artwork, an
+        // approximation for gradients/images — the exporter does those per
+        // pixel.
+        let adjust_matrix = obj
+            .appearance
+            .has_color_adjust()
+            .and_then(crate::core::effects::color_adjust_matrix);
+        let adjust = |c: [f32; 4]| -> [f32; 4] {
+            match adjust_matrix {
+                Some(m) => crate::core::effects::apply_color_adjust_matrix(&m, c),
+                None => c,
+            }
+        };
+        let fill_color = fill_color.map(|fc| {
+            let c = adjust([
+                fc.r() as f32 / 255.0,
+                fc.g() as f32 / 255.0,
+                fc.b() as f32 / 255.0,
+                fc.a() as f32 / 255.0,
+            ]);
+            Color32::from_rgba_unmultiplied(
+                (c[0].clamp(0.0, 1.0) * 255.0) as u8,
+                (c[1].clamp(0.0, 1.0) * 255.0) as u8,
+                (c[2].clamp(0.0, 1.0) * 255.0) as u8,
+                (c[3].clamp(0.0, 1.0) * 255.0) as u8,
+            )
+        });
+
         // Non-Normal modes are previewed by blending the fill against the
         // white artboard.  The maths itself is delegated to the shared
         // `core::blend::blend_colors`, so the canvas agrees with the CLI's
@@ -170,7 +201,25 @@ impl CanvasWidget {
             )
         });
 
-        let stroke_style = obj.stroke.as_ref();
+        // Same adjustment for the stroke — but only clone when an effect is
+        // in play, so the common path keeps borrowing the document instead
+        // of copying every stroke each frame.
+        let adjusted_stroke;
+        let stroke_style = match obj.stroke.as_ref() {
+            Some(s) if adjust_matrix.is_some() => {
+                let mut s = s.clone();
+                let c = adjust(s.color);
+                s.color = [
+                    c[0].clamp(0.0, 1.0),
+                    c[1].clamp(0.0, 1.0),
+                    c[2].clamp(0.0, 1.0),
+                    c[3].clamp(0.0, 1.0),
+                ];
+                adjusted_stroke = Some(s);
+                adjusted_stroke.as_ref()
+            }
+            other => other,
+        };
 
         if let Some(ref sh) = obj.shadow {
             let sh_c = sh.color;
@@ -235,6 +284,47 @@ impl CanvasWidget {
                         gl_pts,
                         Stroke::new(spread * 2.0, tier_color),
                     ));
+                }
+            }
+        }
+
+        // Gaussian blur preview.  A blur shows at the edge — the interior of
+        // a shape keeps its color — so a few widening tiers of the
+        // silhouette in the object's own colour read as a soft rim without
+        // an offscreen blur pass.  SVG export runs the real feGaussianBlur
+        // (see `color_adjust_matrix`'s sibling in `core::effects`).
+        if let Some(radius) = obj.appearance.has_blur() {
+            let halo_color = fill_color.or_else(|| {
+                stroke_style.map(|s| {
+                    Color32::from_rgba_unmultiplied(
+                        (s.color[0].clamp(0.0, 1.0) * 255.0) as u8,
+                        (s.color[1].clamp(0.0, 1.0) * 255.0) as u8,
+                        (s.color[2].clamp(0.0, 1.0) * 255.0) as u8,
+                        (s.color[3].clamp(0.0, 1.0) * opacity * 255.0) as u8,
+                    )
+                })
+            });
+            let poly = obj.to_path_data().to_polygon(16);
+            if radius > 0.0 && poly.len() >= 3 {
+                if let Some(halo) = halo_color {
+                    for tier in 1..=5u32 {
+                        let t = tier as f32 / 5.0;
+                        let spread = radius as f32 * t * state.zoom;
+                        // Gaussian-ish falloff, same shape the glow uses.
+                        let tier_alpha = (halo.a() as f32 * 0.45 * (-(t * t) * 2.0).exp()) as u8;
+                        let tier_color = Color32::from_rgba_unmultiplied(
+                            halo.r(),
+                            halo.g(),
+                            halo.b(),
+                            tier_alpha,
+                        );
+                        let halo_pts: Vec<Pos2> =
+                            poly.iter().map(|p| to_screen(p.x, p.y)).collect();
+                        painter.add(egui::epaint::PathShape::closed_line(
+                            halo_pts,
+                            Stroke::new(spread * 2.0, tier_color),
+                        ));
+                    }
                 }
             }
         }
