@@ -170,7 +170,12 @@ impl CanvasWidget {
         if !state.prefs.show_bounding_box {
             return None;
         }
-        if let Some((bb_min, bb_max)) = obj.bounding_box() {
+        let bb = if state.prefs.use_preview_bounds {
+            obj.preview_bounds()
+        } else {
+            obj.bounding_box()
+        };
+        if let Some((bb_min, bb_max)) = bb {
             let min_p = Pos2::new(
                 origin.x + bb_min.x as f32 * state.zoom,
                 origin.y + bb_min.y as f32 * state.zoom,
@@ -331,7 +336,7 @@ impl CanvasWidget {
                 .pending_transforms
                 .iter()
                 .find(|(pid, _)| pid == &id)
-                .map(|(_, t)| t.clone())
+                .map(|(_, snap)| snap.transform.clone())
                 .and_then(|t| {
                     let obj = state.document.find_object(&id)?;
                     let local = obj.to_path_data().bounding_box()?;
@@ -350,19 +355,53 @@ impl CanvasWidget {
                     (obj.transform.clone(), l)
                 }
             };
-            // World-space size at gesture start (axis-aligned start transform).
-            let local_w = (local_max.x - local_min.x).max(1e-9);
-            let local_h = (local_max.y - local_min.y).max(1e-9);
+            // Geometry at gesture start, in world space too: the anchors
+            // below move only the geometry, never the stroke pad.
+            let geom_w = (local_max.x - local_min.x).max(1e-9);
+            let geom_h = (local_max.y - local_min.y).max(1e-9);
+            let bb_geom_w = geom_w * start_t.scale_x.abs();
+            let bb_geom_h = geom_h * start_t.scale_y.abs();
+            // The handles sit on the stroke's outer edge in プレビュー境界
+            // mode, so the box the cursor drags is geometry + that pad.
+            // Whether the pad belongs in the *local* size depends on whether
+            // it rides the transform: 「線幅と効果を拡大・縮小」on → it scales
+            // with the object, so it must be part of the box; off →
+            // `apply_scale_change` holds it at a constant world size, and a
+            // constant cancels out of the ratio (folding it in would make the
+            // grabbed edge trail the cursor by `pad / size` of the drag).
+            let (mut local_w, mut local_h) = (geom_w, geom_h);
+            if state.prefs.use_preview_bounds && state.prefs.scale_strokes_effects {
+                if let Some(obj) = state.document.find_object(&id) {
+                    if let Some(s) = &obj.stroke {
+                        if s.width > 0.0 {
+                            local_w += s.width;
+                            local_h += s.width;
+                        }
+                    }
+                }
+            }
             let bb_w = local_w * start_t.scale_x.abs();
             let bb_h = local_h * start_t.scale_y.abs();
             if bb_w < 1.0 || bb_h < 1.0 {
                 return;
             }
+            // Box terms → geometry terms: the cursor moves the box edge by
+            // `new_w`, but only the geometry is scaled, so the anchor is
+            // placed from the geometry's share of that box.
+            let geom_of_w = |new_w: f64| new_w * geom_w / local_w;
+            let geom_of_h = |new_h: f64| new_h * geom_h / local_h;
 
             let dx = wx - start_wx;
             let dy = wy - start_wy;
 
+            let scale_corners = state.prefs.scale_corners;
+            let scale_strokes_effects = state.prefs.scale_strokes_effects;
             if let Some(obj) = state.document.find_object_mut(&id) {
+                // Absolute-valued visuals (corner radius, stroke width,
+                // effect sizes) are counter-scaled below when their
+                // 環境設定 switch is off, so they keep the size the user
+                // last saw instead of riding the transform.
+                let scale_before = obj.visual_scale();
                 match corner {
                     HandleCorner::BottomRight => {
                         let new_w = (bb_w + dx).max(5.0);
@@ -374,28 +413,33 @@ impl CanvasWidget {
                         let new_w = (bb_w - dx).max(5.0);
                         let new_h = (bb_h - dy).max(5.0);
                         // Anchor the opposite (bottom-right) corner in place.
-                        obj.transform.x = start_t.x + (bb_w - new_w) * start_t.scale_x.signum();
-                        obj.transform.y = start_t.y + (bb_h - new_h) * start_t.scale_y.signum();
+                        obj.transform.x =
+                            start_t.x + (bb_geom_w - geom_of_w(new_w)) * start_t.scale_x.signum();
+                        obj.transform.y =
+                            start_t.y + (bb_geom_h - geom_of_h(new_h)) * start_t.scale_y.signum();
                         obj.transform.scale_x = start_t.scale_x.signum() * (new_w / local_w);
                         obj.transform.scale_y = start_t.scale_y.signum() * (new_h / local_h);
                     }
                     HandleCorner::TopRight => {
                         let new_w = (bb_w + dx).max(5.0);
                         let new_h = (bb_h - dy).max(5.0);
-                        obj.transform.y = start_t.y + (bb_h - new_h) * start_t.scale_y.signum();
+                        obj.transform.y =
+                            start_t.y + (bb_geom_h - geom_of_h(new_h)) * start_t.scale_y.signum();
                         obj.transform.scale_x = start_t.scale_x.signum() * (new_w / local_w);
                         obj.transform.scale_y = start_t.scale_y.signum() * (new_h / local_h);
                     }
                     HandleCorner::BottomLeft => {
                         let new_w = (bb_w - dx).max(5.0);
                         let new_h = (bb_h + dy).max(5.0);
-                        obj.transform.x = start_t.x + (bb_w - new_w) * start_t.scale_x.signum();
+                        obj.transform.x =
+                            start_t.x + (bb_geom_w - geom_of_w(new_w)) * start_t.scale_x.signum();
                         obj.transform.scale_x = start_t.scale_x.signum() * (new_w / local_w);
                         obj.transform.scale_y = start_t.scale_y.signum() * (new_h / local_h);
                     }
                     HandleCorner::Top => {
                         let new_h = (bb_h - dy).max(5.0);
-                        obj.transform.y = start_t.y + (bb_h - new_h) * start_t.scale_y.signum();
+                        obj.transform.y =
+                            start_t.y + (bb_geom_h - geom_of_h(new_h)) * start_t.scale_y.signum();
                         obj.transform.scale_y = start_t.scale_y.signum() * (new_h / local_h);
                     }
                     HandleCorner::Bottom => {
@@ -404,7 +448,8 @@ impl CanvasWidget {
                     }
                     HandleCorner::Left => {
                         let new_w = (bb_w - dx).max(5.0);
-                        obj.transform.x = start_t.x + (bb_w - new_w) * start_t.scale_x.signum();
+                        obj.transform.x =
+                            start_t.x + (bb_geom_w - geom_of_w(new_w)) * start_t.scale_x.signum();
                         obj.transform.scale_x = start_t.scale_x.signum() * (new_w / local_w);
                     }
                     HandleCorner::Right => {
@@ -413,6 +458,12 @@ impl CanvasWidget {
                     }
                     _ => {}
                 }
+                let scale_after = obj.visual_scale();
+                obj.apply_scale_change(
+                    scale_after / scale_before,
+                    scale_corners,
+                    scale_strokes_effects,
+                );
             }
         }
     }

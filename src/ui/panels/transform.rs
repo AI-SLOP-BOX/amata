@@ -686,8 +686,17 @@ impl TransformPanel {
         f: impl FnOnce(&mut crate::core::document::Transform),
     ) {
         state.ensure_transform_snapshot(obj_id);
+        let scale_corners = state.prefs.scale_corners;
+        let scale_strokes_effects = state.prefs.scale_strokes_effects;
         if let Some(obj) = state.document.find_object_mut(obj_id) {
+            let scale_before = obj.visual_scale();
             f(&mut obj.transform);
+            let scale_after = obj.visual_scale();
+            obj.apply_scale_change(
+                scale_after / scale_before,
+                scale_corners,
+                scale_strokes_effects,
+            );
         }
     }
 

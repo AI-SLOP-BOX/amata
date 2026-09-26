@@ -221,6 +221,11 @@ impl CanvasWidget {
             other => other,
         };
 
+        // Effects live in object space, so their rims are scaled like every
+        // other geometry — otherwise the preview drifts from the SVG export,
+        // which scales the filter with the transform (and 「線幅と効果を拡大・
+        // 縮小」off, which divides the stored radius by the scale change).
+        let vscale = obj.visual_scale() as f32;
         if let Some(ref sh) = obj.shadow {
             let sh_c = sh.color;
             let sh_alpha = sh.opacity * opacity;
@@ -232,7 +237,7 @@ impl CanvasWidget {
                 let layers = 5u32;
                 for layer in 0..layers {
                     let t = layer as f32 / layers as f32;
-                    let spread = sh.blur_radius as f32 * t * 0.5;
+                    let spread = sh.blur_radius as f32 * t * 0.5 * vscale;
                     let layer_alpha = sh_alpha * (1.0 - t * 0.7);
                     let c = Color32::from_rgba_unmultiplied(
                         (sh_c[0] * 255.0) as u8,
@@ -268,7 +273,7 @@ impl CanvasWidget {
                 // Multi-tiered outer bloom with Gaussian-like alpha falloff
                 for tier in (1..=6).rev() {
                     let tf = tier as f32 / 6.0;
-                    let spread = (gl.radius as f32 * tf) * state.zoom;
+                    let spread = (gl.radius as f32 * tf) * state.zoom * vscale;
                     // Gaussian-like falloff: alpha drops as exp(-x^2)
                     let tier_alpha = (base_c[3] * gl.intensity * opacity
                         * (0.25 * (-tf * tf * 2.0).exp())
@@ -309,7 +314,7 @@ impl CanvasWidget {
                 if let Some(halo) = halo_color {
                     for tier in 1..=5u32 {
                         let t = tier as f32 / 5.0;
-                        let spread = radius as f32 * t * state.zoom;
+                        let spread = radius as f32 * t * state.zoom * vscale;
                         // Gaussian-ish falloff, same shape the glow uses.
                         let tier_alpha = (halo.a() as f32 * 0.45 * (-(t * t) * 2.0).exp()) as u8;
                         let tier_color = Color32::from_rgba_unmultiplied(

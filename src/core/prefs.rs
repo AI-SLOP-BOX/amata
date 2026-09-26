@@ -99,6 +99,24 @@ pub struct Prefs {
     /// Unit preselected in the new-document dialog.
     pub default_doc_unit: LengthUnit,
 
+    // ── 変形 ─────────────────────────────────────────────────────────────
+    ///
+    /// Illustrator's three *環境設定* switches for transforms. They are
+    /// edited in the property panel's 環境設定 section and, like everything
+    /// else here, persisted as preferences rather than per document.
+    ///
+    /// Scale Corners: a rounded rectangle's `corner_radius` follows the
+    /// object's scale; off keeps the radius in absolute units while the
+    /// shape grows (the corner gets relatively sharper).
+    pub scale_corners: bool,
+    /// Scale Strokes & Effects: stroke width, drop-shadow offset/blur, glow
+    /// radius and appearance blur radii follow the object's scale; off keeps
+    /// them absolute, so a 4 px stroke stays 4 px at any size.
+    pub scale_strokes_effects: bool,
+    /// Use Preview Bounds: the selection box and its resize handles measure
+    /// the stroke's outer edge instead of the bare geometry.
+    pub use_preview_bounds: bool,
+
     // ── 通知 ─────────────────────────────────────────────────────────────
     /// Report skipped constructs when importing a (PDF) file.
     pub notify_file_compat: bool,
@@ -151,6 +169,11 @@ impl Default for Prefs {
             notify_file_compat: true,
             notify_font_substitute: true,
             notify_plugin_load: true,
+            // Illustrator ships Scale Corners and Scale Strokes & Effects
+            // on and preview bounds off.
+            scale_corners: true,
+            scale_strokes_effects: true,
+            use_preview_bounds: false,
         }
     }
 }

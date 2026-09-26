@@ -367,7 +367,13 @@ impl CanvasWidget {
         let mut sel_max_opt: Option<crate::core::path::AnchorPoint> = None;
         for id in &state.selected_ids {
             if let Some((_, obj)) = state.document.all_objects().find(|(_, o)| &o.id == id) {
-                if let Some((min, max)) = obj.bounding_box() {
+                // Guides snap to the same edges the selection box draws.
+                let bb = if state.prefs.use_preview_bounds {
+                    obj.preview_bounds()
+                } else {
+                    obj.bounding_box()
+                };
+                if let Some((min, max)) = bb {
                     sel_min_opt = Some(match sel_min_opt {
                         None => min,
                         Some(cur) => {
@@ -632,7 +638,12 @@ impl CanvasWidget {
         if !state.prefs.show_bounding_box {
             return;
         }
-        if let Some((bb_min, bb_max)) = obj.bounding_box() {
+        let bb = if state.prefs.use_preview_bounds {
+            obj.preview_bounds()
+        } else {
+            obj.bounding_box()
+        };
+        if let Some((bb_min, bb_max)) = bb {
             let min_p = Pos2::new(
                 origin.x + bb_min.x as f32 * state.zoom,
                 origin.y + bb_min.y as f32 * state.zoom,

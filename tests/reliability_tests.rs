@@ -215,6 +215,87 @@ fn test_transform_gesture_coalesces_to_one_undo_step() {
     assert_eq!(state.undo_manager.undo_depth(), 0);
 }
 
+/// A resize with 「角を拡大・縮小」/「線幅と効果を拡大・縮小」off rewrites
+/// absolute-valued attributes *and* the transform. Undo has to take back
+/// both in one step, or the object comes back half-scaled.
+#[test]
+fn test_counter_scaled_resize_undoes_transform_and_attributes_together() {
+    use irasu_illustrator::core::path::StrokeStyle;
+    use irasu_illustrator::core::state::AppState;
+    let mut state = AppState::default();
+    state.prefs.scale_corners = false;
+    state.prefs.scale_strokes_effects = false;
+    state
+        .document
+        .add_object(Object::new_rect("R", 0.0, 0.0, 100.0, 100.0, 20.0));
+    let id = state.document.all_objects().next().unwrap().1.id.clone();
+    if let Some(o) = state.document.find_object_mut(&id) {
+        o.stroke = Some(StrokeStyle {
+            width: 4.0,
+            ..Default::default()
+        });
+    }
+
+    // Two frames of a corner-handle resize, the way `update_resize` runs
+    // them: ×4 then ×½ — the stored values must telescope to ÷2 overall.
+    for factor in [4.0_f64, 0.5] {
+        state.ensure_transform_snapshot(&id);
+        if let Some(o) = state.document.find_object_mut(&id) {
+            let before = o.visual_scale();
+            o.transform.scale_x *= factor;
+            o.transform.scale_y *= factor;
+            o.apply_scale_change(o.visual_scale() / before, false, false);
+        }
+    }
+    state.commit_transform_edits("Resize");
+    assert_eq!(state.undo_manager.undo_depth(), 1);
+
+    let obj = state.document.find_object(&id).unwrap();
+    assert_eq!(obj.transform.scale_x, 2.0, "×4 ×½ telescopes to ×2");
+    assert_eq!(obj.stroke.as_ref().unwrap().width, 2.0, "stroke ÷2");
+    let corner = match &obj.object_type {
+        irasu_illustrator::core::document::ObjectType::Rectangle { corner_radius, .. } => {
+            *corner_radius
+        }
+        other => panic!("expected a rectangle, got {other:?}"),
+    };
+    assert_eq!(corner, 10.0, "corner radius ÷2");
+    // The check that matters: drawn size never moved.
+    assert_eq!(obj.stroke.as_ref().unwrap().width * obj.visual_scale(), 4.0);
+    assert_eq!(corner * obj.visual_scale(), 20.0);
+
+    // One undo restores the *whole* object, not just the transform.
+    state.undo_manager.undo(&mut state.document);
+    let obj = state.document.find_object(&id).unwrap();
+    assert_eq!(obj.transform.scale_x, 1.0);
+    assert_eq!(obj.stroke.as_ref().unwrap().width, 4.0);
+    let corner = match &obj.object_type {
+        irasu_illustrator::core::document::ObjectType::Rectangle { corner_radius, .. } => {
+            *corner_radius
+        }
+        other => panic!("expected a rectangle, got {other:?}"),
+    };
+    assert_eq!(corner, 20.0);
+
+    // Switches on: the transform carries the size, attributes stay put.
+    state.prefs.scale_corners = true;
+    state.prefs.scale_strokes_effects = true;
+    state.ensure_transform_snapshot(&id);
+    if let Some(o) = state.document.find_object_mut(&id) {
+        let before = o.visual_scale();
+        o.transform.scale_x *= 2.0;
+        o.transform.scale_y *= 2.0;
+        o.apply_scale_change(o.visual_scale() / before, true, true);
+    }
+    state.commit_transform_edits("Resize");
+    let obj = state.document.find_object(&id).unwrap();
+    assert_eq!(obj.stroke.as_ref().unwrap().width, 4.0, "untouched");
+    state.undo_manager.undo(&mut state.document);
+    let obj = state.document.find_object(&id).unwrap();
+    assert_eq!(obj.transform.scale_x, 1.0);
+    assert_eq!(obj.stroke.as_ref().unwrap().width, 4.0);
+}
+
 #[test]
 fn test_object_gesture_coalesces_to_one_undo_step() {
     use irasu_illustrator::core::state::AppState;

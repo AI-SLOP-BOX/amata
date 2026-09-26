@@ -1652,11 +1652,78 @@ impl Object {
             None
         }
     }
+
+    /// [`bounding_box`] grown by half the stroke width — Illustrator's
+    /// *プレビュー境界*.
+    ///
+    /// Shadow and glow are deliberately left out: they have no finite extent
+    /// (a glow's spread depends on the blur) and including them would make
+    /// the selection box jump every time an effect is retuned.
+    pub fn preview_bounds(&self) -> Option<(AnchorPoint, AnchorPoint)> {
+        let (min, max) = self.bounding_box()?;
+        let pad = match &self.stroke {
+            Some(s) if s.width > 0.0 => s.width * self.visual_scale() * 0.5,
+            _ => 0.0,
+        };
+        if pad <= 0.0 {
+            return Some((min, max));
+        }
+        Some((
+            AnchorPoint::new(min.x - pad, min.y - pad),
+            AnchorPoint::new(max.x + pad, max.y + pad),
+        ))
+    }
+
+    /// The scale factor every *visual* attribute is drawn at: the geometric
+    /// mean of the transform's axis scales (exactly the axis scale when the
+    /// resize was uniform).
+    pub fn visual_scale(&self) -> f64 {
+        (self.transform.scale_x.abs() * self.transform.scale_y.abs()).sqrt()
+    }
+
+    /// Keep the absolute-valued attributes in place across a change of
+    /// [`Self::visual_scale`] — the counterpart of a resize.
+    ///
+    /// `ratio` is *new ÷ old*. Each 環境設定 switch decides whether the
+    /// attribute is meant to ride the object's scale: **on** → it is, so
+    /// nothing is touched; **off** → the stored value is divided by `ratio`,
+    /// so `attribute × visual_scale` — what the canvas and the exporter draw
+    /// — stays exactly where the user last saw it.
+    pub fn apply_scale_change(
+        &mut self,
+        ratio: f64,
+        scale_corners: bool,
+        scale_strokes_effects: bool,
+    ) {
+        if !ratio.is_finite() || ratio <= 0.0 || (ratio - 1.0).abs() < 1e-12 {
+            return;
+        }
+        let k = 1.0 / ratio;
+        if !scale_strokes_effects {
+            if let Some(s) = self.stroke.as_mut() {
+                s.width *= k;
+            }
+            if let Some(sh) = self.shadow.as_mut() {
+                sh.offset_x *= k;
+                sh.offset_y *= k;
+                sh.blur_radius *= k;
+            }
+            if let Some(g) = self.glow.as_mut() {
+                g.radius *= k;
+            }
+            self.appearance.counter_scale(k);
+        }
+        if !scale_corners {
+            if let ObjectType::Rectangle { corner_radius, .. } = &mut self.object_type {
+                *corner_radius *= k;
+            }
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::BlendMode;
+    use super::{BlendMode, DropShadow, Object, ObjectType, StrokeStyle};
     use crate::core::blend::{blend_colors, BlendMode as CoreBlendMode};
 
     const WHITE: [f32; 4] = [1.0, 1.0, 1.0, 1.0];
@@ -1669,6 +1736,91 @@ mod tests {
                 "expected {expected:?}, got {actual:?}"
             );
         }
+    }
+
+    /// A stroked, rounded rectangle with a shadow and a blur — the three
+    /// things the transform switches decide about.
+    fn visual_fixture() -> Object {
+        use crate::core::effects::{BlurEffect, VectorEffect};
+        let mut obj = Object::new_rect("R", 0.0, 0.0, 100.0, 50.0, 20.0);
+        obj.stroke = Some(StrokeStyle {
+            width: 4.0,
+            ..Default::default()
+        });
+        obj.shadow = Some(DropShadow::default()); // offset 6/6, blur 8
+        obj.appearance
+            .push(VectorEffect::Blur(BlurEffect { radius: 6.0 }));
+        obj
+    }
+
+    fn corner_radius_of(obj: &Object) -> f64 {
+        match &obj.object_type {
+            ObjectType::Rectangle { corner_radius, .. } => *corner_radius,
+            other => panic!("expected a rectangle, got {other:?}"),
+        }
+    }
+
+    /// 「角を拡大・縮小」・「線幅と効果を拡大・縮小」off: doubling the object
+    /// halves what is stored, so *stored × scale* — what is drawn — stays.
+    #[test]
+    fn scale_change_holds_visuals_absolute() {
+        let mut obj = visual_fixture();
+        obj.apply_scale_change(2.0, false, false);
+        assert_eq!(corner_radius_of(&obj), 10.0, "corner radius halves");
+        assert_eq!(obj.stroke.as_ref().unwrap().width, 2.0, "stroke halves");
+        let sh = obj.shadow.as_ref().unwrap();
+        assert_eq!((sh.offset_x, sh.offset_y, sh.blur_radius), (3.0, 3.0, 4.0));
+        assert_eq!(obj.appearance.has_blur(), Some(3.0), "blur radius halves");
+
+        // …and the check that matters: the drawn size did not move.
+        assert_eq!(corner_radius_of(&obj) * 2.0, 20.0);
+        assert_eq!(obj.stroke.as_ref().unwrap().width * 2.0, 4.0);
+    }
+
+    /// Switches on: the transform alone carries the size, nothing is edited.
+    #[test]
+    fn scale_change_leaves_visuals_when_the_switches_are_on() {
+        let mut obj = visual_fixture();
+        obj.apply_scale_change(2.0, true, true);
+        assert_eq!(corner_radius_of(&obj), 20.0);
+        assert_eq!(obj.stroke.as_ref().unwrap().width, 4.0);
+        assert_eq!(obj.appearance.has_blur(), Some(6.0));
+    }
+
+    /// The two switches are independent.
+    #[test]
+    fn scale_change_switches_are_independent() {
+        let mut obj = visual_fixture();
+        obj.apply_scale_change(2.0, true, false);
+        assert_eq!(corner_radius_of(&obj), 20.0, "corners left alone");
+        assert_eq!(obj.stroke.as_ref().unwrap().width, 2.0, "stroke halved");
+
+        // A degenerate ratio (no scale change, or a broken one) is a no-op.
+        let mut same = visual_fixture();
+        same.apply_scale_change(1.0, false, false);
+        assert_eq!(corner_radius_of(&same), 20.0);
+        same.apply_scale_change(f64::NAN, false, false);
+        assert_eq!(corner_radius_of(&same), 20.0);
+    }
+
+    #[test]
+    fn preview_bounds_add_half_a_stroke_that_scales() {
+        let mut obj = visual_fixture();
+        // Geometry alone: the rectangle, no pad.
+        let (min, max) = obj.bounding_box().unwrap();
+        assert_eq!((min.x, min.y, max.x, max.y), (0.0, 0.0, 100.0, 50.0));
+        // Preview bounds: half the stroke (4 / 2 = 2) on every side.
+        let (min, max) = obj.preview_bounds().unwrap();
+        assert_eq!((min.x, min.y, max.x, max.y), (-2.0, -2.0, 102.0, 52.0));
+        // Doubling the object doubles the pad too.
+        obj.transform.scale_x = 2.0;
+        obj.transform.scale_y = 2.0;
+        let (min, max) = obj.preview_bounds().unwrap();
+        assert_eq!((min.x, min.y, max.x, max.y), (-4.0, -4.0, 204.0, 104.0));
+        // An unstroked object measures exactly like its geometry.
+        obj.stroke = None;
+        assert_eq!(obj.preview_bounds(), obj.bounding_box());
+        assert_eq!(obj.visual_scale(), 2.0);
     }
 
     /// The document's serialized mode list must cover exactly the separable

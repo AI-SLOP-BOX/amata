@@ -1,4 +1,4 @@
-use super::document::{Document, Layer, Object, Transform};
+use super::document::{Document, Layer, Object};
 use super::history::{BatchCommand, Command, LayerCommand, ObjectCommand, TransformCommand, UndoManager};
 use super::prefs::Prefs;
 
@@ -230,9 +230,9 @@ pub struct AppState {
     // Print export switches.
     pub print_marks: bool,
     pub print_pdfx: bool,
-    // In-progress panel transform gesture: (object id, transform at gesture
+    // In-progress transform gesture: (object id, object as it was at gesture
     // start). Committed as one undo step when the gesture ends.
-    pub pending_transforms: Vec<(String, Transform)>,
+    pub pending_transforms: Vec<(String, Object)>,
     // Same mechanism for whole-object panel edits (opacity, stroke, fill…).
     pub pending_objects: Vec<(String, Object)>,
     // Same for whole-layer edits (opacity).
@@ -406,53 +406,61 @@ impl Default for AppState {
 }
 
 impl AppState {
-    /// Snapshot the object's transform at the start of a panel gesture.
+    /// Snapshot the object at the start of a transform gesture.
+    ///
+    /// The whole object, not just the transform: a resize with 「角を拡大・
+    /// 縮小」/「線幅と効果を拡大・縮小」off also rewrites corner radii,
+    /// stroke widths and effect sizes (see `Object::apply_scale_change`),
+    /// and undo has to bring those back together with the transform.
     /// Called before every mutation; keeps the first snapshot only.
     pub fn ensure_transform_snapshot(&mut self, id: &str) {
         if !self.pending_transforms.iter().any(|(pid, _)| pid == id) {
-            if let Some(t) = self.document.find_object(id).map(|o| o.transform.clone()) {
-                self.pending_transforms.push((id.to_string(), t));
+            if let Some(obj) = self.document.find_object(id) {
+                self.pending_transforms.push((id.to_string(), obj.clone()));
             }
         }
     }
 
     /// Record the gesture from the snapshots as one undo step (no-op when
     /// nothing actually changed, e.g. a drag that returned to start).
+    ///
+    /// A gesture that only moved or resized keeps the cheap
+    /// [`TransformCommand`]; one that also counter-scaled absolute-valued
+    /// attributes commits the whole object instead, so undo restores them
+    /// along with the transform rather than leaving a half-scaled object.
     pub fn commit_transform_edits(&mut self, label: &str) {
         let pending = std::mem::take(&mut self.pending_transforms);
-        let mut cmds: Vec<(String, Transform, Transform)> = Vec::new();
+        let mut cmds: Vec<Box<dyn Command>> = Vec::new();
         for (id, old) in pending {
-            if let Some(obj) = self.document.find_object(&id) {
-                if obj.transform != old {
-                    cmds.push((id, old, obj.transform.clone()));
-                }
+            let Some(obj) = self.document.find_object(&id) else {
+                continue;
+            };
+            if obj.transform == old.transform {
+                continue;
+            }
+            // Did anything besides the transform move?
+            let mut probe = obj.clone();
+            probe.transform = old.transform.clone();
+            if probe == old {
+                cmds.push(Box::new(TransformCommand {
+                    object_id: id.clone(),
+                    old_t: old.transform.clone(),
+                    new_t: obj.transform.clone(),
+                }));
+            } else {
+                cmds.push(Box::new(ObjectCommand {
+                    object_id: id,
+                    old_obj: old,
+                    new_obj: obj.clone(),
+                }));
             }
         }
         if cmds.len() == 1 {
-            let (id, old, new) = cmds.into_iter().next().unwrap();
-            self.undo_manager.execute(
-                Box::new(TransformCommand {
-                    object_id: id,
-                    old_t: old,
-                    new_t: new,
-                }),
-                &mut self.document,
-            );
+            let cmd = cmds.into_iter().next().unwrap();
+            self.undo_manager.execute(cmd, &mut self.document);
         } else if !cmds.is_empty() {
-            let batch: Vec<Box<dyn Command>> = cmds
-                .into_iter()
-                .map(|(id, old, new)| {
-                    Box::new(TransformCommand {
-                        object_id: id,
-                        old_t: old,
-                        new_t: new,
-                    }) as Box<dyn Command>
-                })
-                .collect();
-            self.undo_manager.execute(
-                Box::new(BatchCommand::new(label, batch)),
-                &mut self.document,
-            );
+            self.undo_manager
+                .execute(Box::new(BatchCommand::new(label, cmds)), &mut self.document);
         }
     }
 

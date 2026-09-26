@@ -166,6 +166,28 @@ impl AppearanceStack {
         };
         self.effects.retain(|e| !same_kind(e));
     }
+
+    /// Divide every *spatial* parameter by `k` (see
+    /// [`Object::apply_scale_change`](crate::core::document::Object::apply_scale_change)).
+    ///
+    /// Called when the object is resized and 「線幅と効果を拡大・縮小」is off:
+    /// offsets, radii and blur widths are compensated so the effect keeps the
+    /// size it had before the resize. Colour and intensity have no size and
+    /// are left alone.
+    pub fn counter_scale(&mut self, k: f64) {
+        for effect in &mut self.effects {
+            match effect {
+                VectorEffect::Blur(b) => b.radius *= k,
+                VectorEffect::DropShadow(s) => {
+                    s.offset_x *= k;
+                    s.offset_y *= k;
+                    s.blur_radius *= k;
+                }
+                VectorEffect::Glow(g) => g.radius *= k,
+                VectorEffect::ColorAdjust(_) => {}
+            }
+        }
+    }
 }
 
 /// Compose the brightness / contrast / saturation / hue-rotate adjustment of

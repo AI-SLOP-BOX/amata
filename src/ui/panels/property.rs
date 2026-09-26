@@ -170,11 +170,22 @@ impl PropertyPanel {
                         );
                         if w_resp.changed() && bw > 0.0 {
                             let scale = unit.to_px(w_val) / bw;
+                            let (scale_corners, scale_strokes_effects) =
+                                (state.prefs.scale_corners, state.prefs.scale_strokes_effects);
                             let sel = state.selected_ids.clone();
                             for id in &sel {
                                 state.ensure_transform_snapshot(id);
                                 if let Some(o) = state.document.find_object_mut(id) {
+                                    let before = o.visual_scale();
                                     o.transform.scale_x *= scale;
+                                    // Resizing by a numeric field is a scale
+                                    // just like the handles: honour the
+                                    // 環境設定 switches about it.
+                                    o.apply_scale_change(
+                                        o.visual_scale() / before,
+                                        scale_corners,
+                                        scale_strokes_effects,
+                                    );
                                 }
                             }
                             if !w_resp.dragged() {
@@ -228,11 +239,19 @@ impl PropertyPanel {
                         );
                         if h_resp.changed() && bh > 0.0 {
                             let scale = unit.to_px(h_val) / bh;
+                            let (scale_corners, scale_strokes_effects) =
+                                (state.prefs.scale_corners, state.prefs.scale_strokes_effects);
                             let sel = state.selected_ids.clone();
                             for id in &sel {
                                 state.ensure_transform_snapshot(id);
                                 if let Some(o) = state.document.find_object_mut(id) {
+                                    let before = o.visual_scale();
                                     o.transform.scale_y *= scale;
+                                    o.apply_scale_change(
+                                        o.visual_scale() / before,
+                                        scale_corners,
+                                        scale_strokes_effects,
+                                    );
                                 }
                             }
                             if !h_resp.dragged() {
@@ -818,12 +837,28 @@ impl PropertyPanel {
                 ui.label(RichText::new("0.3528 mm").size(10.5).color(Color32::WHITE));
             });
 
-            let mut dummy_preview_bounds = false;
-            let mut dummy_scale_corners = true;
-            let mut dummy_scale_strokes = true;
-            ui.checkbox(&mut dummy_preview_bounds, "プレビュー境界を使用");
-            ui.checkbox(&mut dummy_scale_corners, "角を拡大・縮小");
-            ui.checkbox(&mut dummy_scale_strokes, "線幅と効果を拡大・縮小");
+            // The three transform switches. They live in `Prefs`, so they
+            // survive a restart like every other 環境設定 — unlike the dummy
+            // locals these used to be, they actually reach the transform:
+            // `Object::apply_scale_change` and `preview_bounds`.
+            ui.checkbox(&mut state.prefs.use_preview_bounds, "プレビュー境界を使用")
+                .on_hover_text(
+                    "選択ボックスとハンドルを線の外側まで測る\n\
+                     （オフ時は形状のジオメトリのみ）",
+                );
+            ui.checkbox(&mut state.prefs.scale_corners, "角を拡大・縮小")
+                .on_hover_text(
+                    "オフにすると角丸の半径を絶対値で保ち、\n\
+                     オブジェクトを拡大しても角が相対的に鋭くなる",
+                );
+            ui.checkbox(
+                &mut state.prefs.scale_strokes_effects,
+                "線幅と効果を拡大・縮小",
+            )
+            .on_hover_text(
+                "オフにすると線幅・影・グロー・ブラーを絶対値で保ち、\n\
+                 オブジェクトを拡大しても太さが変わらない",
+            );
         }
     }
 
