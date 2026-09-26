@@ -8,43 +8,6 @@ use crate::core::state::AppState;
 use crate::ui::canvas::clip::{self, ClipRegion};
 use egui::{Color32, FontId, Pos2, Rect, Stroke, Vec2};
 
-/// Approximate a blend mode by adjusting the source color against the
-/// assumed background.  Only the most common vector blend modes are
-/// handled; everything else falls back to Normal (opaque overlay).
-fn apply_blend_approx(src: [f32; 4], bg: [f32; 4], mode: BlendMode) -> [f32; 4] {
-    let sa = src[3];
-    let ba = bg[3];
-    let out_a = sa + ba * (1.0 - sa);
-    if out_a <= 0.0 {
-        return [0.0; 4];
-    }
-    let fn3 = |s: f32, b: f32| -> f32 { s * sa + b * ba * (1.0 - sa) / out_a };
-    let sr = src[0];
-    let sg = src[1];
-    let sb = src[2];
-    let br = bg[0];
-    let bg_ = bg[1];
-    let bb = bg[2];
-    let (r, g, b) = match mode {
-        BlendMode::Multiply => (sr * br, sg * bg_, sb * bb),
-        BlendMode::Screen => (1.0 - (1.0 - sr) * (1.0 - br), 1.0 - (1.0 - sg) * (1.0 - bg_), 1.0 - (1.0 - sb) * (1.0 - bb)),
-        BlendMode::Overlay => {
-            let f = |s: f32, d: f32| -> f32 {
-                if d < 0.5 { 2.0 * s * d } else { 1.0 - 2.0 * (1.0 - s) * (1.0 - d) }
-            };
-            (f(sr, br), f(sg, bg_), f(sb, bb))
-        }
-        BlendMode::Darken => (sr.min(br), sg.min(bg_), sb.min(bb)),
-        BlendMode::Lighten => (sr.max(br), sg.max(bg_), sb.max(bb)),
-        BlendMode::Difference => ((sr - br).abs(), (sg - bg_).abs(), (sb - bb).abs()),
-        BlendMode::Exclusion => {
-            (sr + br - 2.0 * sr * br, sg + bg_ - 2.0 * sg * bg_, sb + bb - 2.0 * sb * bb)
-        }
-        _ => (sr, sg, sb),
-    };
-    [fn3(r, br), fn3(g, bg_), fn3(b, bb), out_a]
-}
-
 fn affine_mul(m1: &[f64; 6], m2: &[f64; 6]) -> [f64; 6] {
     [
         m1[0] * m2[0] + m1[2] * m2[1],
@@ -179,26 +142,32 @@ impl CanvasWidget {
 
         let fill_color = obj.fill.as_ref().and_then(|f| fill_type_color(f, opacity));
 
-        // Approximate non-Normal blend modes by blending the fill against
-        // the white artboard background.  This is a preview-only heuristic;
-        // SVG export uses the real CSS mix-blend-mode attribute.
+        // Non-Normal modes are previewed by blending the fill against the
+        // white artboard.  The maths itself is delegated to the shared
+        // `core::blend::blend_colors`, so the canvas agrees with the CLI's
+        // `blend` command; SVG export still uses the real CSS
+        // mix-blend-mode, since the artboard is only a white backdrop.
         let fill_color = fill_color.map(|fc| {
-            if obj.blend_mode != BlendMode::Normal {
-                let bg = [1.0, 1.0, 1.0, 1.0]; // artboard white
-                let blended = apply_blend_approx(
-                    [fc.r() as f32 / 255.0, fc.g() as f32 / 255.0, fc.b() as f32 / 255.0, fc.a() as f32 / 255.0],
-                    bg,
-                    obj.blend_mode,
-                );
-                Color32::from_rgba_unmultiplied(
-                    (blended[0] * 255.0) as u8,
-                    (blended[1] * 255.0) as u8,
-                    (blended[2] * 255.0) as u8,
-                    (blended[3] * 255.0) as u8,
-                )
-            } else {
-                fc
+            if obj.blend_mode == BlendMode::Normal || fc.a() == 0 {
+                return fc;
             }
+            let bg = [1.0, 1.0, 1.0, 1.0]; // artboard white
+            let blended = crate::core::blend::blend_colors(
+                [
+                    fc.r() as f32 / 255.0,
+                    fc.g() as f32 / 255.0,
+                    fc.b() as f32 / 255.0,
+                    fc.a() as f32 / 255.0,
+                ],
+                bg,
+                obj.blend_mode.to_blend(),
+            );
+            Color32::from_rgba_unmultiplied(
+                (blended[0] * 255.0) as u8,
+                (blended[1] * 255.0) as u8,
+                (blended[2] * 255.0) as u8,
+                (blended[3] * 255.0) as u8,
+            )
         });
 
         let stroke_style = obj.stroke.as_ref();

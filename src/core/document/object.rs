@@ -68,6 +68,37 @@ impl BlendMode {
         }
     }
 
+    /// Map onto the shared Photoshop-blend implementation in
+    /// [`crate::core::blend`].
+    ///
+    /// The document keeps its own (serialized) copy of the mode list; the
+    /// maths lives once in `core::blend` so the canvas preview, the CLI's
+    /// `blend` command and the exporters all agree.  `core::blend` knows extra
+    /// modes the document cannot express yet (Linear Dodge, Hard Mix, ...),
+    /// which is why this is a mapping rather than a re-export.
+    pub fn to_blend(self) -> crate::core::blend::BlendMode {
+        use crate::core::blend::BlendMode as B;
+
+        match self {
+            Self::Normal => B::Normal,
+            Self::Multiply => B::Multiply,
+            Self::Screen => B::Screen,
+            Self::Overlay => B::Overlay,
+            Self::Darken => B::Darken,
+            Self::Lighten => B::Lighten,
+            Self::ColorDodge => B::ColorDodge,
+            Self::ColorBurn => B::ColorBurn,
+            Self::HardLight => B::HardLight,
+            Self::SoftLight => B::SoftLight,
+            Self::Difference => B::Difference,
+            Self::Exclusion => B::Exclusion,
+            Self::Hue => B::Hue,
+            Self::Saturation => B::Saturation,
+            Self::Color => B::Color,
+            Self::Luminosity => B::Luminosity,
+        }
+    }
+
     pub fn all() -> &'static [BlendMode] {
         &[
             Self::Normal,
@@ -1620,5 +1651,67 @@ impl Object {
         } else {
             None
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::BlendMode;
+    use crate::core::blend::{blend_colors, BlendMode as CoreBlendMode};
+
+    const WHITE: [f32; 4] = [1.0, 1.0, 1.0, 1.0];
+    const RED: [f32; 4] = [1.0, 0.0, 0.0, 1.0];
+
+    fn assert_close(actual: [f32; 4], expected: [f32; 4]) {
+        for (a, e) in actual.iter().zip(expected.iter()) {
+            assert!(
+                (a - e).abs() < 1e-6,
+                "expected {expected:?}, got {actual:?}"
+            );
+        }
+    }
+
+    /// The document's serialized mode list must cover exactly the separable
+    /// modes `core::blend` already implements under the same names.
+    #[test]
+    fn to_blend_covers_every_document_mode() {
+        let expected = [
+            (BlendMode::Normal, CoreBlendMode::Normal),
+            (BlendMode::Multiply, CoreBlendMode::Multiply),
+            (BlendMode::Screen, CoreBlendMode::Screen),
+            (BlendMode::Overlay, CoreBlendMode::Overlay),
+            (BlendMode::Darken, CoreBlendMode::Darken),
+            (BlendMode::Lighten, CoreBlendMode::Lighten),
+            (BlendMode::ColorDodge, CoreBlendMode::ColorDodge),
+            (BlendMode::ColorBurn, CoreBlendMode::ColorBurn),
+            (BlendMode::HardLight, CoreBlendMode::HardLight),
+            (BlendMode::SoftLight, CoreBlendMode::SoftLight),
+            (BlendMode::Difference, CoreBlendMode::Difference),
+            (BlendMode::Exclusion, CoreBlendMode::Exclusion),
+            (BlendMode::Hue, CoreBlendMode::Hue),
+            (BlendMode::Saturation, CoreBlendMode::Saturation),
+            (BlendMode::Color, CoreBlendMode::Color),
+            (BlendMode::Luminosity, CoreBlendMode::Luminosity),
+        ];
+        assert_eq!(BlendMode::all().len(), expected.len());
+        for (doc, core) in expected {
+            assert_eq!(doc.to_blend(), core, "{doc:?} mapped wrongly");
+        }
+    }
+
+    /// The canvas previews a blended fill against the white artboard, so
+    /// Multiply must be a no-op there while Screen blows out to white.
+    #[test]
+    fn blend_preview_against_white_artboard() {
+        assert_close(
+            blend_colors(RED, WHITE, BlendMode::Multiply.to_blend()),
+            RED,
+        );
+        assert_close(
+            blend_colors(RED, WHITE, BlendMode::Screen.to_blend()),
+            WHITE,
+        );
+        // Normal keeps the source untouched, alpha included.
+        assert_close(blend_colors(RED, WHITE, BlendMode::Normal.to_blend()), RED);
     }
 }
