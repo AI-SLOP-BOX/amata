@@ -690,8 +690,9 @@ impl ExportModal {
                     .set_file_name(format!("{}.svg", self.file_name))
                     .save_file()
                 {
-                    let svg = crate::io::svg::export_svg_with_profile(
+                    let svg = crate::io::svg::export_svg_with_options(
                         doc_ref,
+                        state.export_svg_embed_fonts,
                         self.embed_color_profile
                             .then_some(self.color_profile.as_str()),
                     );

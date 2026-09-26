@@ -250,7 +250,11 @@ impl IrasuApp {
                             .add_filter("SVG", &["svg"])
                             .save_file()
                         {
-                            let svg = crate::io::svg::export_svg(&self.state.document);
+                            let svg = crate::io::svg::export_svg_with_options(
+                                &self.state.document,
+                                self.state.export_svg_embed_fonts,
+                                None,
+                            );
                             self.state.sync_doc_extras();
                             if let Err(e) = crate::io::atomic::atomic_write_str(&path, &svg) {
                                 self.state.notify_error(format!("保存に失敗しました: {e}"));
@@ -354,7 +358,11 @@ impl IrasuApp {
                             .add_filter("SVG", &["svg"])
                             .save_file()
                         {
-                            let svg = crate::io::svg::export_svg(&self.state.document);
+                            let svg = crate::io::svg::export_svg_with_options(
+                                &self.state.document,
+                                self.state.export_svg_embed_fonts,
+                                None,
+                            );
                             match crate::io::atomic::atomic_write_str(&path, &svg) {
                                 Ok(_) => {
                                     self.state.notify_info("SVGを書き出しました");

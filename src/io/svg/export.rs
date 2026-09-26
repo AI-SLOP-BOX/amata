@@ -69,14 +69,124 @@ fn embed_image_for_pattern(
     ))
 }
 
+/// Every `(family, weight, style)` the document actually renders with,
+/// de-duplicated.  Groups, clipping masks and symbol definitions are walked
+/// too, since text can live anywhere.
+fn used_font_faces(doc: &Document) -> Vec<(String, u16, FontStyle)> {
+    fn walk(obj: &Object, out: &mut Vec<(String, u16, FontStyle)>) {
+        match &obj.object_type {
+            ObjectType::Text { style, .. } => {
+                // Mirror the `font-family` attribute emitted above: an empty
+                // family exports as the `Inter, sans-serif` list.
+                let family = if style.font_family.is_empty() {
+                    "Inter".to_string()
+                } else {
+                    style.font_family.clone()
+                };
+                let entry = (family, style.font_weight, style.font_style);
+                if !out.contains(&entry) {
+                    out.push(entry);
+                }
+            }
+            ObjectType::Group(children) | ObjectType::ClippingMask { children } => {
+                for child in children {
+                    walk(child, out);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    let mut out = Vec::new();
+    for layer in &doc.layers {
+        for obj in &layer.objects {
+            walk(obj, &mut out);
+        }
+    }
+    for sym in &doc.symbols {
+        walk(&sym.object, &mut out);
+    }
+    out
+}
+
+/// Sniff the sfnt flavour so the `format()` hint matches the bytes: CFF
+/// outlines (`OTTO`) are OpenType, everything else here is TrueType.
+fn sfnt_format(bytes: &[u8]) -> (&'static str, &'static str) {
+    if bytes.starts_with(b"OTTO") {
+        ("font/otf", "opentype")
+    } else {
+        ("font/ttf", "truetype")
+    }
+}
+
+/// Build the `@font-face` block that makes an SVG self-contained.
+///
+/// Faces are looked up in the [`crate::core::font::FontRegistry`]: a family
+/// that is not installed (or a generic alias) is skipped, because we have no
+/// bytes to embed for it and the viewer's own fallback is the honest result.
+fn font_face_css(doc: &Document) -> String {
+    let registry = crate::core::font::FontRegistry::global();
+    let mut css = String::new();
+    let mut seen_faces: Vec<(String, u16, FontStyle)> = Vec::new();
+    let mut seen_bytes: Vec<Vec<u8>> = Vec::new();
+
+    for (family, weight, style) in used_font_faces(doc) {
+        let Some(concrete) = registry.resolve_family(&family) else {
+            continue;
+        };
+        let entry = (concrete.clone(), weight, style);
+        if seen_faces.contains(&entry) {
+            continue;
+        }
+        let Some(bytes) = registry.query_face_data(&concrete, weight, style, |b, _| b.to_vec())
+        else {
+            continue;
+        };
+        seen_faces.push(entry);
+        // The same face can answer for several weights (a variable font's
+        // single file, or a weight the family simply does not ship): one
+        // blob, labelled once.
+        if seen_bytes.iter().any(|b| b == &bytes) {
+            continue;
+        }
+        seen_bytes.push(bytes.clone());
+
+        let (mime, format) = sfnt_format(&bytes);
+        css.push_str(&format!(
+            "    @font-face {{\n      font-family: \"{}\";\n      font-style: {};\n      font-weight: {};\n      src: url(data:{};base64,{}) format(\"{}\");\n    }}\n",
+            xml_escape(&concrete),
+            style.as_svg_str(),
+            weight,
+            mime,
+            base64_encode(&bytes),
+            format
+        ));
+    }
+    css
+}
+
 pub fn export_svg(doc: &Document) -> String {
-    export_svg_with_profile(doc, None)
+    export_svg_with_options(doc, false, None)
 }
 
 /// Emit SVG, optionally recording an ICC profile name as a comment so
 /// downstream tools (and our own re-import) can recover the intent.
 /// Actual ICC embedding requires profile blobs we do not vendor yet.
 pub fn export_svg_with_profile(doc: &Document, color_profile: Option<&str>) -> String {
+    export_svg_with_options(doc, false, color_profile)
+}
+
+/// Full-option entry point.
+///
+/// * `embed_fonts` inlines every face the document renders with as an
+///   `@font-face` data URI, so the file looks the same on a machine that
+///   does not have the fonts installed.
+/// * `color_profile` is recorded as a comment (see [`export_svg_with_profile`]).
+pub fn export_svg_with_options(
+    doc: &Document,
+    embed_fonts: bool,
+    color_profile: Option<&str>,
+) -> String {
     let profile_comment = color_profile
         .filter(|p| !p.trim().is_empty())
         .map(|p| {
@@ -121,6 +231,16 @@ pub fn export_svg_with_profile(doc: &Document, color_profile: Option<&str>) -> S
             for obj in &layer.objects {
                 render_object_to_svg(obj, doc, &mut svg, &mut defs, &mut id_counter);
             }
+        }
+    }
+
+    if embed_fonts {
+        let css = font_face_css(doc);
+        if !css.is_empty() {
+            defs.insert_str(
+                0,
+                &format!("  <style type=\"text/css\">\n{css}  </style>\n"),
+            );
         }
     }
 
@@ -1037,6 +1157,70 @@ mod tests {
     fn arrowheads_are_skipped_when_the_style_has_none() {
         let svg = exported_line(ArrowHead::None, ArrowHead::None);
         assert_eq!(path_count(&svg), 0, "{svg}");
+    }
+
+    fn text_doc(family: &str) -> Document {
+        let mut doc = Document::default();
+        let style = crate::core::document::TextStyle {
+            font_family: family.to_string(),
+            ..Default::default()
+        };
+        doc.add_object(Object::new_text_with_style("t", "Hello", 10.0, 50.0, style));
+        doc
+    }
+
+    #[test]
+    fn embed_fonts_inlines_the_face_the_document_uses() {
+        // Pick a family the registry can actually answer for, so the test
+        // does not depend on which fonts the machine happens to ship.
+        let family = crate::core::font::FontRegistry::global()
+            .list_families()
+            .first()
+            .cloned()
+            .expect("at least one font family must be installed");
+        let doc = text_doc(&family);
+
+        let svg = export_svg_with_options(&doc, true, None);
+        assert!(svg.contains("@font-face"), "no embedded face: {svg}");
+        assert!(svg.contains("src: url(data:font/"), "no data URI: {svg}");
+        assert!(
+            svg.contains(&format!("font-family=\"{}\"", xml_escape(&family))),
+            "text lost its family: {svg}"
+        );
+
+        // The plain export stays lean: embedding is opt-in.
+        assert!(!export_svg(&doc).contains("@font-face"));
+    }
+
+    #[test]
+    fn embed_fonts_skips_families_that_are_not_installed() {
+        let doc = text_doc("Zzz-no-such-family-xyz");
+        let svg = export_svg_with_options(&doc, true, None);
+        assert!(!svg.contains("@font-face"), "embedded a fallback: {svg}");
+        // The text element itself is still there for the viewer to resolve.
+        assert!(svg.contains("<text"), "{svg}");
+    }
+
+    #[test]
+    fn embed_fonts_dedupes_one_face_per_family() {
+        let family = crate::core::font::FontRegistry::global()
+            .list_families()
+            .first()
+            .cloned()
+            .expect("at least one font family must be installed");
+        let mut doc = text_doc(&family);
+        doc.add_object(Object::new_text_with_style("t2", "World", 10.0, 80.0, {
+            crate::core::document::TextStyle {
+                font_family: family.clone(),
+                ..Default::default()
+            }
+        }));
+        let svg = export_svg_with_options(&doc, true, None);
+        assert_eq!(
+            svg.matches("@font-face").count(),
+            1,
+            "one face embedded twice: {svg}"
+        );
     }
 }
 

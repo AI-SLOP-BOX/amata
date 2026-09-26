@@ -259,7 +259,11 @@ impl ExportPanel {
                     &state.document
                 };
                 if format == "SVG" {
-                    let svg = crate::io::svg::export_svg(doc_ref);
+                    let svg = crate::io::svg::export_svg_with_options(
+                        doc_ref,
+                        state.export_svg_embed_fonts,
+                        None,
+                    );
                     match crate::io::atomic::atomic_write_str(&path, &svg) {
                         Ok(_) => state.notify_info("SVGを書き出しました"),
                         Err(e) => state.notify_error(format!("SVG書き出しに失敗しました: {e}")),
