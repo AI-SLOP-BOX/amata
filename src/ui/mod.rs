@@ -3,6 +3,7 @@ pub mod canvas;
 pub mod export_modal;
 pub mod external_change_modal;
 pub mod home_view;
+pub mod i18n;
 pub mod modal_shell;
 pub mod new_doc_modal;
 pub mod onboarding_tour;

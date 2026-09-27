@@ -1,6 +1,7 @@
 use super::{zoom_to_fit, ActiveTab, IrasuApp};
 use crate::app::control_bar::mod_key;
 use crate::app::icons::{icon_bell, icon_button, icon_search};
+use crate::ui::i18n;
 use crate::core::boolean::{execute_pathfinder, BooleanOp};
 use crate::core::document::Object;
 use egui::{self, Color32, RichText, Vec2};
@@ -68,7 +69,7 @@ impl IrasuApp {
                         self.new_doc_modal.is_open = true;
                         ui.close_menu();
                     }
-                    if ui.button("Open SVG...").clicked() {
+                    if ui.button("SVGを開く...").clicked() {
                         if let Some(path) = rfd::FileDialog::new()
                             .add_filter("SVG", &["svg"])
                             .pick_file()
@@ -126,7 +127,7 @@ impl IrasuApp {
                         }
                         ui.close_menu();
                     }
-                    if ui.button("Open PDF...").clicked() {
+                    if ui.button("PDFを開く...").clicked() {
                         if let Some(path) = rfd::FileDialog::new()
                             .add_filter("PDF", &["pdf"])
                             .pick_file()
@@ -180,7 +181,7 @@ impl IrasuApp {
                         }
                         ui.close_menu();
                     }
-                    if ui.button("画像を配置... (Place Image)").clicked() {
+                    if ui.button("画像を配置...").clicked() {
                         if let Some(path) = rfd::FileDialog::new()
                             .add_filter(
                                 "Images",
@@ -276,7 +277,7 @@ impl IrasuApp {
                         }
                         ui.close_menu();
                     }
-                    if ui.button("Save Project (.amata / .json)...").clicked() {
+                    if ui.button("プロジェクトを保存(.amata / .json)...").clicked() {
                         if let Some(path) = rfd::FileDialog::new()
                             .add_filter("Amata Project", &["amata", "json"])
                             .save_file()
@@ -309,7 +310,7 @@ impl IrasuApp {
                         }
                         ui.close_menu();
                     }
-                    if ui.button("Load Project (.amata / .json)...").clicked() {
+                    if ui.button("プロジェクトを読み込み(.amata / .json)...").clicked() {
                         if let Some(path) = rfd::FileDialog::new()
                             .add_filter("Amata Project", &["amata", "json"])
                             .pick_file()
@@ -353,7 +354,7 @@ impl IrasuApp {
                         self.export_modal.is_open = true;
                         ui.close_menu();
                     }
-                    if ui.button("Export SVG...").clicked() {
+                    if ui.button("SVGを書き出し...").clicked() {
                         if let Some(path) = rfd::FileDialog::new()
                             .add_filter("SVG", &["svg"])
                             .save_file()
@@ -376,9 +377,9 @@ impl IrasuApp {
                         ui.close_menu();
                     }
                     ui.separator();
-                    ui.menu_button("🎬 VFX Pipeline", |ui| {
+                    ui.menu_button("VFX Pipeline", |ui| {
                         if ui
-                            .button("Export for AEVFX Studio Comp (.json)...")
+                            .button("AEVFXコンポジションを書き出し (.json)...")
                             .clicked()
                         {
                             if let Some(path) = rfd::FileDialog::new()
@@ -409,7 +410,7 @@ impl IrasuApp {
                             ui.close_menu();
                         }
                         if ui
-                            .button("Export Motion Path Keyframes (.json)...")
+                            .button("モーションパスのキーフレームを書き出し (.json)...")
                             .clicked()
                         {
                             if let Some(path) = rfd::FileDialog::new()
@@ -434,7 +435,7 @@ impl IrasuApp {
                             }
                             ui.close_menu();
                         }
-                        if ui.button("Export 3D Mesh (.obj)...").clicked() {
+                        if ui.button("3Dメッシュを書き出し(.obj)...").clicked() {
                             if let Some(path) = rfd::FileDialog::new()
                                 .add_filter("Wavefront OBJ", &["obj"])
                                 .save_file()
@@ -450,12 +451,12 @@ impl IrasuApp {
                         }
                     });
                     ui.separator();
-                    if ui.button("Quit").clicked() {
+                    if ui.button("終了").clicked() {
                         ctx.send_viewport_cmd(egui::ViewportCommand::Close);
                     }
                 });
 
-                ui.menu_button("Edit", |ui| {
+                ui.menu_button("編集", |ui| {
                     let can_undo = self.state.undo_manager.can_undo();
                     let can_redo = self.state.undo_manager.can_redo();
                     let undo_name = self
@@ -470,11 +471,13 @@ impl IrasuApp {
                         .redo_name()
                         .unwrap_or("—")
                         .to_string();
+                    let undo_label = i18n::history_name(&undo_name);
+                    let redo_label = i18n::history_name(&redo_name);
                     if ui
                         .add_enabled(
                             can_undo,
                             egui::Button::new(format!(
-                                "Undo ({undo_name})  ({}+Z)",
+                                "元に戻す ({undo_label})  ({}+Z)",
                                 mod_key()
                             )),
                         )
@@ -487,7 +490,7 @@ impl IrasuApp {
                         .add_enabled(
                             can_redo,
                             egui::Button::new(format!(
-                                "Redo ({redo_name})  ({}+Y)",
+                                "やり直し ({redo_label})  ({}+Y)",
                                 mod_key()
                             )),
                         )
@@ -498,7 +501,7 @@ impl IrasuApp {
                     }
                     ui.separator();
                     if ui
-                        .button(format!("Select All  ({}+A)", mod_key()))
+                        .button(format!("すべて選択  ({}+A)", mod_key()))
                         .clicked()
                     {
                         self.state.selected_ids = self
@@ -510,13 +513,13 @@ impl IrasuApp {
                             .collect();
                         ui.close_menu();
                     }
-                    if ui.button("Deselect All").clicked() {
+                    if ui.button("選択を解除").clicked() {
                         self.state.selected_ids.clear();
                         ui.close_menu();
                     }
                     ui.separator();
                     if ui
-                        .button(format!("Duplicate  ({}+D)", mod_key()))
+                        .button(format!("複製  ({}+D)", mod_key()))
                         .clicked()
                     {
                         let ids: Vec<String> = self.state.selected_ids.clone();
@@ -547,7 +550,7 @@ impl IrasuApp {
                     }
                     ui.separator();
                     if ui
-                        .button(format!("Preferences...  ({}+K)", mod_key()))
+                        .button(format!("環境設定...  ({}+K)", mod_key()))
                         .clicked()
                     {
                         self.preferences_dialog.is_open = true;
@@ -555,14 +558,14 @@ impl IrasuApp {
                     }
                 });
 
-                ui.menu_button("Object", |ui| {
+                ui.menu_button("オブジェクト", |ui| {
                     let has_sel = !self.state.selected_ids.is_empty();
                     let multi_sel = self.state.selected_ids.len() >= 2;
 
                     if ui
                         .add_enabled(
                             multi_sel,
-                            egui::Button::new(format!("Group  ({}+G)", mod_key())),
+                            egui::Button::new(format!("グループ化  ({}+G)", mod_key())),
                         )
                         .clicked()
                     {
@@ -582,7 +585,7 @@ impl IrasuApp {
                     }
 
                     if ui
-                        .add_enabled(has_sel, egui::Button::new("Bring to Front"))
+                        .add_enabled(has_sel, egui::Button::new("最前面へ"))
                         .clicked()
                     {
                         let sel = self.state.selected_ids.clone();
@@ -601,7 +604,7 @@ impl IrasuApp {
                     }
 
                     if ui
-                        .add_enabled(has_sel, egui::Button::new("Send to Back"))
+                        .add_enabled(has_sel, egui::Button::new("最背面へ"))
                         .clicked()
                     {
                         let sel = self.state.selected_ids.clone();
@@ -625,7 +628,7 @@ impl IrasuApp {
                         .add_enabled(
                             multi_sel,
                             egui::Button::new(format!(
-                                "Make Compound Path  ({}+8)",
+                                "複合パスを作成  ({}+8)",
                                 mod_key()
                             )),
                         )
@@ -647,7 +650,7 @@ impl IrasuApp {
                         .add_enabled(
                             has_sel,
                             egui::Button::new(format!(
-                                "Release Compound Path  ({}+Alt+Shift+8)",
+                                "複合パスを解放  ({}+Alt+Shift+8)",
                                 mod_key()
                             )),
                         )
@@ -672,13 +675,13 @@ impl IrasuApp {
                     }
                 });
 
-                ui.menu_button("Type", |ui| {
+                ui.menu_button("タイプ", |ui| {
                     let has_sel = !self.state.selected_ids.is_empty();
                     if ui
                         .add_enabled(
                             has_sel,
                             egui::Button::new(format!(
-                                "Create Outlines  ({}+Shift+O)",
+                                "アウトライン化  ({}+Shift+O)",
                                 mod_key()
                             )),
                         )
@@ -706,7 +709,7 @@ impl IrasuApp {
                     if ui
                         .add_enabled(
                             has_sel,
-                            egui::Button::new("Type on Path  (from selected path)"),
+                            egui::Button::new("パス上にテキスト (選択したパスから)"),
                         )
                         .clicked()
                     {
@@ -752,13 +755,13 @@ impl IrasuApp {
                     }
                 });
 
-                ui.menu_button("Pathfinder", |ui| {
+                ui.menu_button("パスファインダー", |ui| {
                     let multi = self.state.selected_ids.len() >= 2;
                     let ops = [
-                        (BooleanOp::Union, "Unite"),
-                        (BooleanOp::Subtract, "Minus Front"),
-                        (BooleanOp::Intersect, "Intersect"),
-                        (BooleanOp::Exclude, "Exclude"),
+                        (BooleanOp::Union, "統合"),
+                        (BooleanOp::Subtract, "前面を減算"),
+                        (BooleanOp::Intersect, "累積"),
+                        (BooleanOp::Exclude, "除外"),
                     ];
                     for (op, name) in ops {
                         if ui
@@ -782,23 +785,23 @@ impl IrasuApp {
                     }
                 });
 
-                ui.menu_button("View", |ui| {
-                    ui.checkbox(&mut self.state.show_grid, "Show Grid");
-                    ui.checkbox(&mut self.state.snap_to_grid, "Snap to Grid");
-                    ui.checkbox(&mut self.state.snap_to_objects, "Snap to Objects");
-                    ui.checkbox(&mut self.state.snap_to_pixels, "Snap to Pixels");
-                    ui.checkbox(&mut self.state.show_rulers, "Show Rulers");
-                    ui.checkbox(&mut self.state.show_smart_guides, "Smart Guides");
-                    ui.checkbox(&mut self.state.show_timeline, "Show Timeline");
+                ui.menu_button("表示", |ui| {
+                    ui.checkbox(&mut self.state.show_grid, "グリッドを表示");
+                    ui.checkbox(&mut self.state.snap_to_grid, "グリッドにスナップ");
+                    ui.checkbox(&mut self.state.snap_to_objects, "オブジェクトにスナップ");
+                    ui.checkbox(&mut self.state.snap_to_pixels, "ピクセルにスナップ");
+                    ui.checkbox(&mut self.state.show_rulers, "定規を表示");
+                    ui.checkbox(&mut self.state.show_smart_guides, "スマートガイドを表示");
+                    ui.checkbox(&mut self.state.show_timeline, "タイムラインを表示");
                     ui.add(
                         egui::DragValue::new(&mut self.state.grid_size)
                             .speed(10.0)
-                            .prefix("Grid Size: ")
+                            .prefix("グリッドサイズ: ")
                             .range(5.0..=500.0),
                     );
                     ui.separator();
                     if ui
-                        .button(format!("Zoom to Fit  ({}+0)", mod_key()))
+                        .button(format!("画面に合わせて表示  ({}+0)", mod_key()))
                         .clicked()
                     {
                         self.state.start_zoom = self.state.zoom;
@@ -809,7 +812,7 @@ impl IrasuApp {
                         ui.close_menu();
                     }
                     if ui
-                        .button(format!("Zoom 100%  ({}+1)", mod_key()))
+                        .button(format!("100%表示  ({}+1)", mod_key()))
                         .clicked()
                     {
                         self.state.start_zoom = self.state.zoom;

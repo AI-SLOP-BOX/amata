@@ -586,7 +586,7 @@ impl eframe::App for IrasuApp {
                 .anchor(egui::Align2::CENTER_BOTTOM, egui::vec2(0.0, -42.0))
                 .order(egui::Order::Tooltip)
                 .show(ctx, |ui| {
-                    let (bg_col, border_col, icon, icon_col) = if toast.is_error {
+                    let (bg_col, border_col, _icon, icon_col) = if toast.is_error {
                         (
                             egui::Color32::from_rgb(45, 20, 22),
                             egui::Color32::from_rgb(220, 70, 70),
@@ -610,7 +610,7 @@ impl eframe::App for IrasuApp {
                         .show(ui, |ui| {
                             ui.horizontal(|ui| {
                                 ui.label(
-                                    egui::RichText::new(icon)
+                                    egui::RichText::new(_icon)
                                         .size(14.0)
                                         .color(icon_col)
                                         .strong(),
