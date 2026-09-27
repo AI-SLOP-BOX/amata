@@ -121,7 +121,9 @@ impl SelectState {
                 let mut any = false;
                 for (id, sx, sy) in &self.drag_starts {
                     if let Some(obj) = state.document.find_object(id) {
-                        if let Some((bb_min, bb_max)) = obj.bounding_box() {
+                        if let Some((bb_min, bb_max)) =
+                            obj.measured_bounds(state.prefs.use_preview_bounds)
+                        {
                             // bbox offset from the (pure-translation) transform
                             let ox0 = bb_min.x - obj.transform.x;
                             let oy0 = bb_min.y - obj.transform.y;
@@ -148,7 +150,9 @@ impl SelectState {
                         {
                             continue;
                         }
-                        if let Some((o_min, o_max)) = other.bounding_box() {
+                        if let Some((o_min, o_max)) =
+                            other.measured_bounds(state.prefs.use_preview_bounds)
+                        {
                             targets_x.push(o_min.x);
                             targets_x.push((o_min.x + o_max.x) * 0.5);
                             targets_x.push(o_max.x);

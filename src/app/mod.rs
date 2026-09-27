@@ -272,7 +272,7 @@ impl eframe::App for IrasuApp {
             self.state.timeline.advance_frame();
             self.state
                 .timeline
-                .apply_to_document(&mut self.state.document);
+                .apply_to_document(&mut self.state.document, &self.state.prefs);
             ctx.request_repaint();
         } else if self.state.timeline_was_playing {
             self.state.timeline_was_playing = false;

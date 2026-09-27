@@ -1656,22 +1656,45 @@ impl Object {
     /// [`bounding_box`] grown by half the stroke width — Illustrator's
     /// *プレビュー境界*.
     ///
+    /// The pad is per axis: the stroke is laid out in object space, so a
+    /// horizontal edge's thickness travels with `scale_x` and a vertical
+    /// one's with `scale_y`. [`Self::visual_scale`] (the geometric mean)
+    /// would be right only for a uniform resize.
+    ///
     /// Shadow and glow are deliberately left out: they have no finite extent
     /// (a glow's spread depends on the blur) and including them would make
     /// the selection box jump every time an effect is retuned.
     pub fn preview_bounds(&self) -> Option<(AnchorPoint, AnchorPoint)> {
         let (min, max) = self.bounding_box()?;
-        let pad = match &self.stroke {
-            Some(s) if s.width > 0.0 => s.width * self.visual_scale() * 0.5,
-            _ => 0.0,
+        let (pad_x, pad_y) = match &self.stroke {
+            Some(s) if s.width > 0.0 => (
+                s.width * self.transform.scale_x.abs() * 0.5,
+                s.width * self.transform.scale_y.abs() * 0.5,
+            ),
+            _ => (0.0, 0.0),
         };
-        if pad <= 0.0 {
+        if pad_x <= 0.0 && pad_y <= 0.0 {
             return Some((min, max));
         }
         Some((
-            AnchorPoint::new(min.x - pad, min.y - pad),
-            AnchorPoint::new(max.x + pad, max.y + pad),
+            AnchorPoint::new(min.x - pad_x, min.y - pad_y),
+            AnchorPoint::new(max.x + pad_x, max.y + pad_y),
         ))
+    }
+
+    /// The box this object is *measured* by: its [`preview_bounds`] when
+    /// 「プレビュー境界を使用」is on, the bare geometry otherwise.
+    ///
+    /// Alignment, distribution, guides, snapping, measurements and the
+    /// selection box all go through here, so "how big is this object" has
+    /// exactly one answer per preference instead of a different one in every
+    /// panel.
+    pub fn measured_bounds(&self, use_preview_bounds: bool) -> Option<(AnchorPoint, AnchorPoint)> {
+        if use_preview_bounds {
+            self.preview_bounds()
+        } else {
+            self.bounding_box()
+        }
     }
 
     /// The scale factor every *visual* attribute is drawn at: the geometric
@@ -1801,6 +1824,41 @@ mod tests {
         assert_eq!(corner_radius_of(&same), 20.0);
         same.apply_scale_change(f64::NAN, false, false);
         assert_eq!(corner_radius_of(&same), 20.0);
+    }
+
+    /// Non-uniform resize: each axis carries its own part of the stroke.
+    #[test]
+    fn preview_bounds_pads_each_axis_with_its_own_scale() {
+        let mut obj = visual_fixture(); // 100×50, stroke 4
+        obj.transform.scale_x = 3.0;
+        obj.transform.scale_y = 1.0;
+        let (min, max) = obj.preview_bounds().unwrap();
+        // x: geometry 0..300, pad 4·3/2 = 6 a side. y: 0..50, pad 4·1/2 = 2.
+        assert_eq!((min.x, min.y, max.x, max.y), (-6.0, -2.0, 306.0, 52.0));
+        // …whereas the geometric mean (4·√3/2 ≈ 3.46) would pad x too.
+        assert_ne!(min.x, -4.0 * 3f64.sqrt() * 0.5);
+    }
+
+    /// The measurement every panel agrees on.
+    #[test]
+    fn measured_bounds_follows_the_preference() {
+        let mut obj = visual_fixture();
+        obj.transform.scale_x = 2.0;
+        obj.transform.scale_y = 2.0;
+        assert_eq!(
+            obj.measured_bounds(false),
+            obj.bounding_box(),
+            "geometry-only"
+        );
+        assert_eq!(
+            obj.measured_bounds(true),
+            obj.preview_bounds(),
+            "stroke included"
+        );
+        // With 「プレビュー境界を使用」on the box is the bigger one.
+        let (_, geo) = obj.measured_bounds(false).unwrap();
+        let (_, prev) = obj.measured_bounds(true).unwrap();
+        assert!(prev.x > geo.x && prev.y > geo.y);
     }
 
     #[test]

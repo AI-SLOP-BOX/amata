@@ -161,8 +161,15 @@ impl Timeline {
         }
     }
 
-    /// Apply the evaluated animated values at the current frame to all objects in the document
-    pub fn apply_to_document(&self, doc: &mut Document) {
+    /// Apply the evaluated animated values at the current frame to all objects in the document.
+    ///
+    /// A keyframed scale is a scale change like any other, so the 環境設定
+    /// switches 「角を拡大・縮小」/「線幅と効果を拡大・縮小」are honoured here
+    /// too — `prefs` is threaded in because this lives on `&Document`, not on
+    /// `AppState`. Playback snapshots the whole object once before the first
+    /// frame, so stopping restores the counter-scaled attributes together
+    /// with the transforms in a single undo step.
+    pub fn apply_to_document(&self, doc: &mut Document, prefs: &crate::core::prefs::Prefs) {
         for track in &self.tracks {
             if let Some(val) = track.eval_at(self.current_frame) {
                 if let Some(obj) = doc.find_object_mut(&track.object_id) {
@@ -170,9 +177,20 @@ impl Timeline {
                         AnimProperty::PositionX => obj.transform.x = val,
                         AnimProperty::PositionY => obj.transform.y = val,
                         AnimProperty::Rotation => obj.transform.rotation = val.to_radians(),
-                        AnimProperty::ScaleX => obj.transform.scale_x = val,
-                        AnimProperty::ScaleY => obj.transform.scale_y = val,
                         AnimProperty::Opacity => obj.opacity = val as f32,
+                        AnimProperty::ScaleX | AnimProperty::ScaleY => {
+                            let before = obj.visual_scale();
+                            if matches!(track.property, AnimProperty::ScaleX) {
+                                obj.transform.scale_x = val;
+                            } else {
+                                obj.transform.scale_y = val;
+                            }
+                            obj.apply_scale_change(
+                                obj.visual_scale() / before,
+                                prefs.scale_corners,
+                                prefs.scale_strokes_effects,
+                            );
+                        }
                     }
                 }
             }

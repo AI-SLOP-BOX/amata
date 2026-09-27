@@ -242,10 +242,11 @@ impl AlignPanel {
 }
 
 fn align_left(state: &mut AppState, sel: &[String]) {
+    let use_preview = state.prefs.use_preview_bounds;
     let mut min_x = f64::MAX;
     for id in sel {
         if let Some((_, obj)) = state.document.all_objects().find(|(_, o)| &o.id == id) {
-            if let Some((bb_min, _)) = obj.bounding_box() {
+            if let Some((bb_min, _)) = obj.measured_bounds(use_preview) {
                 min_x = min_x.min(bb_min.x);
             }
         }
@@ -253,7 +254,7 @@ fn align_left(state: &mut AppState, sel: &[String]) {
     let mut moves = Vec::new();
     for id in sel {
         if let Some((_, obj)) = state.document.all_objects().find(|(_, o)| &o.id == id) {
-            if let Some((bb_min, _)) = obj.bounding_box() {
+            if let Some((bb_min, _)) = obj.measured_bounds(use_preview) {
                 let (ox, oy) = (obj.transform.x, obj.transform.y);
                 moves.push((id.clone(), ox, oy, ox + (min_x - bb_min.x), oy));
             }
@@ -263,11 +264,12 @@ fn align_left(state: &mut AppState, sel: &[String]) {
 }
 
 fn align_center_h(state: &mut AppState, sel: &[String]) {
+    let use_preview = state.prefs.use_preview_bounds;
     let mut min_x = f64::MAX;
     let mut max_x = f64::MIN;
     for id in sel {
         if let Some((_, obj)) = state.document.all_objects().find(|(_, o)| &o.id == id) {
-            if let Some((bb_min, bb_max)) = obj.bounding_box() {
+            if let Some((bb_min, bb_max)) = obj.measured_bounds(use_preview) {
                 min_x = min_x.min(bb_min.x);
                 max_x = max_x.max(bb_max.x);
             }
@@ -277,7 +279,7 @@ fn align_center_h(state: &mut AppState, sel: &[String]) {
     let mut moves = Vec::new();
     for id in sel {
         if let Some((_, obj)) = state.document.all_objects().find(|(_, o)| &o.id == id) {
-            if let Some((bb_min, bb_max)) = obj.bounding_box() {
+            if let Some((bb_min, bb_max)) = obj.measured_bounds(use_preview) {
                 let obj_center = (bb_min.x + bb_max.x) / 2.0;
                 let (ox, oy) = (obj.transform.x, obj.transform.y);
                 moves.push((id.clone(), ox, oy, ox + (center - obj_center), oy));
@@ -288,10 +290,11 @@ fn align_center_h(state: &mut AppState, sel: &[String]) {
 }
 
 fn align_right(state: &mut AppState, sel: &[String]) {
+    let use_preview = state.prefs.use_preview_bounds;
     let mut max_x = f64::MIN;
     for id in sel {
         if let Some((_, obj)) = state.document.all_objects().find(|(_, o)| &o.id == id) {
-            if let Some((_, bb_max)) = obj.bounding_box() {
+            if let Some((_, bb_max)) = obj.measured_bounds(use_preview) {
                 max_x = max_x.max(bb_max.x);
             }
         }
@@ -299,7 +302,7 @@ fn align_right(state: &mut AppState, sel: &[String]) {
     let mut moves = Vec::new();
     for id in sel {
         if let Some((_, obj)) = state.document.all_objects().find(|(_, o)| &o.id == id) {
-            if let Some((_, bb_max)) = obj.bounding_box() {
+            if let Some((_, bb_max)) = obj.measured_bounds(use_preview) {
                 let (ox, oy) = (obj.transform.x, obj.transform.y);
                 moves.push((id.clone(), ox, oy, ox + (max_x - bb_max.x), oy));
             }
@@ -309,10 +312,11 @@ fn align_right(state: &mut AppState, sel: &[String]) {
 }
 
 fn align_top(state: &mut AppState, sel: &[String]) {
+    let use_preview = state.prefs.use_preview_bounds;
     let mut min_y = f64::MAX;
     for id in sel {
         if let Some((_, obj)) = state.document.all_objects().find(|(_, o)| &o.id == id) {
-            if let Some((bb_min, _)) = obj.bounding_box() {
+            if let Some((bb_min, _)) = obj.measured_bounds(use_preview) {
                 min_y = min_y.min(bb_min.y);
             }
         }
@@ -320,7 +324,7 @@ fn align_top(state: &mut AppState, sel: &[String]) {
     let mut moves = Vec::new();
     for id in sel {
         if let Some((_, obj)) = state.document.all_objects().find(|(_, o)| &o.id == id) {
-            if let Some((bb_min, _)) = obj.bounding_box() {
+            if let Some((bb_min, _)) = obj.measured_bounds(use_preview) {
                 let (ox, oy) = (obj.transform.x, obj.transform.y);
                 moves.push((id.clone(), ox, oy, ox, oy + (min_y - bb_min.y)));
             }
@@ -330,11 +334,12 @@ fn align_top(state: &mut AppState, sel: &[String]) {
 }
 
 fn align_center_v(state: &mut AppState, sel: &[String]) {
+    let use_preview = state.prefs.use_preview_bounds;
     let mut min_y = f64::MAX;
     let mut max_y = f64::MIN;
     for id in sel {
         if let Some((_, obj)) = state.document.all_objects().find(|(_, o)| &o.id == id) {
-            if let Some((bb_min, bb_max)) = obj.bounding_box() {
+            if let Some((bb_min, bb_max)) = obj.measured_bounds(use_preview) {
                 min_y = min_y.min(bb_min.y);
                 max_y = max_y.max(bb_max.y);
             }
@@ -344,7 +349,7 @@ fn align_center_v(state: &mut AppState, sel: &[String]) {
     let mut moves = Vec::new();
     for id in sel {
         if let Some((_, obj)) = state.document.all_objects().find(|(_, o)| &o.id == id) {
-            if let Some((bb_min, bb_max)) = obj.bounding_box() {
+            if let Some((bb_min, bb_max)) = obj.measured_bounds(use_preview) {
                 let obj_center = (bb_min.y + bb_max.y) / 2.0;
                 let (ox, oy) = (obj.transform.x, obj.transform.y);
                 moves.push((id.clone(), ox, oy, ox, oy + (center - obj_center)));
@@ -355,10 +360,11 @@ fn align_center_v(state: &mut AppState, sel: &[String]) {
 }
 
 fn align_bottom(state: &mut AppState, sel: &[String]) {
+    let use_preview = state.prefs.use_preview_bounds;
     let mut max_y = f64::MIN;
     for id in sel {
         if let Some((_, obj)) = state.document.all_objects().find(|(_, o)| &o.id == id) {
-            if let Some((_, bb_max)) = obj.bounding_box() {
+            if let Some((_, bb_max)) = obj.measured_bounds(use_preview) {
                 max_y = max_y.max(bb_max.y);
             }
         }
@@ -366,7 +372,7 @@ fn align_bottom(state: &mut AppState, sel: &[String]) {
     let mut moves = Vec::new();
     for id in sel {
         if let Some((_, obj)) = state.document.all_objects().find(|(_, o)| &o.id == id) {
-            if let Some((_, bb_max)) = obj.bounding_box() {
+            if let Some((_, bb_max)) = obj.measured_bounds(use_preview) {
                 let (ox, oy) = (obj.transform.x, obj.transform.y);
                 moves.push((id.clone(), ox, oy, ox, oy + (max_y - bb_max.y)));
             }
@@ -376,15 +382,21 @@ fn align_bottom(state: &mut AppState, sel: &[String]) {
 }
 
 fn distribute_h(state: &mut AppState, sel: &[String]) {
+    let use_preview = state.prefs.use_preview_bounds;
     // Single pass over the document: id -> (min_x, width, transform.x, transform.y).
     let mut by_id: std::collections::HashMap<&str, (f64, f64, f64, f64)> =
         std::collections::HashMap::with_capacity(sel.len());
     for (_, obj) in state.document.all_objects() {
         if sel.iter().any(|id| id == &obj.id) {
-            if let Some((bb_min, bb_max)) = obj.bounding_box() {
+            if let Some((bb_min, bb_max)) = obj.measured_bounds(use_preview) {
                 by_id.insert(
                     obj.id.as_str(),
-                    (bb_min.x, bb_max.x - bb_min.x, obj.transform.x, obj.transform.y),
+                    (
+                        bb_min.x,
+                        bb_max.x - bb_min.x,
+                        obj.transform.x,
+                        obj.transform.y,
+                    ),
                 );
             }
         }
@@ -419,15 +431,21 @@ fn distribute_h(state: &mut AppState, sel: &[String]) {
 }
 
 fn distribute_v(state: &mut AppState, sel: &[String]) {
+    let use_preview = state.prefs.use_preview_bounds;
     // Single pass over the document: id -> (min_y, height, transform.x, transform.y).
     let mut by_id: std::collections::HashMap<&str, (f64, f64, f64, f64)> =
         std::collections::HashMap::with_capacity(sel.len());
     for (_, obj) in state.document.all_objects() {
         if sel.iter().any(|id| id == &obj.id) {
-            if let Some((bb_min, bb_max)) = obj.bounding_box() {
+            if let Some((bb_min, bb_max)) = obj.measured_bounds(use_preview) {
                 by_id.insert(
                     obj.id.as_str(),
-                    (bb_min.y, bb_max.y - bb_min.y, obj.transform.x, obj.transform.y),
+                    (
+                        bb_min.y,
+                        bb_max.y - bb_min.y,
+                        obj.transform.x,
+                        obj.transform.y,
+                    ),
                 );
             }
         }

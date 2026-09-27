@@ -664,7 +664,7 @@ fn test_timeline_playback_commits_one_undo_step() {
     track.add_keyframe(10, 100.0, EaseType::Linear);
     for frame in [1, 5, 10] {
         tl.current_frame = frame;
-        tl.apply_to_document(&mut state.document);
+        tl.apply_to_document(&mut state.document, &state.prefs);
     }
     // Simulate playback stop.
     state.commit_object_edits("Timeline Playback");
@@ -673,6 +673,58 @@ fn test_timeline_playback_commits_one_undo_step() {
     state.undo_manager.undo(&mut state.document);
     let obj = state.document.find_object(&id).unwrap();
     assert!((obj.transform.x - 0.0).abs() < 1e-9);
+}
+
+/// 「線幅と効果を拡大・縮小」off: a keyframed scale change is still a scale
+/// change — the stored values are counter-scaled so the drawn size holds,
+/// and stopping playback undoes everything in one step.
+#[test]
+fn test_timeline_scale_honours_the_transform_switches() {
+    use irasu_illustrator::core::path::StrokeStyle;
+    use irasu_illustrator::core::state::AppState;
+    use irasu_illustrator::core::timeline::{AnimProperty, EaseType, Timeline};
+    let mut state = AppState::default();
+    state.prefs.scale_corners = false;
+    state.prefs.scale_strokes_effects = false;
+    state
+        .document
+        .add_object(Object::new_rect("R", 0.0, 0.0, 100.0, 50.0, 20.0));
+    let id = state.document.all_objects().next().unwrap().1.id.clone();
+    if let Some(o) = state.document.find_object_mut(&id) {
+        o.stroke = Some(StrokeStyle {
+            width: 4.0,
+            ..Default::default()
+        });
+    }
+
+    let mut tl = Timeline::default();
+    for prop in [AnimProperty::ScaleX, AnimProperty::ScaleY] {
+        let t = tl.add_or_get_track_mut(&id, prop);
+        t.add_keyframe(0, 1.0, EaseType::Linear);
+        t.add_keyframe(10, 3.0, EaseType::Linear);
+    }
+
+    state.ensure_object_snapshot(&id);
+    for frame in [5, 10] {
+        tl.current_frame = frame;
+        tl.apply_to_document(&mut state.document, &state.prefs);
+    }
+    let obj = state.document.find_object(&id).unwrap();
+    assert!((obj.transform.scale_x - 3.0).abs() < 1e-9);
+    assert!((obj.transform.scale_y - 3.0).abs() < 1e-9);
+    let w = obj.stroke.as_ref().unwrap().width;
+    assert!((w - 4.0 / 3.0).abs() < 1e-9, "stored width ÷3, got {w}");
+    assert!(
+        (w * obj.visual_scale() - 4.0).abs() < 1e-9,
+        "drawn width held"
+    );
+
+    state.commit_object_edits("Timeline Playback");
+    assert_eq!(state.undo_manager.undo_depth(), 1);
+    state.undo_manager.undo(&mut state.document);
+    let obj = state.document.find_object(&id).unwrap();
+    assert_eq!(obj.transform.scale_x, 1.0);
+    assert_eq!(obj.stroke.as_ref().unwrap().width, 4.0);
 }
 
 #[test]

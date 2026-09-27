@@ -402,7 +402,7 @@ impl CanvasWidget {
                 .document
                 .all_objects()
                 .filter(|(_, o)| !state.selected_ids.contains(&o.id) && o.visible)
-                .filter_map(|(_, o)| o.bounding_box())
+                .filter_map(|(_, o)| o.measured_bounds(state.prefs.use_preview_bounds))
                 .collect();
 
             // Alignment lines: selection edges/centers vs other edges/centers.
@@ -1288,7 +1288,7 @@ impl CanvasWidget {
         let mut s_max: Option<(f64, f64)> = None;
         for id in &state.selected_ids {
             if let Some((_, obj)) = state.document.all_objects().find(|(_, o)| &o.id == id) {
-                if let Some((mn, mx)) = obj.bounding_box() {
+                if let Some((mn, mx)) = obj.measured_bounds(state.prefs.use_preview_bounds) {
                     s_min = Some(match s_min {
                         None => (mn.x, mn.y),
                         Some(c) => (c.0.min(mn.x), c.1.min(mn.y)),
@@ -1333,7 +1333,7 @@ impl CanvasWidget {
             if state.selected_ids.contains(&other.id) || !other.visible {
                 continue;
             }
-            if let Some((mn, mx)) = other.bounding_box() {
+            if let Some((mn, mx)) = other.measured_bounds(state.prefs.use_preview_bounds) {
                 cands.push(((mn.x, mn.y), (mx.x, mx.y)));
             }
         }

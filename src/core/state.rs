@@ -974,7 +974,7 @@ impl AppState {
         let mut best: Option<(f64, f64, f64)> = None;
 
         for obj in objects {
-            if let Some((bb_min, bb_max)) = obj.bounding_box() {
+            if let Some((bb_min, bb_max)) = obj.measured_bounds(self.prefs.use_preview_bounds) {
                 let cx = (bb_min.x + bb_max.x) / 2.0;
                 let cy = (bb_min.y + bb_max.y) / 2.0;
 

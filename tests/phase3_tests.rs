@@ -43,7 +43,7 @@ fn test_timeline_apply_to_document() {
     tr_rot.add_keyframe(60, 90.0, EaseType::Linear);
 
     tl.current_frame = 30;
-    tl.apply_to_document(&mut doc);
+    tl.apply_to_document(&mut doc, &Default::default());
 
     let (_layer_idx, obj) = doc.object_by_id(&rect_id).unwrap();
     assert!((obj.transform.x - 60.0).abs() < 1e-4);
