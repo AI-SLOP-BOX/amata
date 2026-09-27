@@ -11,9 +11,6 @@ pub struct StrokePanel;
 
 impl StrokePanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("線").strong());
-        ui.add_space(4.0);
-
         if state.selected_ids.is_empty() {
             ui.label(RichText::new("線を編集するオブジェクトを選択してください").weak());
             return;
@@ -273,9 +270,6 @@ pub struct BlendModePanel;
 
 impl BlendModePanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("合成モード").strong());
-        ui.add_space(4.0);
-
         if state.selected_ids.is_empty() {
             ui.label(RichText::new("合成モードを設定するオブジェクトを選択してください").weak());
             return;
@@ -314,9 +308,6 @@ pub struct AppearancePanel;
 
 impl AppearancePanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("アピアランス").strong());
-        ui.add_space(4.0);
-
         if state.selected_ids.is_empty() {
             ui.label(RichText::new("オブジェクトを選択してください").weak());
             return;
@@ -914,9 +905,6 @@ pub struct ColorHarmonyPanel;
 
 impl ColorHarmonyPanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("カラーハーモニー").strong());
-        ui.add_space(4.0);
-
         let base = state.fill_color;
         let (h, s, v) = rgb_to_hsv(base[0], base[1], base[2]);
 

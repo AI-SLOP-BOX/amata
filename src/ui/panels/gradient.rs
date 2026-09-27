@@ -8,9 +8,6 @@ pub struct GradientPanel;
 
 impl GradientPanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("Gradient Editor").strong());
-        ui.add_space(4.0);
-
         if state.selected_ids.is_empty() {
             ui.label(RichText::new("Select an object to edit gradient").weak());
             return;

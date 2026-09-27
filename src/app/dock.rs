@@ -1,4 +1,5 @@
 use super::{ActiveTab, IrasuApp};
+use crate::app::icons::paint_focus_ring;
 use crate::ui::panels::*;
 use egui::{self, Color32, Pos2, Rect, Stroke, Vec2};
 
@@ -69,6 +70,7 @@ impl IrasuApp {
 
                     // Hit test & hover
                     let resp = ui.allocate_rect(tab_rect, egui::Sense::click());
+                    paint_focus_ring(ui, &resp, tab_rect);
 
                     let text_color = if is_active {
                         Color32::WHITE
@@ -170,40 +172,42 @@ impl IrasuApp {
                 // ─── Panel Content ───────────────────────────────────────────
                 egui::ScrollArea::vertical().show(ui, |ui| match self.active_tab {
                     ActiveTab::Properties => {
-                        PropertyPanel::show(ui, &mut self.state);
-                        ui.add_space(8.0);
-                        ui.separator();
-                        AlignPanel::show(ui, &mut self.state);
-                        ui.add_space(8.0);
-                        ui.separator();
-                        StrokePanel::show(ui, &mut self.state);
-                        ui.add_space(8.0);
-                        ui.separator();
-                        GradientPanel::show(ui, &mut self.state);
-                        ui.add_space(8.0);
-                        ui.separator();
-                        BlendModePanel::show(ui, &mut self.state);
-                        ui.add_space(8.0);
-                        ui.separator();
-                        TransformPanel::show(ui, &mut self.state);
-                        ui.add_space(8.0);
-                        ui.separator();
-                        AppearancePanel::show(ui, &mut self.state);
-                        ui.add_space(8.0);
-                        ui.separator();
-                        TextPanel::show(ui, &mut self.state);
-                        ui.add_space(8.0);
-                        ui.separator();
-                        WidthToolPanel::show(ui, &mut self.state);
-                        ui.add_space(8.0);
-                        ui.separator();
-                        PatternPanel::show(ui, &mut self.state);
-                        ui.add_space(8.0);
-                        ui.separator();
-                        PresetPanel::show(ui, &mut self.state);
-                        ui.add_space(8.0);
-                        ui.separator();
-                        ColorHarmonyPanel::show(ui, &mut self.state);
+                        ui.collapsing("プロパティ", |ui| {
+                            PropertyPanel::show(ui, &mut self.state);
+                        });
+                        ui.collapsing("整列", |ui| {
+                            AlignPanel::show(ui, &mut self.state);
+                        });
+                        ui.collapsing("線", |ui| {
+                            StrokePanel::show(ui, &mut self.state);
+                        });
+                        ui.collapsing("グラデーション", |ui| {
+                            GradientPanel::show(ui, &mut self.state);
+                        });
+                        ui.collapsing("合成モード", |ui| {
+                            BlendModePanel::show(ui, &mut self.state);
+                        });
+                        ui.collapsing("変形", |ui| {
+                            TransformPanel::show(ui, &mut self.state);
+                        });
+                        ui.collapsing("アピアランス", |ui| {
+                            AppearancePanel::show(ui, &mut self.state);
+                        });
+                        ui.collapsing("テキスト", |ui| {
+                            TextPanel::show(ui, &mut self.state);
+                        });
+                        ui.collapsing("線幅ツール", |ui| {
+                            WidthToolPanel::show(ui, &mut self.state);
+                        });
+                        ui.collapsing("パターン", |ui| {
+                            PatternPanel::show(ui, &mut self.state);
+                        });
+                        ui.collapsing("プリセット", |ui| {
+                            PresetPanel::show(ui, &mut self.state);
+                        });
+                        ui.collapsing("カラーハーモニー", |ui| {
+                            ColorHarmonyPanel::show(ui, &mut self.state);
+                        });
                     }
                     ActiveTab::Pathfinder => {
                         PathfinderPanel::show(ui, &mut self.state);

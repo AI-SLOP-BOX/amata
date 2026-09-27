@@ -8,9 +8,6 @@ pub struct PresetPanel;
 
 impl PresetPanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("アセットとプリセット").strong());
-        ui.add_space(4.0);
-
         let cx = state.document.width * 0.5;
         let cy = state.document.height * 0.5;
 

@@ -1,9 +1,9 @@
 use super::{zoom_to_fit, ActiveTab, IrasuApp};
 use crate::app::control_bar::mod_key;
 use crate::app::icons::{icon_bell, icon_button, icon_search};
-use crate::ui::i18n;
 use crate::core::boolean::{execute_pathfinder, BooleanOp};
 use crate::core::document::Object;
+use crate::ui::i18n;
 use egui::{self, Color32, RichText, Vec2};
 
 // Progressive disclosure thresholds for the right-aligned utilities:
@@ -310,7 +310,10 @@ impl IrasuApp {
                         }
                         ui.close_menu();
                     }
-                    if ui.button("プロジェクトを読み込み(.amata / .json)...").clicked() {
+                    if ui
+                        .button("プロジェクトを読み込み(.amata / .json)...")
+                        .clicked()
+                    {
                         if let Some(path) = rfd::FileDialog::new()
                             .add_filter("Amata Project", &["amata", "json"])
                             .pick_file()

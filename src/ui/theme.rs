@@ -4,6 +4,11 @@ use eframe::egui::{
 };
 use std::sync::Arc;
 
+/// Keyboard focus ring stroke colour, shared by every custom-drawn focus ring
+/// (`paint_focus_ring` and friends). Light blue that stays legible on the dark
+/// panel fills and on the light theme.
+pub const FOCUS_RING: Color32 = Color32::from_rgb(120, 190, 255);
+
 /// UI font bundle assembled without an egui context (testable).
 pub struct UiFontSet {
     pub defs: FontDefinitions,

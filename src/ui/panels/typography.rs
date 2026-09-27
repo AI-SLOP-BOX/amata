@@ -9,9 +9,6 @@ pub struct TextPanel;
 
 impl TextPanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("𝐓 Typography & Text").strong());
-        ui.add_space(4.0);
-
         if state.selected_ids.is_empty() {
             ui.label(RichText::new("テキストオブジェクトを選択してください").weak());
             return;
@@ -856,9 +853,6 @@ pub struct WidthToolPanel;
 
 impl WidthToolPanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("〰 Width Tool").strong());
-        ui.add_space(4.0);
-
         if state.selected_ids.is_empty() {
             ui.label(RichText::new("Select a stroked object").weak());
             return;
@@ -867,20 +861,13 @@ impl WidthToolPanel {
         let id = state.selected_ids[0].clone();
         // Profiles live on the object now (persisted + undoable), not in a
         // throwaway session map.
-        let mut width_profile = state
-            .document
-            .find_object(&id)
-            .and_then(|o| {
-                if o.stroke.is_some() {
-                    Some(
-                        o.width_profile
-                            .clone()
-                            .unwrap_or_default(),
-                    )
-                } else {
-                    None
-                }
-            });
+        let mut width_profile = state.document.find_object(&id).and_then(|o| {
+            if o.stroke.is_some() {
+                Some(o.width_profile.clone().unwrap_or_default())
+            } else {
+                None
+            }
+        });
         let Some(ref mut profile) = width_profile else {
             ui.label(RichText::new("Object has no stroke").weak());
             return;
@@ -986,9 +973,6 @@ pub struct PatternPanel;
 
 impl PatternPanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("Pattern Fill").strong());
-        ui.add_space(4.0);
-
         if state.selected_ids.is_empty() {
             ui.label(RichText::new("Select an object to apply pattern").weak());
             return;

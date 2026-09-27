@@ -689,7 +689,7 @@ pub fn paint_focus_ring(ui: &egui::Ui, response: &egui::Response, rect: Rect) {
         ui.painter().rect_stroke(
             rect.expand(2.0),
             CornerRadius::same(3),
-            Stroke::new(1.5_f32, Color32::from_rgb(120, 190, 255)),
+            Stroke::new(1.5_f32, crate::ui::theme::FOCUS_RING),
             egui::StrokeKind::Outside,
         );
     }
