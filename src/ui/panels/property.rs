@@ -1,3 +1,7 @@
+use crate::app::icons::{
+    icon_bolt, icon_checkerboard, icon_grid, icon_ruler, icon_snap_grid, icon_snap_pixels,
+    icon_snap_points, icon_unlink, icon_unlock, toggle_icon_button,
+};
 use crate::core::document::ObjectType;
 use crate::core::path::FillStyle;
 use crate::core::state::{AppState, Tool};
@@ -717,7 +721,7 @@ impl PropertyPanel {
             ui.separator();
             ui.add_space(6.0);
 
-            // 定規とグリッド (Image 1 & 3: 3つのアイコンボタン [📏][▦][▧])
+            // 定規とグリッド (checkerboard / grid / ruler の3トグル)
             ui.horizontal(|ui| {
                 ui.label(
                     RichText::new("定規とグリッド")
@@ -725,33 +729,35 @@ impl PropertyPanel {
                         .color(Color32::from_rgb(160, 160, 160)),
                 );
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    let transp_btn = egui::Button::new("▧");
-                    let _ = ui.add(transp_btn).on_hover_text("透明グリッドを表示");
-                    let g_btn = if state.show_grid {
-                        egui::Button::new("▦").fill(Color32::from_rgb(20, 115, 230))
-                    } else {
-                        egui::Button::new("▦")
-                    };
-                    if ui
-                        .add(g_btn)
+                    let size = Vec2::new(24.0, 20.0);
+                    let checker = state.prefs.artboard_bg_mode == "透明グリッド";
+                    if toggle_icon_button(ui, size, checker, icon_checkerboard)
+                        .on_hover_text("透明グリッドを表示/非表示")
+                        .clicked()
+                    {
+                        state.prefs.artboard_bg_mode = if checker {
+                            "ホワイト".to_string()
+                        } else {
+                            "透明グリッド".to_string()
+                        };
+                    }
+                    if toggle_icon_button(ui, size, state.show_grid, icon_grid)
                         .on_hover_text("グリッドを表示/非表示")
                         .clicked()
                     {
                         state.show_grid = !state.show_grid;
                     }
-                    let r_btn = if state.show_rulers {
-                        egui::Button::new("📏").fill(Color32::from_rgb(20, 115, 230))
-                    } else {
-                        egui::Button::new("📏")
-                    };
-                    if ui.add(r_btn).on_hover_text("定規を表示/非表示").clicked() {
+                    if toggle_icon_button(ui, size, state.show_rulers, icon_ruler)
+                        .on_hover_text("定規を表示/非表示")
+                        .clicked()
+                    {
                         state.show_rulers = !state.show_rulers;
                     }
                 });
             });
 
             ui.add_space(4.0);
-            // ガイド (Image 1 & 3: 3つのアイコンボタン [⚡][🔒][⇹])
+            // ガイド (unlink / lock / bolt の3トグル)
             ui.horizontal(|ui| {
                 ui.label(
                     RichText::new("ガイド")
@@ -759,23 +765,27 @@ impl PropertyPanel {
                         .color(Color32::from_rgb(160, 160, 160)),
                 );
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    let rel_btn = egui::Button::new("⇹");
-                    let _ = ui.add(rel_btn).on_hover_text("ガイドを解除");
-                    let g_lock = if state.snap_to_guides {
-                        egui::Button::new("🔒").fill(Color32::from_rgb(20, 115, 230))
-                    } else {
-                        egui::Button::new("🔓")
-                    };
-                    if ui.add(g_lock).on_hover_text("ガイドにスナップ").clicked() {
+                    let size = Vec2::new(24.0, 20.0);
+                    if toggle_icon_button(ui, size, false, icon_unlink)
+                        .on_hover_text("ガイドを解除")
+                        .clicked()
+                        && !state.guides.is_empty()
+                    {
+                        state.guides.clear();
+                    }
+                    let lock_painter: fn(&egui::Painter, egui::Rect, Color32) =
+                        if state.snap_to_guides {
+                            crate::app::icons::icon_lock
+                        } else {
+                            icon_unlock
+                        };
+                    if toggle_icon_button(ui, size, state.snap_to_guides, lock_painter)
+                        .on_hover_text("ガイドにスナップ")
+                        .clicked()
+                    {
                         state.snap_to_guides = !state.snap_to_guides;
                     }
-                    let sg_btn = if state.show_smart_guides {
-                        egui::Button::new("⚡").fill(Color32::from_rgb(20, 115, 230))
-                    } else {
-                        egui::Button::new("⚡")
-                    };
-                    if ui
-                        .add(sg_btn)
+                    if toggle_icon_button(ui, size, state.show_smart_guides, icon_bolt)
                         .on_hover_text(format!(
                             "スマートガイド ({}+U)",
                             crate::app::control_bar::mod_key()
@@ -796,22 +806,23 @@ impl PropertyPanel {
                         .color(Color32::from_rgb(160, 160, 160)),
                 );
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    let px_btn = egui::Button::new("☶");
-                    let _ = ui.add(px_btn).on_hover_text("ピクセルにスナップ");
-                    let sg_btn = if state.snap_to_grid {
-                        egui::Button::new("☵").fill(Color32::from_rgb(20, 115, 230))
-                    } else {
-                        egui::Button::new("☵")
-                    };
-                    if ui.add(sg_btn).on_hover_text("グリッドにスナップ").clicked() {
+                    let size = Vec2::new(24.0, 20.0);
+                    if toggle_icon_button(ui, size, state.snap_to_pixels, icon_snap_pixels)
+                        .on_hover_text("ピクセルにスナップ")
+                        .clicked()
+                    {
+                        state.snap_to_pixels = !state.snap_to_pixels;
+                    }
+                    if toggle_icon_button(ui, size, state.snap_to_grid, icon_snap_grid)
+                        .on_hover_text("グリッドにスナップ")
+                        .clicked()
+                    {
                         state.snap_to_grid = !state.snap_to_grid;
                     }
-                    let sp_btn = if state.snap_to_objects {
-                        egui::Button::new("🧲").fill(Color32::from_rgb(20, 115, 230))
-                    } else {
-                        egui::Button::new("🧲")
-                    };
-                    if ui.add(sp_btn).on_hover_text("ポイントにスナップ").clicked() {
+                    if toggle_icon_button(ui, size, state.snap_to_objects, icon_snap_points)
+                        .on_hover_text("ポイントにスナップ")
+                        .clicked()
+                    {
                         state.snap_to_objects = !state.snap_to_objects;
                     }
                 });

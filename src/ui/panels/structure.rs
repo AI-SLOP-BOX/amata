@@ -1,3 +1,7 @@
+use crate::app::icons::{
+    icon_button, icon_chevron_down, icon_chevron_right, icon_chevron_up, icon_close,
+    icon_duplicate, icon_eye, icon_eye_off, icon_lock, icon_unlock, toggle_icon_button,
+};
 use crate::core::boolean::{execute_pathfinder, BooleanOp};
 use crate::core::document::{Document, Object, ObjectType};
 use crate::core::morph::morph_paths;
@@ -232,62 +236,63 @@ impl LayerPanel {
             let is_active = i == active_idx;
             let obj_count = layer.objects.len();
             let text = if is_active {
-                RichText::new(format!("📁 {} ({})", layer.name, obj_count))
+                RichText::new(format!("{} ({})", layer.name, obj_count))
                     .strong()
                     .color(Color32::from_rgb(100, 180, 255))
             } else {
-                RichText::new(format!("📁 {} ({})", layer.name, obj_count))
+                RichText::new(format!("{} ({})", layer.name, obj_count))
             };
 
-            let layer_row = ui.horizontal(|ui| {
+            let layer_inner = ui.horizontal(|ui| {
                 if ui.selectable_label(is_active, text).clicked() {
                     actions.push(TreeAction::SetActiveLayer(i));
                 }
 
-                if ui
-                    .small_button("▲")
-                    .on_hover_text("Move Layer Up")
+                let size = Vec2::new(20.0, 18.0);
+                if icon_button(ui, size, icon_chevron_up)
+                    .on_hover_text("レイヤーを上へ移動")
                     .clicked()
                     && i + 1 < layer_count
                 {
                     to_move_layer_up = Some(i);
                 }
-                if ui
-                    .small_button("▼")
-                    .on_hover_text("Move Layer Down")
+                if icon_button(ui, size, icon_chevron_down)
+                    .on_hover_text("レイヤーを下へ移動")
                     .clicked()
                     && i > 0
                 {
                     to_move_layer_down = Some(i);
                 }
 
-                let vis_icon = if layer.visible { "👁" } else { "🚫" };
-                if ui
-                    .small_button(vis_icon)
-                    .on_hover_text("Toggle Visibility")
+                let vis_painter: fn(&egui::Painter, egui::Rect, Color32) = if layer.visible {
+                    icon_eye
+                } else {
+                    icon_eye_off
+                };
+                if icon_button(ui, size, vis_painter)
+                    .on_hover_text("表示を切り替え")
                     .clicked()
                 {
                     actions.push(TreeAction::ToggleVis(format!("layer:{i}")));
                 }
 
-                let lock_icon = if layer.locked { "🔒" } else { "🔓" };
-                if ui
-                    .small_button(lock_icon)
-                    .on_hover_text("Toggle Lock")
+                let lock_painter: fn(&egui::Painter, egui::Rect, Color32) =
+                    if layer.locked { icon_lock } else { icon_unlock };
+                if toggle_icon_button(ui, size, layer.locked, lock_painter)
+                    .on_hover_text("ロックを切り替え")
                     .clicked()
                 {
                     actions.push(TreeAction::ToggleLock(format!("layer:{i}")));
                 }
 
-                if ui
-                    .small_button("⧉")
-                    .on_hover_text("Duplicate Layer")
+                if icon_button(ui, size, icon_duplicate)
+                    .on_hover_text("レイヤーを複製")
                     .clicked()
                 {
                     to_duplicate_layer = Some(i);
                 }
-            })
-            .response;
+            });
+            let layer_row = layer_inner.response;
 
             if let Some(payload) = layer_row.dnd_release_payload::<String>() {
                 layer_drop.push(((*payload).clone(), DropTarget::LayerEnd(i)));
@@ -342,10 +347,18 @@ impl LayerPanel {
                 // Collapse toggle for groups.
                 if row.is_group {
                     let open = !state.tree_collapsed.contains(&row.id);
-                    let arrow = if open { "▾" } else { "▸" };
-                    if ui
-                        .small_button(arrow)
-                        .on_hover_text(if open { "Collapse" } else { "Expand" })
+                    let arrow: fn(&egui::Painter, egui::Rect, Color32) = if open {
+                        icon_chevron_down
+                    } else {
+                        icon_chevron_right
+                    };
+                    let tip = if open {
+                        "折りたたむ"
+                    } else {
+                        "展開する"
+                    };
+                    if icon_button(ui, Vec2::new(18.0, 16.0), arrow)
+                        .on_hover_text(tip)
                         .clicked()
                     {
                         row_actions.push(TreeAction::ToggleCollapse(row.id.clone()));
@@ -440,32 +453,42 @@ impl LayerPanel {
                 }
 
                 // Visibility / lock / reorder / delete
-                let o_vis_icon = if row.visible { "👁" } else { "🚫" };
-                if ui
-                    .small_button(o_vis_icon)
-                    .on_hover_text("Toggle Object Visibility")
+                let size = Vec2::new(20.0, 18.0);
+                let vis_painter: fn(&egui::Painter, egui::Rect, Color32) =
+                    if row.visible { icon_eye } else { icon_eye_off };
+                if icon_button(ui, size, vis_painter)
+                    .on_hover_text("表示を切り替え")
                     .clicked()
                 {
                     row_actions.push(TreeAction::ToggleVis(row.id.clone()));
                 }
 
-                let o_lock_icon = if row.locked { "🔒" } else { "🔓" };
-                if ui
-                    .small_button(o_lock_icon)
-                    .on_hover_text("Toggle Object Lock")
+                let lock_painter: fn(&egui::Painter, egui::Rect, Color32) =
+                    if row.locked { icon_lock } else { icon_unlock };
+                if toggle_icon_button(ui, size, row.locked, lock_painter)
+                    .on_hover_text("ロックを切り替え")
                     .clicked()
                 {
                     row_actions.push(TreeAction::ToggleLock(row.id.clone()));
                 }
 
-                if ui.small_button("↑").on_hover_text("Bring Forward").clicked() {
+                if icon_button(ui, size, icon_chevron_up)
+                    .on_hover_text("前面へ移動")
+                    .clicked()
+                {
                     row_actions.push(TreeAction::BringForward(row.id.clone()));
                 }
-                if ui.small_button("↓").on_hover_text("Send Backward").clicked() {
+                if icon_button(ui, size, icon_chevron_down)
+                    .on_hover_text("背面へ移動")
+                    .clicked()
+                {
                     row_actions.push(TreeAction::SendBackward(row.id.clone()));
                 }
 
-                if ui.small_button("×").on_hover_text("Delete").clicked() {
+                if icon_button(ui, size, icon_close)
+                    .on_hover_text("削除")
+                    .clicked()
+                {
                     row_actions.push(TreeAction::Delete(row.id.clone()));
                 }
             });

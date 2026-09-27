@@ -680,6 +680,335 @@ pub fn icon_pixel_bucket(p: &Painter, rect: Rect, color: Color32) {
     );
 }
 
+// ─── View / Layer Toggle Icons ──────────────────────────────────────────────
+
+/// Keyboard focus ring. egui paints a focused widget as *active* (pressed), so
+/// custom-painted buttons draw their own ring on top of that background.
+pub fn paint_focus_ring(ui: &egui::Ui, response: &egui::Response, rect: Rect) {
+    if response.has_focus() {
+        ui.painter().rect_stroke(
+            rect.expand(2.0),
+            CornerRadius::same(3),
+            Stroke::new(1.5_f32, Color32::from_rgb(120, 190, 255)),
+            egui::StrokeKind::Outside,
+        );
+    }
+}
+
+/// Icon-only toggle button: accent fill while `is_active`, hover highlight and
+/// a keyboard focus ring, matching [`toggle_icon_button`] callers in panels.
+pub fn toggle_icon_button(
+    ui: &mut egui::Ui,
+    size: Vec2,
+    is_active: bool,
+    painter_fn: impl FnOnce(&Painter, Rect, Color32),
+) -> egui::Response {
+    let (rect, response) = ui.allocate_exact_size(size, egui::Sense::click());
+    let bg = if is_active {
+        Color32::from_rgb(20, 115, 230)
+    } else if response.hovered() {
+        Color32::from_gray(58)
+    } else {
+        Color32::TRANSPARENT
+    };
+    if ui.is_rect_visible(rect) {
+        ui.painter().rect_filled(rect, CornerRadius::same(3), bg);
+        let color = if is_active || response.hovered() {
+            Color32::WHITE
+        } else {
+            Color32::from_gray(180)
+        };
+        painter_fn(ui.painter(), rect, color);
+        paint_focus_ring(ui, &response, rect);
+    }
+    response
+}
+
+/// Grid: framed square crossed by one vertical and one horizontal rule.
+pub fn icon_grid(p: &Painter, rect: Rect, color: Color32) {
+    let r = pad(rect, 0.14);
+    let stroke = Stroke::new(1.4_f32, color);
+    p.rect_stroke(r, CornerRadius::same(1), stroke, egui::StrokeKind::Middle);
+    let c = r.center();
+    p.line_segment([Pos2::new(c.x, r.min.y), Pos2::new(c.x, r.max.y)], stroke);
+    p.line_segment([Pos2::new(r.min.x, c.y), Pos2::new(r.max.x, c.y)], stroke);
+}
+
+/// Transparency checkerboard: two filled cells in a framed square.
+pub fn icon_checkerboard(p: &Painter, rect: Rect, color: Color32) {
+    let r = pad(rect, 0.14);
+    p.rect_stroke(
+        r,
+        CornerRadius::same(1),
+        Stroke::new(1.3_f32, color),
+        egui::StrokeKind::Middle,
+    );
+    let half = Vec2::new(r.width() * 0.5, r.height() * 0.5);
+    let fill = color.gamma_multiply(0.85);
+    p.rect_filled(
+        Rect::from_min_size(r.min, half),
+        CornerRadius::same(1),
+        fill,
+    );
+    p.rect_filled(
+        Rect::from_min_size(r.max - half, half),
+        CornerRadius::same(1),
+        fill,
+    );
+}
+
+/// Ruler: a bar with measuring ticks rising from its lower edge.
+pub fn icon_ruler(p: &Painter, rect: Rect, color: Color32) {
+    let r = pad(rect, 0.12);
+    p.rect_stroke(
+        r,
+        CornerRadius::same(2),
+        Stroke::new(1.4_f32, color),
+        egui::StrokeKind::Middle,
+    );
+    for i in 1..=3 {
+        let x = r.min.x + r.width() * i as f32 / 4.0;
+        let len = if i == 2 {
+            r.height() * 0.5
+        } else {
+            r.height() * 0.32
+        };
+        p.line_segment(
+            [Pos2::new(x, r.max.y - len), Pos2::new(x, r.max.y)],
+            Stroke::new(1.1_f32, color),
+        );
+    }
+}
+
+/// Smart guides: the snap "flash" cue.
+pub fn icon_bolt(p: &Painter, rect: Rect, color: Color32) {
+    let r = pad(rect, 0.10);
+    let (w, h) = (r.width(), r.height());
+    let pt = |x: f32, y: f32| Pos2::new(r.min.x + x * w, r.min.y + y * h);
+    let points = vec![
+        pt(0.58, 0.00),
+        pt(0.14, 0.56),
+        pt(0.44, 0.56),
+        pt(0.34, 1.00),
+        pt(0.88, 0.40),
+        pt(0.56, 0.40),
+        pt(0.66, 0.00),
+    ];
+    p.add(egui::Shape::Path(egui::epaint::PathShape {
+        points,
+        closed: true,
+        fill: color,
+        stroke: Stroke::NONE.into(),
+    }));
+}
+
+/// Snap to points: a target (ring, ticks, centre dot).
+pub fn icon_snap_points(p: &Painter, rect: Rect, color: Color32) {
+    let r = pad(rect, 0.14);
+    let c = r.center();
+    let rad = r.width() * 0.34;
+    let stroke = Stroke::new(1.3_f32, color);
+    p.circle_stroke(c, rad, stroke);
+    p.line_segment([Pos2::new(c.x, r.min.y), Pos2::new(c.x, c.y - rad)], stroke);
+    p.line_segment([Pos2::new(c.x, c.y + rad), Pos2::new(c.x, r.max.y)], stroke);
+    p.line_segment([Pos2::new(r.min.x, c.y), Pos2::new(c.x - rad, c.y)], stroke);
+    p.line_segment([Pos2::new(c.x + rad, c.y), Pos2::new(r.max.x, c.y)], stroke);
+    p.circle_filled(c, rad * 0.4, color);
+}
+
+/// Snap to grid: rules at thirds with a solid marker on an intersection.
+pub fn icon_snap_grid(p: &Painter, rect: Rect, color: Color32) {
+    let r = pad(rect, 0.14);
+    let stroke = Stroke::new(1.2_f32, color);
+    for i in 1..=2 {
+        let x = r.min.x + r.width() * i as f32 / 3.0;
+        p.line_segment([Pos2::new(x, r.min.y), Pos2::new(x, r.max.y)], stroke);
+        let y = r.min.y + r.height() * i as f32 / 3.0;
+        p.line_segment([Pos2::new(r.min.x, y), Pos2::new(r.max.x, y)], stroke);
+    }
+    p.circle_filled(
+        Pos2::new(r.min.x + r.width() / 3.0, r.min.y + r.height() / 3.0),
+        2.0,
+        color,
+    );
+}
+
+/// Snap to pixels: a frame with a solid block locked into its corner.
+pub fn icon_snap_pixels(p: &Painter, rect: Rect, color: Color32) {
+    let r = pad(rect, 0.14);
+    p.rect_stroke(
+        r,
+        CornerRadius::same(1),
+        Stroke::new(1.3_f32, color),
+        egui::StrokeKind::Middle,
+    );
+    let s = r.width() * 0.34;
+    let block = Rect::from_min_size(
+        Pos2::new(r.max.x - s - 1.0, r.max.y - s - 1.0),
+        Vec2::splat(s),
+    );
+    p.rect_filled(block, CornerRadius::same(1), color);
+}
+
+/// Unlink / release: a broken line with a slash through it.
+pub fn icon_unlink(p: &Painter, rect: Rect, color: Color32) {
+    let r = pad(rect, 0.14);
+    let c = r.center();
+    let stroke = Stroke::new(1.4_f32, color);
+    p.line_segment([Pos2::new(r.min.x, c.y), Pos2::new(c.x - 1.5, c.y)], stroke);
+    p.line_segment([Pos2::new(c.x + 1.5, c.y), Pos2::new(r.max.x, c.y)], stroke);
+    p.line_segment(
+        [
+            Pos2::new(r.min.x + 1.0, r.max.y - 1.0),
+            Pos2::new(r.max.x - 1.0, r.min.y + 1.0),
+        ],
+        Stroke::new(1.6_f32, color),
+    );
+}
+
+/// Unlock: body with a raised, open shackle.
+pub fn icon_unlock(p: &Painter, rect: Rect, color: Color32) {
+    let r = pad(rect, 0.16);
+    let stroke = Stroke::new(1.3_f32, color);
+    let body_h = r.height() * 0.55;
+    let body = Rect::from_min_max(Pos2::new(r.min.x, r.max.y - body_h), r.max);
+    p.rect_filled(body, CornerRadius::same(2), color);
+
+    let shackle_w = r.width() * 0.52;
+    let left = r.center().x - shackle_w * 0.5;
+    let right = r.center().x + shackle_w * 0.5;
+    let top = r.min.y + 1.0;
+    let pts = vec![
+        Pos2::new(left, body.min.y - 3.0),
+        Pos2::new(left, top + 3.0),
+        Pos2::new(r.center().x, top),
+        Pos2::new(right, top + 3.0),
+        Pos2::new(right, body.min.y),
+    ];
+    p.add(egui::Shape::line(pts, stroke));
+}
+
+/// Folder: tab + body outline (layer containers).
+pub fn icon_folder(p: &Painter, rect: Rect, color: Color32) {
+    let r = pad(rect, 0.14);
+    let tab_h = r.height() * 0.26;
+    let pts = vec![
+        Pos2::new(r.min.x, r.min.y + tab_h),
+        Pos2::new(r.min.x + r.width() * 0.34, r.min.y + tab_h),
+        Pos2::new(r.min.x + r.width() * 0.44, r.min.y),
+        Pos2::new(r.max.x, r.min.y),
+        Pos2::new(r.max.x, r.max.y),
+        Pos2::new(r.min.x, r.max.y),
+    ];
+    p.add(egui::Shape::closed_line(pts, Stroke::new(1.3_f32, color)));
+}
+
+/// Eye: visibility state. `slashed` draws the diagonal for "hidden".
+pub fn icon_eye(p: &Painter, rect: Rect, color: Color32) {
+    icon_eye_impl(p, rect, color, false);
+}
+
+/// Hidden visibility: an eye with a slash through it.
+pub fn icon_eye_off(p: &Painter, rect: Rect, color: Color32) {
+    icon_eye_impl(p, rect, color, true);
+}
+
+fn icon_eye_impl(p: &Painter, rect: Rect, color: Color32, slashed: bool) {
+    let r = pad(rect, 0.14);
+    let c = r.center();
+    let rx = r.width() * 0.5;
+    let ry = r.height() * 0.32;
+    let mut points = Vec::with_capacity(17);
+    for i in 0..16 {
+        let a = std::f32::consts::TAU * i as f32 / 16.0;
+        points.push(Pos2::new(c.x + rx * a.cos(), c.y + ry * a.sin()));
+    }
+    p.add(egui::Shape::Path(egui::epaint::PathShape {
+        points,
+        closed: true,
+        fill: Color32::TRANSPARENT,
+        stroke: Stroke::new(1.3_f32, color).into(),
+    }));
+    p.circle_filled(c, ry * 0.5, color);
+    if slashed {
+        let d = r.width() * 0.45;
+        p.line_segment(
+            [Pos2::new(c.x - d, c.y + d), Pos2::new(c.x + d, c.y - d)],
+            Stroke::new(1.7_f32, color),
+        );
+    }
+}
+
+/// Up chevron (bring forward / move up).
+pub fn icon_chevron_up(p: &Painter, rect: Rect, color: Color32) {
+    let r = pad(rect, 0.18);
+    p.add(egui::Shape::line(
+        vec![
+            Pos2::new(r.min.x, r.max.y),
+            Pos2::new(r.center().x, r.min.y),
+            Pos2::new(r.max.x, r.max.y),
+        ],
+        Stroke::new(1.7_f32, color),
+    ));
+}
+
+/// Down chevron (send backward / move down).
+pub fn icon_chevron_down(p: &Painter, rect: Rect, color: Color32) {
+    let r = pad(rect, 0.18);
+    p.add(egui::Shape::line(
+        vec![
+            Pos2::new(r.min.x, r.min.y),
+            Pos2::new(r.center().x, r.max.y),
+            Pos2::new(r.max.x, r.min.y),
+        ],
+        Stroke::new(1.7_f32, color),
+    ));
+}
+
+/// Right chevron (collapsed group).
+pub fn icon_chevron_right(p: &Painter, rect: Rect, color: Color32) {
+    let r = pad(rect, 0.18);
+    p.add(egui::Shape::line(
+        vec![
+            Pos2::new(r.min.x, r.min.y),
+            Pos2::new(r.max.x, r.center().y),
+            Pos2::new(r.min.x, r.max.y),
+        ],
+        Stroke::new(1.7_f32, color),
+    ));
+}
+
+/// Duplicate: a second sheet tucked behind the front one.
+pub fn icon_duplicate(p: &Painter, rect: Rect, color: Color32) {
+    let r = pad(rect, 0.16);
+    let w = r.width() * 0.62;
+    let h = r.height() * 0.62;
+    let front = Rect::from_min_size(Pos2::new(r.max.x - w, r.max.y - h), Vec2::new(w, h));
+    let open = vec![
+        Pos2::new(front.min.x, r.min.y),
+        Pos2::new(r.min.x, r.min.y),
+        Pos2::new(r.min.x, front.min.y),
+    ];
+    p.add(egui::Shape::line(open, Stroke::new(1.4_f32, color)));
+    p.rect_stroke(
+        front,
+        CornerRadius::same(1),
+        Stroke::new(1.4_f32, color),
+        egui::StrokeKind::Middle,
+    );
+}
+
+/// Close / delete: two crossing strokes.
+pub fn icon_close(p: &Painter, rect: Rect, color: Color32) {
+    let r = pad(rect, 0.22);
+    let stroke = Stroke::new(1.7_f32, color);
+    p.line_segment([r.min, r.max], stroke);
+    p.line_segment(
+        [Pos2::new(r.max.x, r.min.y), Pos2::new(r.min.x, r.max.y)],
+        stroke,
+    );
+}
+
 /// Paint a tool's vector icon into the given rect.
 pub fn paint_tool_icon(p: &Painter, tool: crate::core::state::Tool, rect: Rect, color: Color32) {
     use crate::core::state::Tool;
@@ -750,6 +1079,7 @@ pub fn tool_icon_button(
             tri_color,
             Stroke::NONE,
         ));
+        paint_focus_ring(ui, &response, rect);
     }
 
     response
@@ -776,6 +1106,7 @@ pub fn icon_button(
             Color32::from_gray(180)
         };
         painter_fn(ui.painter(), rect, color);
+        paint_focus_ring(ui, &response, rect);
     }
     response
 }
