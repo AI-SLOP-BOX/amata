@@ -6,7 +6,7 @@ pub struct FlowFieldPanel;
 
 impl FlowFieldPanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("Vector Flow Field").strong());
+        ui.heading(RichText::new("ベクターフローフィールド").strong());
         ui.add_space(4.0);
 
         let w = state.document.width;
@@ -65,7 +65,7 @@ pub struct ScatterBrushPanel;
 
 impl ScatterBrushPanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("Scatter & Pattern Brush").strong());
+        ui.heading(RichText::new("スキャター・パターンブラシ").strong());
         ui.add_space(4.0);
 
         let has_sel = state.selected_ids.len() >= 2;
@@ -104,7 +104,7 @@ impl ScatterBrushPanel {
             }
         } else if !has_sel {
             ui.label(
-                RichText::new("Select 2 objects (Motif + Curve)")
+                RichText::new("モチーフとカーブの2つを選択してください")
                     .weak()
                     .size(11.0),
             );
@@ -116,7 +116,7 @@ pub struct AudioWavePanel;
 
 impl AudioWavePanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("Audio Waveform (LogicPro DSP)").strong());
+        ui.heading(RichText::new("オーディオ波形（LogicPro DSP）").strong());
         ui.add_space(4.0);
 
         let w = state.document.width;
@@ -257,7 +257,7 @@ impl MeshWarpPanel {
             });
         } else {
             ui.label(
-                RichText::new("Select an object to warp with FFD lattice")
+                RichText::new("FFD格子で歪めるオブジェクトを選択してください")
                     .weak()
                     .size(11.0),
             );
@@ -318,7 +318,7 @@ fn selected_mesh_id(state: &AppState) -> Option<String> {
 
 impl GradientMeshPanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("Gradient Mesh").strong());
+        ui.heading(RichText::new("グラデーションメッシュ").strong());
         ui.add_space(4.0);
 
         // Create a new editable mesh from a preset.
@@ -342,7 +342,7 @@ impl GradientMeshPanel {
                         preset_corners(preset),
                     );
                     let obj = crate::core::document::Object::new_mesh(
-                        "Gradient Mesh",
+                        "グラデーションメッシュ",
                         (state.document.width - size) / 2.0,
                         (state.document.height - size) / 2.0,
                         mesh,
@@ -478,7 +478,7 @@ pub struct AxonometricPanel;
 
 impl AxonometricPanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("Axonometric Architectural Projections").strong());
+        ui.heading(RichText::new("軸測投影（アーキテクチャ）").strong());
         ui.add_space(4.0);
 
         let has_sel = !state.selected_ids.is_empty();
@@ -556,7 +556,7 @@ impl AxonometricPanel {
             });
         } else {
             ui.label(
-                RichText::new("Select an object for axonometric projection")
+                RichText::new("軸測投影するオブジェクトを選択してください")
                     .weak()
                     .size(11.0),
             );
@@ -597,7 +597,7 @@ impl RevolvePanel {
             }
         } else {
             ui.label(
-                RichText::new("Select a profile path to revolve in 3D")
+                RichText::new("3D回転させるプロファイルパスを選択してください")
                     .weak()
                     .size(11.0),
             );
@@ -609,7 +609,7 @@ pub struct EnvelopePanel;
 
 impl EnvelopePanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("Envelope Distort & Shape Mold").strong());
+        ui.heading(RichText::new("エンベロープ歪曲・シェイプモールド").strong());
         ui.add_space(4.0);
 
         let has_sel = state.selected_ids.len() >= 2;
@@ -642,7 +642,7 @@ impl EnvelopePanel {
             }
         } else if !has_sel {
             ui.label(
-                RichText::new("Select 2 objects (Art + Envelope Frame)")
+                RichText::new("アートとエンベロープ枠の2つを選択してください")
                     .weak()
                     .size(11.0),
             );
@@ -650,7 +650,7 @@ impl EnvelopePanel {
 
         ui.add_space(4.0);
         ui.separator();
-        ui.label(RichText::new("Live Warp (non-destructive)").strong());
+        ui.label(RichText::new("ライブワープ（非破壊）").strong());
 
         // If a live envelope is selected: edit kind/amount or release.
         let live_id = state.selected_ids.iter().find_map(|id| {
@@ -766,9 +766,11 @@ impl EnvelopePanel {
             }
             if !wrappable {
                 ui.label(
-                    RichText::new("Select a path/shape to warp live (text & images unsupported).")
-                        .weak()
-                        .size(11.0),
+                    RichText::new(
+                        "ライブワープするパス／図形を選択してください（テキスト・画像は対象外）",
+                    )
+                    .weak()
+                    .size(11.0),
                 );
             }
         }
@@ -779,7 +781,7 @@ pub struct PolarPanel;
 
 impl PolarPanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("Polar Coordinates & Planet Wrap").strong());
+        ui.heading(RichText::new("極座標・プラネットラップ").strong());
         ui.add_space(4.0);
 
         let has_sel = !state.selected_ids.is_empty();
@@ -837,7 +839,7 @@ impl PolarPanel {
             });
         } else {
             ui.label(
-                RichText::new("Select an object to wrap into circular polar coordinates")
+                RichText::new("極座標に巻きつけるオブジェクトを選択してください")
                     .weak()
                     .size(11.0),
             );

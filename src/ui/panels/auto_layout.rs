@@ -10,14 +10,17 @@ pub struct AutoLayoutPanel;
 
 impl AutoLayoutPanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading("Auto Layout");
+        ui.heading("オートレイアウト");
         ui.add_space(6.0);
 
         let selected: Vec<String> = state.selected_ids.clone();
 
         // Multi-select → create group with auto layout.
         let group_target = if selected.len() >= 2 {
-            if ui.button("Add auto layout (group selection)").clicked() {
+            if ui
+                .button("オートレイアウトを追加（選択をグループ化）")
+                .clicked()
+            {
                 create_from_selection(state);
             }
             ui.separator();
@@ -40,7 +43,7 @@ impl AutoLayoutPanel {
         };
 
         let Some(group_id) = group_target else {
-            ui.label("Select a group (or multi-select objects) to apply Auto Layout.");
+            ui.label("グループ、または複数のオブジェクトを選択してください。");
             return;
         };
 
@@ -49,7 +52,7 @@ impl AutoLayoutPanel {
             return;
         };
         if !matches!(group.object_type, ObjectType::Group(ref c) if !c.is_empty()) {
-            ui.label("Selected group is empty.");
+            ui.label("選択したグループが空です。");
             return;
         }
 
@@ -62,25 +65,19 @@ impl AutoLayoutPanel {
             .num_columns(2)
             .spacing([8.0, 4.0])
             .show(ui, |ui| {
-                ui.label("Direction");
+                ui.label("向き");
                 let mut horiz = layout.direction == AutoLayoutDirection::Horizontal;
-                if ui
-                    .selectable_value(&mut horiz, true, "Horizontal")
-                    .changed()
-                {
+                if ui.selectable_value(&mut horiz, true, "横").changed() {
                     layout.direction = AutoLayoutDirection::Horizontal;
                     dirty = true;
                 }
-                if ui
-                    .selectable_value(&mut horiz, false, "Vertical")
-                    .changed()
-                {
+                if ui.selectable_value(&mut horiz, false, "縦").changed() {
                     layout.direction = AutoLayoutDirection::Vertical;
                     dirty = true;
                 }
                 ui.end_row();
 
-                ui.label("Gap");
+                ui.label("間隔");
                 let mut gap = layout.gap as f32;
                 if ui
                     .add(egui::DragValue::new(&mut gap).range(0.0..=10_000.0))
@@ -91,7 +88,7 @@ impl AutoLayoutPanel {
                 }
                 ui.end_row();
 
-                ui.label("Padding");
+                ui.label("余白");
                 let mut pad = [
                     layout.padding_top as f32,
                     layout.padding_right as f32,
@@ -100,7 +97,7 @@ impl AutoLayoutPanel {
                 ];
                 let mut pad_changed = false;
                 ui.horizontal(|ui| {
-                    for (i, label) in ["T", "R", "B", "L"].iter().enumerate() {
+                    for (i, label) in ["上", "右", "下", "左"].iter().enumerate() {
                         if ui
                             .add(
                                 egui::DragValue::new(&mut pad[i])
@@ -122,9 +119,9 @@ impl AutoLayoutPanel {
                 }
                 ui.end_row();
 
-                ui.label("Reverse");
+                ui.label("並び順");
                 if ui
-                    .checkbox(&mut layout.reverse, "reverse order")
+                    .checkbox(&mut layout.reverse, "逆順")
                     .changed()
                 {
                     dirty = true;
@@ -135,7 +132,7 @@ impl AutoLayoutPanel {
         layout.normalize();
 
         if dirty || group.auto_layout != Some(layout) {
-            apply_auto_layout(state, &group_id, layout, "Auto Layout");
+            apply_auto_layout(state, &group_id, layout, "オートレイアウト");
         }
     }
 }
@@ -146,7 +143,7 @@ fn create_from_selection(state: &mut AppState) {
         if objects.len() < 2 {
             return None;
         }
-        let mut group = Object::new_group("Auto Layout", objects);
+        let mut group = Object::new_group("オートレイアウト", objects);
         group.auto_layout = Some(layout);
         if let ObjectType::Group(children) = &mut group.object_type {
             let moves = compute_moves(&layout, children);

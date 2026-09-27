@@ -939,6 +939,157 @@ fn icon_eye_impl(p: &Painter, rect: Rect, color: Color32, slashed: bool) {
     }
 }
 
+/// Icon + caption button: a compact pill for preset / library entries.
+pub fn icon_text_button(
+    ui: &mut egui::Ui,
+    painter_fn: impl FnOnce(&Painter, Rect, Color32),
+    label: &str,
+) -> egui::Response {
+    let font_id = ui
+        .style()
+        .text_styles
+        .get(&egui::TextStyle::Body)
+        .cloned()
+        .unwrap_or_else(|| egui::FontId::proportional(12.0));
+    let text_color = ui.visuals().text_color();
+    let galley = ui
+        .painter()
+        .layout_no_wrap(label.to_string(), font_id, text_color);
+    let icon = Vec2::splat(galley.size().y + 4.0);
+    let pad = ui.spacing().button_padding;
+    let gap = 6.0;
+    let size = Vec2::new(
+        pad.x * 2.0 + icon.x + gap + galley.size().x,
+        (pad.y * 2.0 + galley.size().y).max(ui.spacing().interact_size.y),
+    );
+    let (rect, response) = ui.allocate_exact_size(size, egui::Sense::click());
+    if ui.is_rect_visible(rect) {
+        let visuals = ui.style().interact(&response);
+        ui.painter()
+            .rect_filled(rect, visuals.corner_radius, visuals.bg_fill);
+        ui.painter().rect_stroke(
+            rect,
+            visuals.corner_radius,
+            visuals.bg_stroke,
+            egui::StrokeKind::Middle,
+        );
+        let icon_rect = Rect::from_min_size(
+            Pos2::new(rect.min.x + pad.x, rect.center().y - icon.y * 0.5),
+            icon,
+        );
+        painter_fn(ui.painter(), icon_rect, visuals.fg_stroke.color);
+        ui.painter().galley(
+            Pos2::new(
+                icon_rect.max.x + gap,
+                rect.center().y - galley.size().y * 0.5,
+            ),
+            galley,
+            text_color,
+        );
+        paint_focus_ring(ui, &response, rect);
+    }
+    response
+}
+
+/// Heart: two lobes over a V.
+pub fn icon_heart(p: &Painter, rect: Rect, color: Color32) {
+    let r = pad(rect, 0.14);
+    let rr = r.width() * 0.27;
+    let cy = r.min.y + rr + r.height() * 0.06;
+    p.circle_filled(Pos2::new(r.min.x + rr, cy), rr, color);
+    p.circle_filled(Pos2::new(r.max.x - rr, cy), rr, color);
+    p.add(egui::Shape::convex_polygon(
+        vec![
+            Pos2::new(r.min.x, r.min.y + r.height() * 0.30),
+            Pos2::new(r.max.x, r.min.y + r.height() * 0.30),
+            Pos2::new(r.center().x, r.max.y),
+        ],
+        color,
+        Stroke::NONE,
+    ));
+}
+
+/// Right arrow: shaft plus triangular head.
+pub fn icon_arrow(p: &Painter, rect: Rect, color: Color32) {
+    let r = pad(rect, 0.18);
+    let cy = r.center().y;
+    p.line_segment(
+        [
+            Pos2::new(r.min.x, cy),
+            Pos2::new(r.max.x - r.width() * 0.12, cy),
+        ],
+        Stroke::new(2.0_f32, color),
+    );
+    p.add(egui::Shape::convex_polygon(
+        vec![
+            Pos2::new(r.max.x, cy),
+            Pos2::new(r.max.x - r.width() * 0.38, cy - r.height() * 0.36),
+            Pos2::new(r.max.x - r.width() * 0.38, cy + r.height() * 0.36),
+        ],
+        color,
+        Stroke::NONE,
+    ));
+}
+
+/// Cog: hub ring with eight teeth.
+pub fn icon_gear(p: &Painter, rect: Rect, color: Color32) {
+    let r = pad(rect, 0.14);
+    let c = r.center();
+    let outer = r.width() * 0.36;
+    let inner = outer * 0.52;
+    p.circle_stroke(c, inner, Stroke::new(1.4_f32, color));
+    for i in 0..8 {
+        let a = std::f32::consts::TAU * i as f32 / 8.0;
+        let (dx, dy) = (a.cos(), a.sin());
+        p.line_segment(
+            [
+                Pos2::new(c.x + dx * inner, c.y + dy * inner),
+                Pos2::new(
+                    c.x + dx * (outer + r.width() * 0.08),
+                    c.y + dy * (outer + r.width() * 0.08),
+                ),
+            ],
+            Stroke::new(2.2_f32, color),
+        );
+    }
+    p.circle_filled(c, inner * 0.5, color);
+}
+
+/// Speech bubble: rounded box with a tail.
+pub fn icon_speech(p: &Painter, rect: Rect, color: Color32) {
+    let r = pad(rect, 0.14);
+    let body = Rect::from_min_size(r.min, Vec2::new(r.width(), r.height() * 0.70));
+    p.rect_stroke(
+        body,
+        CornerRadius::same(4),
+        Stroke::new(1.5_f32, color),
+        egui::StrokeKind::Middle,
+    );
+    p.add(egui::Shape::closed_line(
+        vec![
+            Pos2::new(body.min.x + r.width() * 0.22, body.max.y),
+            Pos2::new(body.min.x + r.width() * 0.52, body.max.y),
+            Pos2::new(body.min.x + r.width() * 0.30, r.max.y),
+        ],
+        Stroke::new(1.5_f32, color),
+    ));
+}
+
+/// Hex ring: two nested hexagons (VFX portal).
+pub fn icon_portal(p: &Painter, rect: Rect, color: Color32) {
+    let r = pad(rect, 0.14);
+    let c = r.center();
+    let rad = r.width() * 0.46;
+    let hex = |i: usize, radius: f32| -> Pos2 {
+        let a = std::f32::consts::TAU * i as f32 / 6.0 - std::f32::consts::FRAC_PI_2;
+        Pos2::new(c.x + radius * a.cos(), c.y + radius * a.sin())
+    };
+    let outer: Vec<Pos2> = (0..6).map(|i| hex(i, rad)).collect();
+    p.add(egui::Shape::closed_line(outer, Stroke::new(1.6_f32, color)));
+    let inner: Vec<Pos2> = (0..6).map(|i| hex(i, rad * 0.55)).collect();
+    p.add(egui::Shape::closed_line(inner, Stroke::new(1.3_f32, color)));
+}
+
 /// Up chevron (bring forward / move up).
 pub fn icon_chevron_up(p: &Painter, rect: Rect, color: Color32) {
     let r = pad(rect, 0.18);
@@ -1007,6 +1158,91 @@ pub fn icon_close(p: &Painter, rect: Rect, color: Color32) {
         [Pos2::new(r.max.x, r.min.y), Pos2::new(r.min.x, r.max.y)],
         stroke,
     );
+}
+
+/// Play-style triangle pointing left (previous item).
+pub fn icon_seek_prev(p: &Painter, rect: Rect, color: Color32) {
+    let r = pad(rect, 0.20);
+    let cy = r.center().y;
+    let h = r.height() * 0.76;
+    let left = r.min.x + r.width() * 0.18;
+    let right = r.max.x - r.width() * 0.10;
+    p.add(egui::Shape::convex_polygon(
+        vec![
+            Pos2::new(right, cy - h * 0.5),
+            Pos2::new(right, cy + h * 0.5),
+            Pos2::new(left, cy),
+        ],
+        color,
+        Stroke::NONE,
+    ));
+}
+
+/// Play-style triangle pointing right (next item).
+pub fn icon_seek_next(p: &Painter, rect: Rect, color: Color32) {
+    let r = pad(rect, 0.20);
+    let cy = r.center().y;
+    let h = r.height() * 0.76;
+    let left = r.min.x + r.width() * 0.10;
+    let right = r.max.x - r.width() * 0.18;
+    p.add(egui::Shape::convex_polygon(
+        vec![
+            Pos2::new(left, cy - h * 0.5),
+            Pos2::new(left, cy + h * 0.5),
+            Pos2::new(right, cy),
+        ],
+        color,
+        Stroke::NONE,
+    ));
+}
+
+/// Jump to the first item: a bar with a left-pointing triangle.
+pub fn icon_seek_first(p: &Painter, rect: Rect, color: Color32) {
+    let r = pad(rect, 0.20);
+    let cy = r.center().y;
+    p.rect_filled(
+        Rect::from_min_size(Pos2::new(r.min.x, r.min.y), Vec2::new(1.7, r.height())),
+        CornerRadius::ZERO,
+        color,
+    );
+    let h = r.height() * 0.76;
+    let left = r.min.x + r.width() * 0.34;
+    let right = r.max.x - r.width() * 0.06;
+    p.add(egui::Shape::convex_polygon(
+        vec![
+            Pos2::new(right, cy - h * 0.5),
+            Pos2::new(right, cy + h * 0.5),
+            Pos2::new(left, cy),
+        ],
+        color,
+        Stroke::NONE,
+    ));
+}
+
+/// Jump to the last item: a right-pointing triangle with a bar.
+pub fn icon_seek_last(p: &Painter, rect: Rect, color: Color32) {
+    let r = pad(rect, 0.20);
+    let cy = r.center().y;
+    p.rect_filled(
+        Rect::from_min_size(
+            Pos2::new(r.max.x - 1.7, r.min.y),
+            Vec2::new(1.7, r.height()),
+        ),
+        CornerRadius::ZERO,
+        color,
+    );
+    let h = r.height() * 0.76;
+    let left = r.min.x + r.width() * 0.06;
+    let right = r.max.x - r.width() * 0.34;
+    p.add(egui::Shape::convex_polygon(
+        vec![
+            Pos2::new(left, cy - h * 0.5),
+            Pos2::new(left, cy + h * 0.5),
+            Pos2::new(right, cy),
+        ],
+        color,
+        Stroke::NONE,
+    ));
 }
 
 /// Alignment kind shared by the six 整列 icons.

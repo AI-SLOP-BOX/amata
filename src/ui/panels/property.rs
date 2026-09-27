@@ -1,8 +1,8 @@
 use crate::app::icons::{
     icon_align_bottom, icon_align_center_h, icon_align_center_v, icon_align_left, icon_align_right,
     icon_align_top, icon_bolt, icon_button, icon_checkerboard, icon_grid, icon_ruler,
-    icon_snap_grid, icon_snap_pixels, icon_snap_points, icon_unlink, icon_unlock,
-    toggle_icon_button,
+    icon_seek_next, icon_seek_prev, icon_snap_grid, icon_snap_pixels, icon_snap_points,
+    icon_unlink, icon_unlock, toggle_icon_button,
 };
 use crate::core::document::ObjectType;
 use crate::core::path::FillStyle;
@@ -678,13 +678,19 @@ impl PropertyPanel {
                         .color(Color32::from_rgb(160, 160, 160)),
                 );
                 egui::ComboBox::from_id_salt("prop_doc_unit")
-                    .selected_text("ミリメートル")
+                    .selected_text(state.prefs.ruler_unit.label())
                     .width(130.0)
                     .show_ui(ui, |ui| {
-                        let _ = ui.selectable_label(true, "ミリメートル");
-                        let _ = ui.selectable_label(false, "ピクセル");
-                        let _ = ui.selectable_label(false, "ポイント");
-                        let _ = ui.selectable_label(false, "インチ");
+                        for u in crate::core::unit::LengthUnit::ALL {
+                            if ui
+                                .selectable_label(state.prefs.ruler_unit == u, u.label())
+                                .clicked()
+                            {
+                                // Ruler, coordinates, sizes and the property
+                                // fields all read `ruler_unit`.
+                                state.prefs.ruler_unit = u;
+                            }
+                        }
                     });
             });
 
@@ -701,10 +707,19 @@ impl PropertyPanel {
                         .size(11.0)
                         .color(Color32::WHITE),
                 );
-                if ui.small_button("◀").clicked() && idx > 0 {
+                let nav = Vec2::new(20.0, 18.0);
+                if icon_button(ui, nav, icon_seek_prev)
+                    .on_hover_text("前のアートボード")
+                    .clicked()
+                    && idx > 0
+                {
                     state.active_artboard_idx = idx - 1;
                 }
-                if ui.small_button("▶").clicked() && idx + 1 < ab_count {
+                if icon_button(ui, nav, icon_seek_next)
+                    .on_hover_text("次のアートボード")
+                    .clicked()
+                    && idx + 1 < ab_count
+                {
                     state.active_artboard_idx = idx + 1;
                 }
             });

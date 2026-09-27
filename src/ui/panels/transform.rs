@@ -54,7 +54,7 @@ impl AlignPanel {
         let sel = state.selected_ids.clone();
         let multi = sel.len() >= 2;
 
-        ui.label(RichText::new("Align:").weak().size(11.0));
+        ui.label(RichText::new("整列:").weak().size(11.0));
         ui.horizontal(|ui| {
             if ui.add_enabled(multi, egui::Button::new("⇤ Left")).clicked() {
                 align_left(state, &sel);
@@ -92,7 +92,7 @@ impl AlignPanel {
         });
 
         ui.add_space(4.0);
-        ui.label(RichText::new("Distribute:").weak().size(11.0));
+        ui.label(RichText::new("等間隔:").weak().size(11.0));
         ui.horizontal(|ui| {
             if ui
                 .add_enabled(sel.len() >= 3, egui::Button::new("⬌ Distribute H"))
@@ -109,7 +109,7 @@ impl AlignPanel {
         });
 
         ui.add_space(4.0);
-        ui.label(RichText::new("Flip & Arrange:").weak().size(11.0));
+        ui.label(RichText::new("反転と配置:").weak().size(11.0));
         ui.horizontal(|ui| {
             if ui
                 .add_enabled(!sel.is_empty(), egui::Button::new("⇆ Flip H"))
@@ -578,7 +578,7 @@ impl TransformPanel {
                 }
             });
             ui.horizontal(|ui| {
-                if ui.button("Lock Aspect").clicked() {
+                if ui.button("縦横比を固定").clicked() {
                     let avg = (sx + sy) / 2.0;
                     Self::set_transform(state, &id, |t| {
                         t.scale_x = avg;
@@ -586,7 +586,7 @@ impl TransformPanel {
                     });
                     Self::commit_transform(state);
                 }
-                if ui.button("Reset Scale").clicked() {
+                if ui.button("拡大縮小をリセット").clicked() {
                     Self::set_transform(state, &id, |t| {
                         t.scale_x = 1.0;
                         t.scale_y = 1.0;
@@ -638,7 +638,7 @@ impl TransformPanel {
         // Skew
         ui.collapsing("Skew", |ui| {
             ui.horizontal(|ui| {
-                ui.label("Skew X:");
+                ui.label("傾斜X:");
                 let skx_resp = ui.add(
                     egui::DragValue::new(&mut skew_x)
                         .speed(1.0)
@@ -653,7 +653,7 @@ impl TransformPanel {
                 }
             });
             ui.horizontal(|ui| {
-                ui.label("Skew Y:");
+                ui.label("傾斜Y:");
                 let sky_resp = ui.add(
                     egui::DragValue::new(&mut skew_y)
                         .speed(1.0)
@@ -672,15 +672,15 @@ impl TransformPanel {
         // Quick actions
         ui.separator();
         ui.horizontal(|ui| {
-            if ui.button("Flip H").clicked() {
+            if ui.button("左右反転").clicked() {
                 Self::set_transform(state, &id, |t| t.scale_x = -t.scale_x);
                 Self::commit_transform(state);
             }
-            if ui.button("Flip V").clicked() {
+            if ui.button("上下反転").clicked() {
                 Self::set_transform(state, &id, |t| t.scale_y = -t.scale_y);
                 Self::commit_transform(state);
             }
-            if ui.button("Reset All").clicked() {
+            if ui.button("すべてリセット").clicked() {
                 Self::set_transform(state, &id, |t| {
                     t.x = 0.0;
                     t.y = 0.0;

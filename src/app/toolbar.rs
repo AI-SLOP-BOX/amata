@@ -1,5 +1,7 @@
 use super::control_bar::mod_key;
-use super::icons::{icon_button, tool_icon_button};
+use super::icons::{
+    icon_button, icon_seek_first, icon_seek_last, icon_seek_next, icon_seek_prev, tool_icon_button,
+};
 use super::zoom_to_fit;
 use super::IrasuApp;
 use crate::core::state::{AppState, Tool};
@@ -120,11 +122,19 @@ impl IrasuApp {
 
                     // Artboard Navigator Pager
                     let ab_count = self.state.document.effective_artboards().len();
-                    if ui.small_button("|◀").on_hover_text("最初のアートボード").clicked() {
+                    let nav = Vec2::new(20.0, 18.0);
+                    if icon_button(ui, nav, icon_seek_first)
+                        .on_hover_text("最初のアートボード")
+                        .clicked()
+                    {
                         self.state.active_artboard_idx = 0;
                     }
-                    if ui.small_button("◀").on_hover_text("前のアートボード").clicked() {
-                        self.state.active_artboard_idx = self.state.active_artboard_idx.saturating_sub(1);
+                    if icon_button(ui, nav, icon_seek_prev)
+                        .on_hover_text("前のアートボード")
+                        .clicked()
+                    {
+                        self.state.active_artboard_idx =
+                            self.state.active_artboard_idx.saturating_sub(1);
                     }
                     ui.label(
                         RichText::new(format!(" {} ", self.state.active_artboard_idx + 1))
@@ -132,16 +142,22 @@ impl IrasuApp {
                             .monospace()
                             .color(Color32::WHITE),
                     );
-                    if ui.small_button("▶").on_hover_text("次のアートボード").clicked() {
+                    if icon_button(ui, nav, icon_seek_next)
+                        .on_hover_text("次のアートボード")
+                        .clicked()
+                    {
                         let next = self.state.active_artboard_idx + 1;
                         if next < ab_count {
                             self.state.active_artboard_idx = next;
                         }
                     }
-                    if ui.small_button("▶|").on_hover_text("最後のアートボード").clicked()
-                        && ab_count > 0 {
-                            self.state.active_artboard_idx = ab_count - 1;
-                        }
+                    if icon_button(ui, nav, icon_seek_last)
+                        .on_hover_text("最後のアートボード")
+                        .clicked()
+                        && ab_count > 0
+                    {
+                        self.state.active_artboard_idx = ab_count - 1;
+                    }
 
                     ui.separator();
 

@@ -11,11 +11,11 @@ pub struct StrokePanel;
 
 impl StrokePanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("Stroke").strong());
+        ui.heading(RichText::new("線").strong());
         ui.add_space(4.0);
 
         if state.selected_ids.is_empty() {
-            ui.label(RichText::new("Select an object to edit stroke").weak());
+            ui.label(RichText::new("線を編集するオブジェクトを選択してください").weak());
             return;
         }
 
@@ -59,7 +59,7 @@ impl StrokePanel {
 
         // Stroke Color
         ui.horizontal(|ui| {
-            ui.label("Color:");
+            ui.label("色:");
             let mut c = color;
             if ui.color_edit_button_rgba_premultiplied(&mut c).changed() {
                 state.ensure_object_snapshot(&id);
@@ -76,7 +76,7 @@ impl StrokePanel {
 
         // Stroke Width
         ui.horizontal(|ui| {
-            ui.label("Width:");
+            ui.label("線幅:");
             let mut w = width;
             if ui
                 .add(
@@ -103,7 +103,7 @@ impl StrokePanel {
 
         // Cap
         ui.horizontal(|ui| {
-            ui.label("Cap:");
+            ui.label("先端:");
             let mut new_cap = cap;
             for cap_type in [StrokeCap::Butt, StrokeCap::Round, StrokeCap::Square] {
                 if ui
@@ -128,7 +128,7 @@ impl StrokePanel {
 
         // Join
         ui.horizontal(|ui| {
-            ui.label("Join:");
+            ui.label("接合:");
             let mut new_join = join;
             for join_type in [StrokeJoin::Miter, StrokeJoin::Round, StrokeJoin::Bevel] {
                 if ui
@@ -154,7 +154,7 @@ impl StrokePanel {
         // Miter Limit
         if join == StrokeJoin::Miter {
             ui.horizontal(|ui| {
-                ui.label("Miter Limit:");
+                ui.label("角の制限:");
                 let mut ml = miter_limit;
                 if ui
                     .add(egui::DragValue::new(&mut ml).speed(0.5).range(1.0..=100.0))
@@ -177,7 +177,7 @@ impl StrokePanel {
 
         // Dash Pattern
         ui.horizontal(|ui| {
-            ui.label("Dash:");
+            ui.label("破線:");
             let mut dp = dash_pattern.clone();
             if ui.text_edit_singleline(&mut dp).changed() {
                 let new_dashes: Option<Vec<f64>> = if dp.trim().is_empty() {
@@ -200,18 +200,14 @@ impl StrokePanel {
                 state.commit_object_edits("Edit Dash Pattern");
             }
         });
-        ui.label(
-            RichText::new("Comma-separated (e.g. 10, 5)")
-                .weak()
-                .size(10.0),
-        );
+        ui.label(RichText::new("カンマ区切り（例: 10, 5）").weak().size(10.0));
 
         ui.separator();
 
         // Arrowheads
-        ui.label("Arrowheads:");
+        ui.label("矢印:");
         ui.horizontal(|ui| {
-            ui.label("Start:");
+            ui.label("始点:");
             let mut new_as = arrow_start;
             for ah in [
                 ArrowHead::None,
@@ -239,7 +235,7 @@ impl StrokePanel {
             }
         });
         ui.horizontal(|ui| {
-            ui.label("End:");
+            ui.label("終点:");
             let mut new_ae = arrow_end;
             for ah in [
                 ArrowHead::None,
@@ -277,11 +273,11 @@ pub struct BlendModePanel;
 
 impl BlendModePanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("Blend Mode").strong());
+        ui.heading(RichText::new("合成モード").strong());
         ui.add_space(4.0);
 
         if state.selected_ids.is_empty() {
-            ui.label(RichText::new("Select an object to set blend mode").weak());
+            ui.label(RichText::new("合成モードを設定するオブジェクトを選択してください").weak());
             return;
         }
 
@@ -318,11 +314,11 @@ pub struct AppearancePanel;
 
 impl AppearancePanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("Appearance").strong());
+        ui.heading(RichText::new("アピアランス").strong());
         ui.add_space(4.0);
 
         if state.selected_ids.is_empty() {
-            ui.label(RichText::new("Select an object").weak());
+            ui.label(RichText::new("オブジェクトを選択してください").weak());
             return;
         }
 
@@ -330,7 +326,7 @@ impl AppearancePanel {
 
         // Blend Mode
         ui.horizontal(|ui| {
-            ui.label("Blend:");
+            ui.label("合成:");
             let mut current = BlendMode::Normal;
             for (_, obj) in state.document.all_objects() {
                 if obj.id == id {
@@ -355,7 +351,7 @@ impl AppearancePanel {
 
         // Opacity
         ui.horizontal(|ui| {
-            ui.label("Opacity:");
+            ui.label("不透明度:");
             let mut opac = 1.0;
             for (_, obj) in state.document.all_objects() {
                 if obj.id == id {
@@ -377,7 +373,7 @@ impl AppearancePanel {
         ui.separator();
 
         // Fill
-        ui.label(RichText::new("Fill").strong());
+        ui.label(RichText::new("塗り").strong());
         ui.horizontal(|ui| {
             let mut fill_color = state.fill_color;
             let fill_resp = ui.color_edit_button_rgba_premultiplied(&mut fill_color);
@@ -390,7 +386,7 @@ impl AppearancePanel {
             if fill_resp.drag_stopped() {
                 state.commit_object_edits("Edit Object");
             }
-            if ui.button("No Fill").clicked() {
+            if ui.button("塗りなし").clicked() {
                 state.ensure_object_snapshot(&id);
                 if let Some(o) = state.document.find_object_mut(&id) {
                     o.fill = None;
@@ -402,7 +398,7 @@ impl AppearancePanel {
         ui.separator();
 
         // Stroke
-        ui.label(RichText::new("Stroke").strong());
+        ui.label(RichText::new("線").strong());
         ui.horizontal(|ui| {
             let mut stroke_color = state.stroke_color;
             let stroke_resp = ui.color_edit_button_rgba_premultiplied(&mut stroke_color);
@@ -422,7 +418,7 @@ impl AppearancePanel {
             if stroke_resp.drag_stopped() {
                 state.commit_object_edits("Edit Object");
             }
-            if ui.button("No Stroke").clicked() {
+            if ui.button("線なし").clicked() {
                 state.ensure_object_snapshot(&id);
                 if let Some(o) = state.document.find_object_mut(&id) {
                     o.stroke = None;
@@ -432,7 +428,7 @@ impl AppearancePanel {
         });
 
         ui.horizontal(|ui| {
-            ui.label("Width:");
+            ui.label("線幅:");
             let mut sw = 1.0;
             for (_, obj) in state.document.all_objects() {
                 if obj.id == id {
@@ -458,7 +454,7 @@ impl AppearancePanel {
         ui.separator();
 
         // Print attributes: overprint + spot plates per fill/stroke.
-        ui.label(RichText::new("Print").strong());
+        ui.label(RichText::new("印刷").strong());
         {
             let (mut f_op, mut s_op) = (false, false);
             let (mut f_spot, mut s_spot) = (None, None);
@@ -482,7 +478,7 @@ impl AppearancePanel {
             let spots: Vec<String> =
                 state.document.spots.iter().map(|s| s.name.clone()).collect();
             ui.horizontal(|ui| {
-                ui.label("Fill:");
+                ui.label("塗り:");
                 let op_resp = ui.add_enabled(has_fill, egui::Checkbox::new(&mut f_op, "OP"));
                 if op_resp.changed() {
                     state.object_edit(&id, &op_resp, |o| {
@@ -519,7 +515,7 @@ impl AppearancePanel {
                     });
             });
             ui.horizontal(|ui| {
-                ui.label("Stroke:");
+                ui.label("線:");
                 let op_resp = ui.add_enabled(has_stroke, egui::Checkbox::new(&mut s_op, "OP"));
                 if op_resp.changed() {
                     state.object_edit(&id, &op_resp, |o| {
@@ -560,7 +556,7 @@ impl AppearancePanel {
         ui.separator();
 
         // Effects summary
-        ui.label(RichText::new("Effects").strong());
+        ui.label(RichText::new("効果").strong());
         let mut has_shadow = false;
         let mut has_glow = false;
         for (_, obj) in state.document.all_objects() {
@@ -586,11 +582,11 @@ pub struct SwatchesPanel;
 
 impl SwatchesPanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("Swatches").strong());
+        ui.heading(RichText::new("スウォッチ").strong());
         ui.add_space(4.0);
 
         // Basic color swatches
-        ui.label(RichText::new("Colors").strong().size(11.0));
+        ui.label(RichText::new("カラー").strong().size(11.0));
         let swatches: [[f32; 4]; 20] = [
             [0.0, 0.0, 0.0, 1.0],
             [1.0, 1.0, 1.0, 1.0],
@@ -740,7 +736,11 @@ impl SwatchesPanel {
         ui.add_space(6.0);
 
         // Gradient presets
-        ui.label(RichText::new("Gradient Presets").strong().size(11.0));
+        ui.label(
+            RichText::new("グラデーションプリセット")
+                .strong()
+                .size(11.0),
+        );
         ui.horizontal_wrapped(|ui| {
             let presets: Vec<(&str, FillStyle)> = vec![
                 (
@@ -914,7 +914,7 @@ pub struct ColorHarmonyPanel;
 
 impl ColorHarmonyPanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("Color Harmony").strong());
+        ui.heading(RichText::new("カラーハーモニー").strong());
         ui.add_space(4.0);
 
         let base = state.fill_color;

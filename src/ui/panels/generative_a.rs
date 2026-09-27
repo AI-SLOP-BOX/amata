@@ -6,9 +6,9 @@ pub struct TracePanel;
 
 impl TracePanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("Live Auto-Trace").strong());
+        ui.heading(RichText::new("ライブオートトレース").strong());
         ui.label(
-            RichText::new("Vectorize bitmap into paths")
+            RichText::new("ビットマップをベクターパス化")
                 .weak()
                 .size(11.0),
         );
@@ -51,7 +51,7 @@ pub struct FormulaPanel;
 
 impl FormulaPanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("Math & Formula Curves").strong());
+        ui.heading(RichText::new("数学・数式カーブ").strong());
         ui.add_space(4.0);
 
         let cx = state.document.width * 0.5;
@@ -121,7 +121,7 @@ pub struct VfxTrailPanel;
 
 impl VfxTrailPanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("VFX Particle Trails").strong());
+        ui.heading(RichText::new("VFXパーティクルトレイル").strong());
         ui.add_space(4.0);
 
         let has_sel = !state.selected_ids.is_empty();
@@ -151,11 +151,7 @@ impl VfxTrailPanel {
                 }
             }
         } else {
-            ui.label(
-                RichText::new("Select a path to generate particle trails")
-                    .weak()
-                    .size(11.0),
-            );
+            ui.label(RichText::new("パスを選択してください").weak().size(11.0));
         }
     }
 }
@@ -164,7 +160,7 @@ pub struct HalftonePanel;
 
 impl HalftonePanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("Halftone & Dot Matrix").strong());
+        ui.heading(RichText::new("ハーフトーン・ドットマトリクス").strong());
         ui.add_space(4.0);
 
         let has_sel = !state.selected_ids.is_empty();
@@ -221,7 +217,7 @@ impl HalftonePanel {
             });
         } else {
             ui.label(
-                RichText::new("Select an object to generate halftone dots")
+                RichText::new("ハーフトーンを適用するオブジェクトを選択してください")
                     .weak()
                     .size(11.0),
             );
@@ -295,7 +291,7 @@ impl IsometricPanel {
             });
         } else {
             ui.label(
-                RichText::new("Select an object to project into isometric plane")
+                RichText::new("等角投影するオブジェクトを選択してください")
                     .weak()
                     .size(11.0),
             );
@@ -307,7 +303,7 @@ pub struct SymmetryPanel;
 
 impl SymmetryPanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("Radial Symmetry & Mandala").strong());
+        ui.heading(RichText::new("放射対称・マンダラ").strong());
         ui.add_space(4.0);
 
         let has_sel = !state.selected_ids.is_empty();
@@ -335,7 +331,7 @@ impl SymmetryPanel {
             });
         } else {
             ui.label(
-                RichText::new("Select an object to create symmetry mandala")
+                RichText::new("対称マンダラを作るオブジェクトを選択してください")
                     .weak()
                     .size(11.0),
             );
@@ -364,7 +360,7 @@ pub struct VoronoiPanel;
 
 impl VoronoiPanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("Voronoi & Mosaic Shatter").strong());
+        ui.heading(RichText::new("ボロノイ・モザイク分割").strong());
         ui.add_space(4.0);
 
         if ui.button("Generate Voronoi Mosaic (40 Cells)").clicked() {
@@ -393,7 +389,7 @@ pub struct LSystemPanel;
 
 impl LSystemPanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("L-System Fractals").strong());
+        ui.heading(RichText::new("L-systemフラクタル").strong());
         ui.add_space(4.0);
 
         let cx = state.document.width * 0.5;
@@ -459,7 +455,7 @@ pub struct QrCodePanel;
 
 impl QrCodePanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("Vector QR & Barcode").strong());
+        ui.heading(RichText::new("ベクターQR・バーコード").strong());
         ui.add_space(4.0);
 
         let cx = state.document.width * 0.5;
@@ -499,7 +495,7 @@ pub struct DeformPanel;
 
 impl DeformPanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("Noise & Wave Deformer").strong());
+        ui.heading(RichText::new("ノイズ・波形デフォーマー").strong());
         ui.add_space(4.0);
 
         let has_sel = !state.selected_ids.is_empty();
@@ -579,7 +575,7 @@ impl DeformPanel {
             });
         } else {
             ui.label(
-                RichText::new("Select an object to deform")
+                RichText::new("変形させるオブジェクトを選択してください")
                     .weak()
                     .size(11.0),
             );

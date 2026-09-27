@@ -1,3 +1,6 @@
+use crate::app::icons::{
+    icon_arrow, icon_gear, icon_heart, icon_portal, icon_speech, icon_text_button,
+};
 use crate::core::state::AppState;
 use egui::{RichText, Ui};
 
@@ -5,16 +8,17 @@ pub struct PresetPanel;
 
 impl PresetPanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("Asset Library & Presets").strong());
+        ui.heading(RichText::new("アセットとプリセット").strong());
         ui.add_space(4.0);
 
         let cx = state.document.width * 0.5;
         let cy = state.document.height * 0.5;
 
+        // Every preset drops one shape in the middle of the canvas and
+        // selects it, so the row below is pure shape-picking.
         ui.horizontal_wrapped(|ui| {
-            if ui
-                .button("❤️ Heart")
-                .on_hover_text("Add Heart shape")
+            if icon_text_button(ui, icon_heart, "ハート")
+                .on_hover_text("ハートの形を追加")
                 .clicked()
             {
                 let obj = crate::core::presets::PresetLibrary::heart("Heart", cx, cy, 120.0);
@@ -24,9 +28,8 @@ impl PresetPanel {
                 state.selected_ids = vec![id];
             }
 
-            if ui
-                .button("➡️ Arrow")
-                .on_hover_text("Add Arrow symbol")
+            if icon_text_button(ui, icon_arrow, "矢印")
+                .on_hover_text("矢印シンボルを追加")
                 .clicked()
             {
                 let obj = crate::core::presets::PresetLibrary::arrow("Arrow", cx, cy, 160.0, 40.0);
@@ -36,9 +39,8 @@ impl PresetPanel {
                 state.selected_ids = vec![id];
             }
 
-            if ui
-                .button("⚙️ Gear")
-                .on_hover_text("Add Cog / Gear")
+            if icon_text_button(ui, icon_gear, "歯車")
+                .on_hover_text("歯車（コグ）を追加")
                 .clicked()
             {
                 let obj = crate::core::presets::PresetLibrary::gear("Gear", cx, cy, 8, 40.0, 60.0);
@@ -48,9 +50,8 @@ impl PresetPanel {
                 state.selected_ids = vec![id];
             }
 
-            if ui
-                .button("💬 Speech")
-                .on_hover_text("Add Speech Bubble")
+            if icon_text_button(ui, icon_speech, "吹き出し")
+                .on_hover_text("吹き出しを追加")
                 .clicked()
             {
                 let obj = crate::core::presets::PresetLibrary::speech_bubble(
@@ -66,9 +67,8 @@ impl PresetPanel {
                 state.selected_ids = vec![id];
             }
 
-            if ui
-                .button("🌀 VFX Portal")
-                .on_hover_text("Add Sci-Fi Hexagonal VFX Ring")
+            if icon_text_button(ui, icon_portal, "VFXポータル")
+                .on_hover_text("SF風の六角VFXリングを追加")
                 .clicked()
             {
                 let obj =
@@ -86,24 +86,24 @@ pub struct SmartGuidesPanel;
 
 impl SmartGuidesPanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("Smart Guides").strong());
+        ui.heading(RichText::new("スマートガイド").strong());
         ui.add_space(4.0);
 
         // Snapping options
-        ui.label(RichText::new("Snap To:").strong());
-        ui.checkbox(&mut state.snap_to_grid, "Grid");
-        ui.checkbox(&mut state.snap_to_objects, "Objects");
-        ui.checkbox(&mut state.snap_to_guides, "Guides");
-        ui.checkbox(&mut state.snap_to_points, "Anchor Points");
-        ui.checkbox(&mut state.snap_to_pixels, "Pixels (integer units)");
+        ui.label(RichText::new("スナップ対象:").strong());
+        ui.checkbox(&mut state.snap_to_grid, "グリッド");
+        ui.checkbox(&mut state.snap_to_objects, "オブジェクト");
+        ui.checkbox(&mut state.snap_to_guides, "ガイド");
+        ui.checkbox(&mut state.snap_to_points, "アンカーポイント");
+        ui.checkbox(&mut state.snap_to_pixels, "ピクセル（整数単位）");
 
         ui.add_space(4.0);
         ui.separator();
 
         // Grid settings
-        ui.label(RichText::new("Grid").strong());
+        ui.label(RichText::new("グリッド").strong());
         ui.horizontal(|ui| {
-            ui.label("Size:");
+            ui.label("間隔:");
             ui.add(
                 egui::DragValue::new(&mut state.grid_size)
                     .speed(1.0)
@@ -116,15 +116,15 @@ impl SmartGuidesPanel {
         ui.separator();
 
         // Guides
-        ui.label(RichText::new("Custom Guides").strong());
+        ui.label(RichText::new("カスタムガイド").strong());
         ui.horizontal(|ui| {
-            if ui.button("Add H Guide").clicked() {
+            if ui.button("水平ガイドを追加").clicked() {
                 state.guides.push(crate::core::state::Guide {
                     orientation: crate::core::state::GuideOrientation::Horizontal,
                     position: state.pan_y as f64 / state.zoom as f64,
                 });
             }
-            if ui.button("Add V Guide").clicked() {
+            if ui.button("垂直ガイドを追加").clicked() {
                 state.guides.push(crate::core::state::Guide {
                     orientation: crate::core::state::GuideOrientation::Vertical,
                     position: state.pan_x as f64 / state.zoom as f64,
@@ -150,7 +150,7 @@ impl SmartGuidesPanel {
             if let Some(idx) = to_remove {
                 state.guides.remove(idx);
             }
-            if ui.button("Clear All").clicked() {
+            if ui.button("すべて削除").clicked() {
                 state.guides.clear();
             }
         }
@@ -165,11 +165,11 @@ pub struct ExportPanel;
 
 impl ExportPanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("Export").strong());
+        ui.heading(RichText::new("書き出し").strong());
         ui.add_space(4.0);
 
         // Export format
-        ui.label("Format:");
+        ui.label("形式:");
         let mut format = state.export_format.clone();
 
         ui.horizontal_wrapped(|ui| {
@@ -187,20 +187,20 @@ impl ExportPanel {
         match format.as_str() {
             "PNG" => {
                 ui.horizontal(|ui| {
-                    ui.label("Width:");
+                    ui.label("幅:");
                     ui.add(egui::DragValue::new(&mut state.export_width).range(16.0..=8192.0));
-                    ui.label("Height:");
+                    ui.label("高さ:");
                     ui.add(egui::DragValue::new(&mut state.export_height).range(16.0..=8192.0));
                 });
                 ui.horizontal(|ui| {
-                    ui.label("Scale:");
+                    ui.label("倍率:");
                     ui.add(egui::Slider::new(&mut state.export_scale, 0.1..=4.0).show_value(true));
                 });
-                ui.checkbox(&mut state.export_transparent, "Transparent Background");
+                ui.checkbox(&mut state.export_transparent, "背景を透過");
             }
             "SVG" => {
-                ui.checkbox(&mut state.export_svg_viewbox, "Include ViewBox");
-                ui.checkbox(&mut state.export_svg_embed_fonts, "Embed Fonts");
+                ui.checkbox(&mut state.export_svg_viewbox, "ViewBoxを含める");
+                ui.checkbox(&mut state.export_svg_embed_fonts, "フォントを埋め込む");
             }
             _ => {}
         }
@@ -209,16 +209,16 @@ impl ExportPanel {
         ui.separator();
 
         // Export scope
-        ui.label("Scope:");
+        ui.label("範囲:");
         ui.horizontal_wrapped(|ui| {
             if ui
-                .selectable_label(state.export_scope == "All", "All Objects")
+                .selectable_label(state.export_scope == "All", "すべてのオブジェクト")
                 .clicked()
             {
                 state.export_scope = "All".into();
             }
             if ui
-                .selectable_label(state.export_scope == "Selected", "Selected Only")
+                .selectable_label(state.export_scope == "Selected", "選択したオブジェクトのみ")
                 .clicked()
             {
                 state.export_scope = "Selected".into();
@@ -228,7 +228,7 @@ impl ExportPanel {
         ui.add_space(8.0);
 
         // Export button
-        if ui.button("Export...").clicked() {
+        if ui.button("書き出し...").clicked() {
             let filter = match format.as_str() {
                 "JSON" => &["json"][..],
                 "PNG" => &["png"][..],
@@ -237,7 +237,7 @@ impl ExportPanel {
                 _ => &["svg"][..],
             };
             if let Some(path) = rfd::FileDialog::new()
-                .set_title("Export As")
+                .set_title("名前を付けて書き出し")
                 .add_filter(format.as_str(), filter)
                 .save_file()
             {
@@ -344,43 +344,43 @@ pub struct ShortcutsHelpPanel;
 
 impl ShortcutsHelpPanel {
     pub fn show(ui: &mut Ui, _state: &mut AppState) {
-        ui.heading(RichText::new("⌨ Keyboard Shortcuts").strong());
+        ui.heading(RichText::new("キーボードショートカット").strong());
         ui.add_space(4.0);
 
         let mk = crate::app::control_bar::mod_key();
         let shortcuts: [(&str, &str); 32] = [
-            ("V", "Select Tool"),
-            ("A", "Node / Direct Select"),
-            ("P", "Pen Tool"),
-            ("N", "Pencil Tool"),
-            ("U", "Rectangle Tool"),
-            ("O", "Ellipse Tool"),
-            ("S", "Star Tool"),
-            ("G", "Polygon Tool"),
-            ("L", "Line Tool"),
-            ("T", "Text Tool"),
-            ("I", "Eyedropper"),
-            ("H", "Hand / Pan"),
-            ("B", "Brush Tool"),
-            ("E", "Eraser Tool"),
-            ("D", "Default Fill & Stroke"),
-            ("/", "Set Fill to None"),
-            ("Shift+X", "Swap Fill & Stroke"),
-            ("Delete", "Delete Selected"),
-            ("Escape", "Deselect / Cancel"),
-            ("Enter", "Finish Pen Path"),
-            ("__MK__+Z", "Undo"),
-            ("__MK__+Y", "Redo"),
-            ("__MK__+A", "Select All"),
-            ("__MK__+G", "Group"),
-            ("__MK__+Shift+G", "Ungroup"),
-            ("__MK__+D", "Duplicate"),
-            ("__MK__+C", "Copy"),
-            ("__MK__+V", "Paste"),
-            ("__MK__+0", "Zoom to Fit"),
-            ("__MK__+1", "Zoom 100%"),
-            ("__MK__+7", "Clipping Mask"),
-            ("Arrow Keys", "Nudge (Shift=10x)"),
+            ("V", "選択ツール"),
+            ("A", "ノード（ダイレクト選択）"),
+            ("P", "ペンツール"),
+            ("N", "鉛筆ツール"),
+            ("U", "長方形ツール"),
+            ("O", "楕円ツール"),
+            ("S", "星形ツール"),
+            ("G", "多角形ツール"),
+            ("L", "ラインツール"),
+            ("T", "テキストツール"),
+            ("I", "スポイトツール"),
+            ("H", "ハンドツール（スクロール）"),
+            ("B", "ブラシツール"),
+            ("E", "消しゴムツール"),
+            ("D", "塗りと線をデフォルトに"),
+            ("/", "塗りをなしに"),
+            ("Shift+X", "塗りと線を入れ替え"),
+            ("Delete", "選択を削除"),
+            ("Escape", "選択解除／キャンセル"),
+            ("Enter", "ペンのパスを確定"),
+            ("__MK__+Z", "元に戻す"),
+            ("__MK__+Y", "やり直す"),
+            ("__MK__+A", "すべて選択"),
+            ("__MK__+G", "グループ化"),
+            ("__MK__+Shift+G", "グループ解除"),
+            ("__MK__+D", "複製"),
+            ("__MK__+C", "コピー"),
+            ("__MK__+V", "ペースト"),
+            ("__MK__+0", "画面に合わせて表示"),
+            ("__MK__+1", "100%表示"),
+            ("__MK__+7", "クリッピングマスク"),
+            ("矢印キー", "微調整（Shiftで10倍）"),
         ];
 
         for (key, action) in shortcuts {
