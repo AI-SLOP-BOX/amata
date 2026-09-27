@@ -116,17 +116,6 @@ impl IrasuApp {
                             }
                         });
 
-                    // Canvas Rotation Angle (Image 1 & 3: "0° ∨")
-                    egui::ComboBox::from_id_salt("canvas_rotation")
-                        .selected_text("0°")
-                        .width(42.0)
-                        .show_ui(ui, |ui| {
-                            let _ = ui.selectable_label(true, "0°");
-                            let _ = ui.selectable_label(false, "90°");
-                            let _ = ui.selectable_label(false, "180°");
-                            let _ = ui.selectable_label(false, "270°");
-                        });
-
                     ui.separator();
 
                     // Artboard Navigator Pager
@@ -494,7 +483,7 @@ impl IrasuApp {
                     });
 
                     ui.add_space(6.0);
-                    // Customize Toolbar Button (···)
+                    // Toolbar overflow / preferences button (···)
                     let more_btn = egui::Button::new(
                         RichText::new("···")
                             .size(14.0)
@@ -503,7 +492,9 @@ impl IrasuApp {
                     )
                     .fill(Color32::TRANSPARENT)
                     .min_size(Vec2::new(32.0, 22.0));
-                    let _ = ui.add(more_btn).on_hover_text("ツールバーをカスタマイズ");
+                    if ui.add(more_btn).on_hover_text("環境設定").clicked() {
+                        self.preferences_dialog.is_open = true;
+                    }
                 });
             });
     }

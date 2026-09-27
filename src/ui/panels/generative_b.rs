@@ -6,7 +6,7 @@ pub struct FlowFieldPanel;
 
 impl FlowFieldPanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("🌌 Vector Flow Field").strong());
+        ui.heading(RichText::new("Vector Flow Field").strong());
         ui.add_space(4.0);
 
         let w = state.document.width;
@@ -65,7 +65,7 @@ pub struct ScatterBrushPanel;
 
 impl ScatterBrushPanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("🖌️ Scatter & Pattern Brush").strong());
+        ui.heading(RichText::new("Scatter & Pattern Brush").strong());
         ui.add_space(4.0);
 
         let has_sel = state.selected_ids.len() >= 2;
@@ -116,7 +116,7 @@ pub struct AudioWavePanel;
 
 impl AudioWavePanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("🎵 Audio Waveform (LogicPro DSP)").strong());
+        ui.heading(RichText::new("Audio Waveform (LogicPro DSP)").strong());
         ui.add_space(4.0);
 
         let w = state.document.width;
@@ -186,7 +186,7 @@ pub struct MeshWarpPanel;
 
 impl MeshWarpPanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("🦴 2D Mesh Warp (Live2D FFD)").strong());
+        ui.heading(RichText::new("2D Mesh Warp (Live2D FFD)").strong());
         ui.add_space(4.0);
 
         let has_sel = !state.selected_ids.is_empty();
@@ -318,7 +318,7 @@ fn selected_mesh_id(state: &AppState) -> Option<String> {
 
 impl GradientMeshPanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("🌈 Gradient Mesh").strong());
+        ui.heading(RichText::new("Gradient Mesh").strong());
         ui.add_space(4.0);
 
         // Create a new editable mesh from a preset.
@@ -478,7 +478,7 @@ pub struct AxonometricPanel;
 
 impl AxonometricPanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("📐 Axonometric Architectural Projections").strong());
+        ui.heading(RichText::new("Axonometric Architectural Projections").strong());
         ui.add_space(4.0);
 
         let has_sel = !state.selected_ids.is_empty();
@@ -568,7 +568,7 @@ pub struct RevolvePanel;
 
 impl RevolvePanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("🏺 3D Revolve & Lathe Modeler").strong());
+        ui.heading(RichText::new("3D Revolve & Lathe Modeler").strong());
         ui.add_space(4.0);
 
         let has_sel = !state.selected_ids.is_empty();
@@ -609,7 +609,7 @@ pub struct EnvelopePanel;
 
 impl EnvelopePanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("🚩 Envelope Distort & Shape Mold").strong());
+        ui.heading(RichText::new("Envelope Distort & Shape Mold").strong());
         ui.add_space(4.0);
 
         let has_sel = state.selected_ids.len() >= 2;
@@ -650,7 +650,7 @@ impl EnvelopePanel {
 
         ui.add_space(4.0);
         ui.separator();
-        ui.label(RichText::new("🌀 Live Warp (non-destructive)").strong());
+        ui.label(RichText::new("Live Warp (non-destructive)").strong());
 
         // If a live envelope is selected: edit kind/amount or release.
         let live_id = state.selected_ids.iter().find_map(|id| {
@@ -779,7 +779,7 @@ pub struct PolarPanel;
 
 impl PolarPanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("🌐 Polar Coordinates & Planet Wrap").strong());
+        ui.heading(RichText::new("Polar Coordinates & Planet Wrap").strong());
         ui.add_space(4.0);
 
         let has_sel = !state.selected_ids.is_empty();

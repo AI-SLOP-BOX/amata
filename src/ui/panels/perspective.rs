@@ -8,7 +8,7 @@ pub struct PerspectivePanel;
 
 impl PerspectivePanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("📐 Perspective Grid").strong());
+        ui.heading(RichText::new("Perspective Grid").strong());
         ui.add_space(4.0);
 
         if state.document.perspective.is_none() {

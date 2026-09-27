@@ -8,7 +8,7 @@ pub struct GradientPanel;
 
 impl GradientPanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("🌈 Gradient Editor").strong());
+        ui.heading(RichText::new("Gradient Editor").strong());
         ui.add_space(4.0);
 
         if state.selected_ids.is_empty() {
@@ -363,7 +363,7 @@ pub struct EffectsPanel;
 
 impl EffectsPanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("✨ Effects & Shadows").strong());
+        ui.heading(RichText::new("Effects & Shadows").strong());
         ui.add_space(4.0);
 
         if let Some(id) = state.selected_ids.first().cloned() {
@@ -556,7 +556,7 @@ pub struct NeonGlowPanel;
 
 impl NeonGlowPanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("✨ Vector Neon Glow & Laser").strong());
+        ui.heading(RichText::new("Vector Neon Glow & Laser").strong());
         ui.add_space(4.0);
 
         let has_sel = !state.selected_ids.is_empty();

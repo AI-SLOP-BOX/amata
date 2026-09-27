@@ -36,7 +36,7 @@ fn rgba_to_color32(c: [f32; 4]) -> Color32 {
 
 impl PixelPanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("👾 Pixel Art").strong());
+        ui.heading(RichText::new("Pixel Art").strong());
         ui.add_space(4.0);
 
         // Tool quick-switch.

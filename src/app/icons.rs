@@ -1009,6 +1009,87 @@ pub fn icon_close(p: &Painter, rect: Rect, color: Color32) {
     );
 }
 
+/// Alignment kind shared by the six 整列 icons.
+#[derive(Clone, Copy)]
+enum AlignKind {
+    Left,
+    CenterH,
+    Right,
+    Top,
+    CenterV,
+    Bottom,
+}
+
+/// Align left: reference edge on the left, bars hanging off it.
+pub fn icon_align_left(p: &Painter, rect: Rect, color: Color32) {
+    icon_align(p, rect, color, AlignKind::Left);
+}
+
+/// Align horizontal centre.
+pub fn icon_align_center_h(p: &Painter, rect: Rect, color: Color32) {
+    icon_align(p, rect, color, AlignKind::CenterH);
+}
+
+/// Align right.
+pub fn icon_align_right(p: &Painter, rect: Rect, color: Color32) {
+    icon_align(p, rect, color, AlignKind::Right);
+}
+
+/// Align top.
+pub fn icon_align_top(p: &Painter, rect: Rect, color: Color32) {
+    icon_align(p, rect, color, AlignKind::Top);
+}
+
+/// Align vertical centre.
+pub fn icon_align_center_v(p: &Painter, rect: Rect, color: Color32) {
+    icon_align(p, rect, color, AlignKind::CenterV);
+}
+
+/// Align bottom.
+pub fn icon_align_bottom(p: &Painter, rect: Rect, color: Color32) {
+    icon_align(p, rect, color, AlignKind::Bottom);
+}
+
+fn icon_align(p: &Painter, rect: Rect, color: Color32, kind: AlignKind) {
+    let r = pad(rect, 0.16);
+    // Left/centre/right icons lay their bars out horizontally, the
+    // vertical trio rotates the same geometry by 90°.
+    let horizontal = matches!(
+        kind,
+        AlignKind::Left | AlignKind::CenterH | AlignKind::Right
+    );
+    let anchor = match kind {
+        AlignKind::Left | AlignKind::Top => 0.0,
+        AlignKind::CenterH | AlignKind::CenterV => 0.5,
+        AlignKind::Right | AlignKind::Bottom => 1.0,
+    };
+    let map = |u: f32, v: f32| -> Pos2 {
+        if horizontal {
+            Pos2::new(r.min.x + u * r.width(), r.min.y + v * r.height())
+        } else {
+            Pos2::new(r.min.x + v * r.width(), r.min.y + u * r.height())
+        }
+    };
+
+    // The alignment edge every bar measures against.
+    p.line_segment(
+        [map(anchor, 0.0), map(anchor, 1.0)],
+        Stroke::new(1.4_f32, color),
+    );
+
+    let bar_w = r.width().min(r.height()) * 0.17;
+    for (v, len) in [(0.22_f32, 1.0_f32), (0.5, 0.62), (0.78, 0.85)] {
+        let u0 = if anchor <= 0.0 {
+            0.0
+        } else if anchor >= 1.0 {
+            1.0 - len
+        } else {
+            (1.0 - len) * 0.5
+        };
+        p.line_segment([map(u0, v), map(u0 + len, v)], Stroke::new(bar_w, color));
+    }
+}
+
 /// Paint a tool's vector icon into the given rect.
 pub fn paint_tool_icon(p: &Painter, tool: crate::core::state::Tool, rect: Rect, color: Color32) {
     use crate::core::state::Tool;

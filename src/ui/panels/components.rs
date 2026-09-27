@@ -5,7 +5,7 @@ pub struct ComponentPanel;
 
 impl ComponentPanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("❖ コンポーネント (Component / Symbol)").strong());
+        ui.heading(RichText::new("コンポーネント (Component / Symbol)").strong());
         ui.label(
             RichText::new("SVG <symbol> / <use> によるマスター再利用システム")
                 .weak()

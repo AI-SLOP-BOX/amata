@@ -5,7 +5,7 @@ pub struct PresetPanel;
 
 impl PresetPanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("📦 Asset Library & Presets").strong());
+        ui.heading(RichText::new("Asset Library & Presets").strong());
         ui.add_space(4.0);
 
         let cx = state.document.width * 0.5;
@@ -86,7 +86,7 @@ pub struct SmartGuidesPanel;
 
 impl SmartGuidesPanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("📏 Smart Guides").strong());
+        ui.heading(RichText::new("Smart Guides").strong());
         ui.add_space(4.0);
 
         // Snapping options
@@ -165,7 +165,7 @@ pub struct ExportPanel;
 
 impl ExportPanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("📤 Export").strong());
+        ui.heading(RichText::new("Export").strong());
         ui.add_space(4.0);
 
         // Export format

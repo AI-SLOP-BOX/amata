@@ -6,7 +6,7 @@ pub struct TracePanel;
 
 impl TracePanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("🖼️ Live Auto-Trace").strong());
+        ui.heading(RichText::new("Live Auto-Trace").strong());
         ui.label(
             RichText::new("Vectorize bitmap into paths")
                 .weak()
@@ -51,7 +51,7 @@ pub struct FormulaPanel;
 
 impl FormulaPanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("🌀 Math & Formula Curves").strong());
+        ui.heading(RichText::new("Math & Formula Curves").strong());
         ui.add_space(4.0);
 
         let cx = state.document.width * 0.5;
@@ -121,7 +121,7 @@ pub struct VfxTrailPanel;
 
 impl VfxTrailPanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("⚡ VFX Particle Trails").strong());
+        ui.heading(RichText::new("VFX Particle Trails").strong());
         ui.add_space(4.0);
 
         let has_sel = !state.selected_ids.is_empty();
@@ -164,7 +164,7 @@ pub struct HalftonePanel;
 
 impl HalftonePanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("🏁 Halftone & Dot Matrix").strong());
+        ui.heading(RichText::new("Halftone & Dot Matrix").strong());
         ui.add_space(4.0);
 
         let has_sel = !state.selected_ids.is_empty();
@@ -233,7 +233,7 @@ pub struct IsometricPanel;
 
 impl IsometricPanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("📐 2.5D Isometric Transformer").strong());
+        ui.heading(RichText::new("2.5D Isometric Transformer").strong());
         ui.add_space(4.0);
 
         let has_sel = !state.selected_ids.is_empty();
@@ -307,7 +307,7 @@ pub struct SymmetryPanel;
 
 impl SymmetryPanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("☸️ Radial Symmetry & Mandala").strong());
+        ui.heading(RichText::new("Radial Symmetry & Mandala").strong());
         ui.add_space(4.0);
 
         let has_sel = !state.selected_ids.is_empty();
@@ -364,7 +364,7 @@ pub struct VoronoiPanel;
 
 impl VoronoiPanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("🔷 Voronoi & Mosaic Shatter").strong());
+        ui.heading(RichText::new("Voronoi & Mosaic Shatter").strong());
         ui.add_space(4.0);
 
         if ui.button("Generate Voronoi Mosaic (40 Cells)").clicked() {
@@ -393,7 +393,7 @@ pub struct LSystemPanel;
 
 impl LSystemPanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("🌿 L-System Fractals").strong());
+        ui.heading(RichText::new("L-System Fractals").strong());
         ui.add_space(4.0);
 
         let cx = state.document.width * 0.5;
@@ -459,7 +459,7 @@ pub struct QrCodePanel;
 
 impl QrCodePanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("📱 Vector QR & Barcode").strong());
+        ui.heading(RichText::new("Vector QR & Barcode").strong());
         ui.add_space(4.0);
 
         let cx = state.document.width * 0.5;
@@ -499,7 +499,7 @@ pub struct DeformPanel;
 
 impl DeformPanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("🌊 Noise & Wave Deformer").strong());
+        ui.heading(RichText::new("Noise & Wave Deformer").strong());
         ui.add_space(4.0);
 
         let has_sel = !state.selected_ids.is_empty();

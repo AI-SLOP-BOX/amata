@@ -487,7 +487,7 @@ pub struct TransformPanel;
 
 impl TransformPanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("📐 Transform").strong());
+        ui.heading(RichText::new("Transform").strong());
         ui.add_space(4.0);
 
         if state.selected_ids.is_empty() {

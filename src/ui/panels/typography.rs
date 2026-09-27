@@ -738,7 +738,7 @@ pub struct SymbolsPanel;
 
 impl SymbolsPanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("⭐ Symbols").strong());
+        ui.heading(RichText::new("Symbols").strong());
         ui.add_space(4.0);
 
         // Save selected as symbol
@@ -986,7 +986,7 @@ pub struct PatternPanel;
 
 impl PatternPanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("🔲 Pattern Fill").strong());
+        ui.heading(RichText::new("Pattern Fill").strong());
         ui.add_space(4.0);
 
         if state.selected_ids.is_empty() {

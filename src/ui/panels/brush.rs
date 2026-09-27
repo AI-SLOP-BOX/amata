@@ -123,7 +123,7 @@ fn adopt_def(state: &mut AppState, def: &BrushDefinition) {
 
 impl BrushPanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("🖌️ Brushes").strong());
+        ui.heading(RichText::new("Brushes").strong());
         ui.add_space(4.0);
 
         ui.horizontal(|ui| {

@@ -10,7 +10,7 @@ pub struct PrintPanel;
 
 impl PrintPanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("🖨 Print").strong());
+        ui.heading(RichText::new("Print").strong());
         ui.add_space(4.0);
 
         // Color mode + bleed.

@@ -53,7 +53,7 @@ impl VersionHistoryPanel {
     }
 
     pub fn show(&mut self, ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("🕒 バージョン履歴 (Version History)").strong());
+        ui.heading(RichText::new("バージョン履歴 (Version History)").strong());
         ui.label(
             RichText::new("デザインの節目を安全に記録・比較・復元できます")
                 .weak()
@@ -356,7 +356,7 @@ impl VersionHistoryPanel {
             ui.add_space(8.0);
             ui.separator();
             ui.horizontal(|ui| {
-                ui.heading(RichText::new("📊 変更内容の比較 (Visual Diff)").strong());
+                ui.heading(RichText::new("変更内容の比較 (Visual Diff)").strong());
                 if ui.button("閉じる").clicked() {
                     self.is_comparing = false;
                     self.active_diff = None;

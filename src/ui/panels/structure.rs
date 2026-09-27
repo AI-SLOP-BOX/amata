@@ -851,7 +851,7 @@ pub struct ClippingMaskPanel;
 
 impl ClippingMaskPanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("✂ Clipping Mask").strong());
+        ui.heading(RichText::new("Clipping Mask").strong());
         ui.add_space(4.0);
 
         let sel_count = state.selected_ids.len();
@@ -938,7 +938,7 @@ pub struct PathfinderPanel;
 
 impl PathfinderPanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("✂ Pathfinder").strong());
+        ui.heading(RichText::new("Pathfinder").strong());
         ui.label(
             RichText::new("Combine 2 or more vector shapes")
                 .weak()
@@ -1099,7 +1099,7 @@ pub struct OffsetPanel;
 
 impl OffsetPanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("📐 Path Tools").strong());
+        ui.heading(RichText::new("Path Tools").strong());
         ui.add_space(4.0);
 
         let has_sel = !state.selected_ids.is_empty();
@@ -1166,7 +1166,7 @@ pub struct MorphPanel;
 
 impl MorphPanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("🧬 Shape Morphing").strong());
+        ui.heading(RichText::new("Shape Morphing").strong());
         ui.add_space(4.0);
 
         let sel_count = state.selected_ids.len();
@@ -1213,7 +1213,7 @@ pub struct KnifePanel;
 
 impl KnifePanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("✂️ Knife & Vector Slicer").strong());
+        ui.heading(RichText::new("Knife & Vector Slicer").strong());
         ui.add_space(4.0);
 
         let has_sel = !state.selected_ids.is_empty();

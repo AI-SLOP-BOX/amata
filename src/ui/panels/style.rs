@@ -11,7 +11,7 @@ pub struct StrokePanel;
 
 impl StrokePanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("🖌 Stroke").strong());
+        ui.heading(RichText::new("Stroke").strong());
         ui.add_space(4.0);
 
         if state.selected_ids.is_empty() {
@@ -277,7 +277,7 @@ pub struct BlendModePanel;
 
 impl BlendModePanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("🎨 Blend Mode").strong());
+        ui.heading(RichText::new("Blend Mode").strong());
         ui.add_space(4.0);
 
         if state.selected_ids.is_empty() {
@@ -318,7 +318,7 @@ pub struct AppearancePanel;
 
 impl AppearancePanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("🎭 Appearance").strong());
+        ui.heading(RichText::new("Appearance").strong());
         ui.add_space(4.0);
 
         if state.selected_ids.is_empty() {
@@ -586,7 +586,7 @@ pub struct SwatchesPanel;
 
 impl SwatchesPanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("🎨 Swatches").strong());
+        ui.heading(RichText::new("Swatches").strong());
         ui.add_space(4.0);
 
         // Basic color swatches
@@ -914,7 +914,7 @@ pub struct ColorHarmonyPanel;
 
 impl ColorHarmonyPanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("🎨 Color Harmony").strong());
+        ui.heading(RichText::new("Color Harmony").strong());
         ui.add_space(4.0);
 
         let base = state.fill_color;

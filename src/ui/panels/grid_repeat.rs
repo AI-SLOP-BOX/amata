@@ -5,7 +5,7 @@ pub struct GridRepeatPanel;
 
 impl GridRepeatPanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("🔲 Grid Repeat").strong());
+        ui.heading(RichText::new("Grid Repeat").strong());
         ui.add_space(4.0);
 
         if state.selected_ids.is_empty() {

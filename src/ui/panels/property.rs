@@ -1,6 +1,8 @@
 use crate::app::icons::{
-    icon_bolt, icon_checkerboard, icon_grid, icon_ruler, icon_snap_grid, icon_snap_pixels,
-    icon_snap_points, icon_unlink, icon_unlock, toggle_icon_button,
+    icon_align_bottom, icon_align_center_h, icon_align_center_v, icon_align_left, icon_align_right,
+    icon_align_top, icon_bolt, icon_button, icon_checkerboard, icon_grid, icon_ruler,
+    icon_snap_grid, icon_snap_pixels, icon_snap_points, icon_unlink, icon_unlock,
+    toggle_icon_button,
 };
 use crate::core::document::ObjectType;
 use crate::core::path::FillStyle;
@@ -571,32 +573,43 @@ impl PropertyPanel {
             });
             ui.add_space(2.0);
             ui.horizontal(|ui| {
+                let size = Vec2::new(22.0, 18.0);
                 let sel = state.selected_ids.clone();
-                if ui.small_button("⇠").on_hover_text("左揃え").clicked() {
+                if icon_button(ui, size, icon_align_left)
+                    .on_hover_text("左揃え")
+                    .clicked()
+                {
                     crate::ui::AlignPanel::align_left(state, &sel);
                 }
-                if ui
-                    .small_button("↔")
+                if icon_button(ui, size, icon_align_center_h)
                     .on_hover_text("水平方向中央揃え")
                     .clicked()
                 {
                     crate::ui::AlignPanel::align_center_h(state, &sel);
                 }
-                if ui.small_button("⇥").on_hover_text("右揃え").clicked() {
+                if icon_button(ui, size, icon_align_right)
+                    .on_hover_text("右揃え")
+                    .clicked()
+                {
                     crate::ui::AlignPanel::align_right(state, &sel);
                 }
                 ui.add_space(4.0);
-                if ui.small_button("⇡").on_hover_text("上揃え").clicked() {
+                if icon_button(ui, size, icon_align_top)
+                    .on_hover_text("上揃え")
+                    .clicked()
+                {
                     crate::ui::AlignPanel::align_top(state, &sel);
                 }
-                if ui
-                    .small_button("↕")
+                if icon_button(ui, size, icon_align_center_v)
                     .on_hover_text("垂直方向中央揃え")
                     .clicked()
                 {
                     crate::ui::AlignPanel::align_center_v(state, &sel);
                 }
-                if ui.small_button("⇣").on_hover_text("下揃え").clicked() {
+                if icon_button(ui, size, icon_align_bottom)
+                    .on_hover_text("下揃え")
+                    .clicked()
+                {
                     crate::ui::AlignPanel::align_bottom(state, &sel);
                 }
             });
