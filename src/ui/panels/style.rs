@@ -1,4 +1,4 @@
-use super::color_utils::{hsv_to_rgb, rgb_to_hsv};
+use super::color_utils::{color_edit_srgba, hsv_to_rgb, rgb_to_hsv};
 use crate::core::document::BlendMode;
 use crate::core::path::{
     ArrowHead, FillStyle, GradientStop, LinearGradient, RadialGradient, StrokeCap, StrokeJoin,
@@ -58,7 +58,7 @@ impl StrokePanel {
         ui.horizontal(|ui| {
             ui.label("色:");
             let mut c = color;
-            if ui.color_edit_button_rgba_premultiplied(&mut c).changed() {
+            if color_edit_srgba(ui, &mut c).changed() {
                 state.ensure_object_snapshot(&id);
                 for (_, obj) in state.document.all_objects_mut() {
                     if obj.id == id {
@@ -367,7 +367,7 @@ impl AppearancePanel {
         ui.label(RichText::new("塗り").strong());
         ui.horizontal(|ui| {
             let mut fill_color = state.fill_color;
-            let fill_resp = ui.color_edit_button_rgba_premultiplied(&mut fill_color);
+            let fill_resp = color_edit_srgba(ui, &mut fill_color);
             if fill_resp.changed() {
                 state.fill_color = fill_color;
                 state.object_edit(&id, &fill_resp, |o| {
@@ -392,7 +392,7 @@ impl AppearancePanel {
         ui.label(RichText::new("線").strong());
         ui.horizontal(|ui| {
             let mut stroke_color = state.stroke_color;
-            let stroke_resp = ui.color_edit_button_rgba_premultiplied(&mut stroke_color);
+            let stroke_resp = color_edit_srgba(ui, &mut stroke_color);
             if stroke_resp.changed() {
                 state.stroke_color = stroke_color;
                 state.object_edit(&id, &stroke_resp, |o| {
@@ -711,7 +711,7 @@ impl SwatchesPanel {
             }
 
             let mut c_rgba = state.fill_color;
-            let crgba_resp = ui.color_edit_button_rgba_premultiplied(&mut c_rgba);
+            let crgba_resp = color_edit_srgba(ui, &mut c_rgba);
             if crgba_resp.changed() {
                 state.fill_color = c_rgba;
                 let sel = state.selected_ids.clone();

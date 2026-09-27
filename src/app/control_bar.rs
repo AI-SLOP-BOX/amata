@@ -1,6 +1,7 @@
 use super::ActiveTab;
 use super::IrasuApp;
 use crate::core::state::Tool;
+use crate::ui::panels::color_utils::color_edit_srgba_u8;
 use egui::{self, Color32, Vec2};
 
 // Progressive disclosure thresholds: below each width the matching
@@ -99,9 +100,8 @@ impl IrasuApp {
                                     (obj_fill[2] * 255.0) as u8,
                                     (obj_fill[3] * 255.0) as u8,
                                 ];
-                                let fill_resp = ui
-                                    .color_edit_button_srgba_unmultiplied(&mut fill_c)
-                                    .on_hover_text("塗り");
+                                let fill_resp =
+                                    color_edit_srgba_u8(ui, &mut fill_c).on_hover_text("塗り");
                                 if fill_resp.changed() {
                                     let new_fill = [
                                         fill_c[0] as f32 / 255.0,
@@ -113,14 +113,10 @@ impl IrasuApp {
                                     let sel = self.state.selected_ids.clone();
                                     for id in &sel {
                                         self.state.ensure_object_snapshot(id);
-                                        for (_, obj) in
-                                            self.state.document.all_objects_mut()
-                                        {
+                                        for (_, obj) in self.state.document.all_objects_mut() {
                                             if &obj.id == id {
                                                 obj.fill = Some(
-                                                    crate::core::path::FillStyle::solid(
-                                                        new_fill,
-                                                    ),
+                                                    crate::core::path::FillStyle::solid(new_fill),
                                                 );
                                             }
                                         }
@@ -137,8 +133,7 @@ impl IrasuApp {
                                     (obj_stroke[2] * 255.0) as u8,
                                     (obj_stroke[3] * 255.0) as u8,
                                 ];
-                                let stroke_resp = ui
-                                    .color_edit_button_srgba_unmultiplied(&mut stroke_c)
+                                let stroke_resp = color_edit_srgba_u8(ui, &mut stroke_c)
                                     .on_hover_text("線カラー");
                                 if stroke_resp.changed() {
                                     let new_sc = [
@@ -477,8 +472,7 @@ impl IrasuApp {
                             (self.state.fill_color[2] * 255.0) as u8,
                             (self.state.fill_color[3] * 255.0) as u8,
                         ];
-                        if ui
-                            .color_edit_button_srgba_unmultiplied(&mut fill_c)
+                        if color_edit_srgba_u8(ui, &mut fill_c)
                             .on_hover_text("塗りカラー")
                             .changed()
                         {
@@ -497,8 +491,7 @@ impl IrasuApp {
                             (self.state.stroke_color[2] * 255.0) as u8,
                             (self.state.stroke_color[3] * 255.0) as u8,
                         ];
-                        if ui
-                            .color_edit_button_srgba_unmultiplied(&mut stroke_c)
+                        if color_edit_srgba_u8(ui, &mut stroke_c)
                             .on_hover_text("線カラー")
                             .changed()
                         {

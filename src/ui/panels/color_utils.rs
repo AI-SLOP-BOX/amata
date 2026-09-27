@@ -1,6 +1,18 @@
 use crate::core::path::FillStyle;
 use crate::core::state::AppState;
-use egui::{Color32, Ui, Vec2};
+use egui::{Color32, Response, Ui, Vec2};
+
+/// Colour picker for `[f32; 4]` colours (plain sRGB + opacity 0.0..1.0).
+/// `rendering.rs` feeds those straight into `Color32::from_rgba_unmultiplied`,
+/// so the picker must see the same unmultiplied convention.
+pub fn color_edit_srgba(ui: &mut Ui, color: &mut [f32; 4]) -> Response {
+    ui.color_edit_button_rgba_unmultiplied(color)
+}
+
+/// Colour picker for `[u8; 4]` colours (same convention, byte components).
+pub fn color_edit_srgba_u8(ui: &mut Ui, color: &mut [u8; 4]) -> Response {
+    ui.color_edit_button_srgba_unmultiplied(color)
+}
 
 /// Convert RGB (0.0..1.0) to CMYK (0.0..1.0 each).
 /// Simple subtractive model: K = 1 - max(R,G,B), C/M/Y = (K - channel) / K.

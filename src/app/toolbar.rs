@@ -5,6 +5,7 @@ use super::icons::{
 use super::zoom_to_fit;
 use super::IrasuApp;
 use crate::core::state::{AppState, Tool};
+use crate::ui::panels::color_utils::color_edit_srgba_u8;
 use egui::CornerRadius;
 use egui::{self, Color32, Pos2, Rect, RichText, Stroke, Vec2};
 
@@ -374,10 +375,7 @@ impl IrasuApp {
                     ];
                     ui.horizontal(|ui| {
                         ui.label(egui::RichText::new("F:").size(10.0).weak());
-                        if ui
-                            .color_edit_button_srgba_unmultiplied(&mut fill_c)
-                            .changed()
-                        {
+                        if color_edit_srgba_u8(ui, &mut fill_c).changed() {
                             self.state.fill_color = [
                                 fill_c[0] as f32 / 255.0,
                                 fill_c[1] as f32 / 255.0,
@@ -386,10 +384,7 @@ impl IrasuApp {
                             ];
                         }
                         ui.label(egui::RichText::new("S:").size(10.0).weak());
-                        if ui
-                            .color_edit_button_srgba_unmultiplied(&mut stroke_c)
-                            .changed()
-                        {
+                        if color_edit_srgba_u8(ui, &mut stroke_c).changed() {
                             self.state.stroke_color = [
                                 stroke_c[0] as f32 / 255.0,
                                 stroke_c[1] as f32 / 255.0,

@@ -7,6 +7,7 @@ use crate::app::icons::{
 use crate::core::document::ObjectType;
 use crate::core::path::FillStyle;
 use crate::core::state::{AppState, Tool};
+use crate::ui::panels::color_utils::color_edit_srgba_u8;
 use egui::{Color32, Pos2, RichText, Stroke, StrokeKind, Ui, Vec2};
 
 pub struct PropertyPanel;
@@ -356,7 +357,7 @@ impl PropertyPanel {
                     (fill_c[2] * 255.0) as u8,
                     (fill_c[3] * 255.0) as u8,
                 ];
-                let fill_resp = ui.color_edit_button_srgba_unmultiplied(&mut c_rgba);
+                let fill_resp = color_edit_srgba_u8(ui, &mut c_rgba);
                 if fill_resp.changed() {
                     let new_fill = [
                         c_rgba[0] as f32 / 255.0,
@@ -388,7 +389,7 @@ impl PropertyPanel {
                     (stroke_c[2] * 255.0) as u8,
                     (stroke_c[3] * 255.0) as u8,
                 ];
-                let sc_resp = ui.color_edit_button_srgba_unmultiplied(&mut sc_rgba);
+                let sc_resp = color_edit_srgba_u8(ui, &mut sc_rgba);
                 if sc_resp.changed() {
                     let new_sc = [
                         sc_rgba[0] as f32 / 255.0,

@@ -3,6 +3,7 @@
 use crate::core::document::{Object, ObjectType};
 use crate::core::pixel::{PixelArt, MAX_PIXEL_DIM};
 use crate::core::state::{AppState, Tool};
+use crate::ui::panels::color_utils::color_edit_srgba_u8;
 use egui::{Color32, RichText, Ui, Vec2};
 
 pub struct PixelPanel;
@@ -191,8 +192,7 @@ impl PixelPanel {
                 (state.fill_color[2] * 255.0) as u8,
                 (state.fill_color[3] * 255.0) as u8,
             ];
-            if ui
-                .color_edit_button_srgba_unmultiplied(&mut fill_c)
+            if color_edit_srgba_u8(ui, &mut fill_c)
                 .on_hover_text("現在の塗り色をパレットに追加")
                 .changed()
             {

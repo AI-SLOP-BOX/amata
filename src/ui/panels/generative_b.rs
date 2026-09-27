@@ -1,5 +1,6 @@
 use crate::core::document::Object;
 use crate::core::state::AppState;
+use crate::ui::panels::color_utils::color_edit_srgba_u8;
 use egui::{RichText, Ui};
 
 pub struct FlowFieldPanel;
@@ -451,8 +452,7 @@ impl GradientMeshPanel {
             });
             ui.horizontal(|ui| {
                 ui.label("Color:");
-                if ui
-                    .color_edit_button_srgba_unmultiplied(&mut ncolor)
+                if color_edit_srgba_u8(ui, &mut ncolor)
                     .changed()
                 {
                     let col = [

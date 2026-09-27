@@ -2,6 +2,7 @@ use crate::core::effects::{AppearanceStack, BlurEffect, ColorAdjustEffect, Vecto
 use crate::core::path::{FillStyle, FillType, GradientStop, LinearGradient, RadialGradient};
 use crate::core::state::AppState;
 use crate::ui::canvas::sample_gradient_stops;
+use crate::ui::panels::color_utils::color_edit_srgba;
 use egui::{Color32, Pos2, Rect, RichText, Stroke, Ui, Vec2};
 
 pub struct GradientPanel;
@@ -253,7 +254,7 @@ impl GradientPanel {
             let stop = &stops[i];
             ui.horizontal(|ui| {
                 let mut c = stop.color;
-                if ui.color_edit_button_rgba_premultiplied(&mut c).changed() {
+                if color_edit_srgba(ui, &mut c).changed() {
                     color_updates.push((i, c));
                 }
 
@@ -434,7 +435,7 @@ impl EffectsPanel {
                 });
                 ui.horizontal(|ui| {
                     ui.label("Color:");
-                    let r = ui.color_edit_button_rgba_premultiplied(&mut current_shadow.color);
+                    let r = color_edit_srgba(ui, &mut current_shadow.color);
                     track(&r);
                 });
             }
@@ -459,7 +460,7 @@ impl EffectsPanel {
                 });
                 ui.horizontal(|ui| {
                     ui.label("Glow Color:");
-                    let r = ui.color_edit_button_rgba_premultiplied(&mut current_glow.color);
+                    let r = color_edit_srgba(ui, &mut current_glow.color);
                     track(&r);
                 });
             }
