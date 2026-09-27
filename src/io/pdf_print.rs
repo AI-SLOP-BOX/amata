@@ -7,6 +7,7 @@
 //! fallback), and PDF/X output carries total-ink reporting.
 
 use crate::core::document::{ColorMode, Document, Object, ObjectType};
+use crate::core::geometry::matrix_scale;
 use crate::core::icc::rgb_to_cmyk;
 use crate::core::path::{
     FillRule, FillStyle, FillType, LinearGradient, PathData, PathElement, RadialGradient,
@@ -524,6 +525,10 @@ fn render_obj(ctx: &mut Ctx, obj: &Object, parent: &[f64; 6], out: &mut String) 
         return;
     }
     let world = mat_mul(parent, &obj.transform.matrix());
+    // Paths are baked through `world`, so a stroke width kept in the saved
+    // units would draw `scale` times thinner than the canvas (which widens
+    // the rings with the same transform).
+    let scale = matrix_scale(&world);
     match &obj.object_type {
         ObjectType::Group(children) | ObjectType::ClippingMask { children } => {
             // Masks: first child clips the rest.
@@ -572,7 +577,7 @@ fn render_obj(ctx: &mut Ctx, obj: &Object, parent: &[f64; 6], out: &mut String) 
                 let mut moved = ol;
                 moved.transform(&[1.0, 0.0, 0.0, 1.0, ax, layout.origin.1 + li as f64 * line_h]);
                 moved.transform(&world);
-                emit_painted_path(ctx, obj, &moved, out);
+                emit_painted_path(ctx, obj, &moved, scale, out);
             }
         }
         ObjectType::Image { width, height, png_bytes } => {
@@ -596,7 +601,7 @@ fn render_obj(ctx: &mut Ctx, obj: &Object, parent: &[f64; 6], out: &mut String) 
                 }
                 path.elements.push(PathElement::ClosePath);
                 path.fill = Some(FillStyle::solid(color));
-                emit_painted_path(ctx, obj, &path, out);
+                emit_painted_path(ctx, obj, &path, scale, out);
             }
         }
         _ => {
@@ -609,7 +614,7 @@ fn render_obj(ctx: &mut Ctx, obj: &Object, parent: &[f64; 6], out: &mut String) 
             if path.stroke.is_none() {
                 path.stroke = obj.stroke.clone();
             }
-            emit_painted_path(ctx, obj, &path, out);
+            emit_painted_path(ctx, obj, &path, scale, out);
         }
     }
 }
@@ -653,7 +658,11 @@ fn apply_world(world: &[f64; 6], x: f64, y: f64) -> (f64, f64) {
 }
 
 /// Paint a baked path with fill/stroke/gradient/opacity/overprint.
-fn emit_painted_path(ctx: &mut Ctx, obj: &Object, path: &PathData, out: &mut String) {
+///
+/// `scale` is the factor the geometry was baked through (see
+/// [`crate::core::geometry::matrix_scale`]); stroke widths and dash arrays
+/// ride it so the printed line matches the canvas.
+fn emit_painted_path(ctx: &mut Ctx, obj: &Object, path: &PathData, scale: f64, out: &mut String) {
     if path.elements.is_empty() {
         return;
     }
@@ -667,7 +676,7 @@ fn emit_painted_path(ctx: &mut Ctx, obj: &Object, path: &PathData, out: &mut Str
                 // Stroke still paints on top when set.
                 if path.stroke.is_some() {
                     let _ = writeln!(out, "q");
-                    emit_stroke_only(ctx, obj, path, out);
+                    emit_stroke_only(ctx, obj, path, scale, out);
                     let _ = writeln!(out, "Q");
                 }
                 return;
@@ -677,7 +686,7 @@ fn emit_painted_path(ctx: &mut Ctx, obj: &Object, path: &PathData, out: &mut Str
                 let _ = writeln!(out, "Q");
                 if path.stroke.is_some() {
                     let _ = writeln!(out, "q");
-                    emit_stroke_only(ctx, obj, path, out);
+                    emit_stroke_only(ctx, obj, path, scale, out);
                     let _ = writeln!(out, "Q");
                 }
                 return;
@@ -702,11 +711,17 @@ fn emit_painted_path(ctx: &mut Ctx, obj: &Object, path: &PathData, out: &mut Str
         }
         let p = ctx.stroke_paint(stroke.color, &stroke.spot);
         let _ = writeln!(out, "{p}");
-        let _ = writeln!(out, "{} w", f2(stroke.width.max(0.05)));
+        let _ = writeln!(out, "{} w", f2((stroke.width * scale).max(0.05)));
         let _ = writeln!(out, "{} J", cap_str(&stroke.cap));
         let _ = writeln!(out, "{} j", join_str(&stroke.join));
         if let Some(dash) = stroke.dash_pattern.as_ref().filter(|d| !d.is_empty()) {
-            let pat = dash.iter().map(|v| f2(*v)).collect::<Vec<_>>().join(" ");
+            // Dashes are baked in the same space as the path, so they scale
+            // with it exactly like the canvas tessellation does.
+            let pat = dash
+                .iter()
+                .map(|v| f2(v * scale))
+                .collect::<Vec<_>>()
+                .join(" ");
             let _ = writeln!(out, "[{pat}] 0 d");
         }
     }
@@ -726,7 +741,7 @@ fn emit_painted_path(ctx: &mut Ctx, obj: &Object, path: &PathData, out: &mut Str
     let _ = writeln!(out, "Q");
 }
 
-fn emit_stroke_only(ctx: &mut Ctx, obj: &Object, path: &PathData, out: &mut String) {
+fn emit_stroke_only(ctx: &mut Ctx, obj: &Object, path: &PathData, scale: f64, out: &mut String) {
     if let Some(stroke) = path.stroke.as_ref() {
         let g = ctx.gs_for(stroke.overprint, obj.opacity * stroke.color[3]);
         if !g.is_empty() {
@@ -734,7 +749,7 @@ fn emit_stroke_only(ctx: &mut Ctx, obj: &Object, path: &PathData, out: &mut Stri
         }
         let p = ctx.stroke_paint(stroke.color, &stroke.spot);
         let _ = writeln!(out, "{p}");
-        let _ = writeln!(out, "{} w", f2(stroke.width.max(0.05)));
+        let _ = writeln!(out, "{} w", f2((stroke.width * scale).max(0.05)));
         emit_path_geom(path, &[1.0, 0.0, 0.0, 1.0, 0.0, 0.0], out);
         let _ = writeln!(out, "S");
     }

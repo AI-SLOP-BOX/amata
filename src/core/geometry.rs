@@ -156,6 +156,21 @@ pub fn distance_point_to_segment(p: AnchorPoint, a: AnchorPoint, b: AnchorPoint)
     p.distance(proj)
 }
 
+/// Uniform scale factor of an affine matrix: `sqrt(|det|)` of the linear
+/// part, i.e. how much the map stretches a unit area.
+///
+/// The exporters bake geometry through the matrix (a scaled object leaves
+/// `to_path_data()` in world coordinates) while a stroke width is a single
+/// number, so the width has to be multiplied by this factor to keep the same
+/// on-screen weight the canvas draws. Rotation and translation drop out of
+/// the determinant; a pure translate therefore returns `1.0`.
+///
+/// For a `Transform`-derived matrix without skew this is exactly
+/// [`crate::core::document::Object::visual_scale`].
+pub fn matrix_scale(m: &[f64; 6]) -> f64 {
+    (m[0] * m[3] - m[1] * m[2]).abs().sqrt()
+}
+
 pub fn transform_point_if_needed(p: &AnchorPoint, m: &[f64; 6]) -> AnchorPoint {
     AnchorPoint::new(
         m[0] * p.x + m[2] * p.y + m[4],
@@ -210,4 +225,53 @@ pub fn compute_corner_radius(
     };
     dx.min(dy)
         .clamp(0.0, width.abs().min(height.abs()) * 0.5)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core::document::Transform;
+
+    #[test]
+    fn matrix_scale_ignores_translation_and_rotation() {
+        let translate = [1.0, 0.0, 0.0, 1.0, 40.0, -12.0];
+        assert_eq!(matrix_scale(&translate), 1.0);
+
+        // 90°: `[cos sin -sin cos tx ty]`.
+        let rotate = [0.0, 1.0, -1.0, 0.0, 0.0, 0.0];
+        assert!((matrix_scale(&rotate) - 1.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn matrix_scale_reads_uniform_and_area_scale() {
+        let uniform = [2.0, 0.0, 0.0, 2.0, 0.0, 0.0];
+        assert!((matrix_scale(&uniform) - 2.0).abs() < 1e-12);
+
+        // 2×1 → the unit square doubles its area, so the factor is sqrt(2).
+        let stretched = [2.0, 0.0, 0.0, 1.0, 0.0, 0.0];
+        assert!((matrix_scale(&stretched) - 2.0_f64.sqrt()).abs() < 1e-12);
+
+        // A mirror keeps the area, hence the absolute value: the factor is
+        // still the geometric mean of the axis scales, sqrt(|−1 · 3|).
+        let mirrored = [-1.0, 0.0, 0.0, 3.0, 0.0, 0.0];
+        assert!((matrix_scale(&mirrored) - 3.0_f64.sqrt()).abs() < 1e-12);
+    }
+
+    #[test]
+    fn matrix_scale_agrees_with_visual_scale_without_skew() {
+        // The exporters reach the same number as `Object::visual_scale`
+        // (the geometric mean of the axis scales) for every rotation-free,
+        // skew-free resize — a pure scale matrix has det = scale_x · scale_y.
+        let t = Transform {
+            x: 40.0,
+            y: -18.0,
+            rotation: 0.75,
+            scale_x: 3.0,
+            scale_y: 0.5,
+            skew_x: 0.0,
+            skew_y: 0.0,
+        };
+        let expected = (3.0_f64 * 0.5).sqrt();
+        assert!((matrix_scale(&t.matrix()) - expected).abs() < 1e-12);
+    }
 }

@@ -1,4 +1,5 @@
 use crate::core::document::{Document, Object, ObjectType};
+use crate::core::geometry::matrix_scale;
 use crate::core::path::{FillStyle, PathData, PathElement};
 use std::fmt::Write;
 
@@ -13,7 +14,14 @@ fn affine_mul(m1: &[f64; 6], m2: &[f64; 6]) -> [f64; 6] {
     ]
 }
 
-fn emit_filled_path(stream_content: &mut String, path: &PathData) {
+/// Emit one baked path (`fill` / `stroke` / both).
+///
+/// `scale` is the factor the geometry was transformed through — see
+/// [`crate::core::geometry::matrix_scale`]. The path is already in world
+/// coordinates while `stroke.width` is still the saved value, so the width
+/// rides the scale to stay as heavy as the canvas draws it. At `scale == 1.0`
+/// the emitted bytes are unchanged from the unscaled export.
+fn emit_filled_path(stream_content: &mut String, path: &PathData, scale: f64) {
     if path.elements.is_empty() {
         return;
     }
@@ -31,7 +39,7 @@ fn emit_filled_path(stream_content: &mut String, path: &PathData) {
     let has_stroke = if let Some(stroke) = &path.stroke {
         let [r, g, b, _] = stroke.color;
         let _ = writeln!(stream_content, "{:.3} {:.3} {:.3} RG", r, g, b);
-        let _ = writeln!(stream_content, "{:.2} w", stroke.width);
+        let _ = writeln!(stream_content, "{:.2} w", stroke.width * scale);
         true
     } else {
         false
@@ -90,6 +98,9 @@ fn render_obj_pdf(obj: &Object, parent: &[f64; 6], stream_content: &mut String) 
         return;
     }
     let world = affine_mul(parent, &obj.transform.matrix());
+    // Geometry below is baked through `world`; the stroke width has to ride
+    // the same scale or a resized object exports with the wrong line weight.
+    let scale = matrix_scale(&world);
 
     match &obj.object_type {
         // Recurse so nested children keep their own fills, strokes and text.
@@ -114,7 +125,7 @@ fn render_obj_pdf(obj: &Object, parent: &[f64; 6], stream_content: &mut String) 
             if path.stroke.is_none() {
                 path.stroke = obj.stroke.clone();
             }
-            emit_filled_path(stream_content, &path);
+            emit_filled_path(stream_content, &path, scale);
         }
         ObjectType::GradientMesh(m) => {
             // Bake flat quads (same approach as the SVG exporter: mesh
@@ -134,7 +145,7 @@ fn render_obj_pdf(obj: &Object, parent: &[f64; 6], stream_content: &mut String) 
                 }
                 path.elements.push(PathElement::ClosePath);
                 path.fill = Some(FillStyle::solid(color));
-                emit_filled_path(stream_content, &path);
+                emit_filled_path(stream_content, &path, scale);
             }
         }
         _ => {
@@ -146,7 +157,7 @@ fn render_obj_pdf(obj: &Object, parent: &[f64; 6], stream_content: &mut String) 
             if path.stroke.is_none() {
                 path.stroke = obj.stroke.clone();
             }
-            emit_filled_path(stream_content, &path);
+            emit_filled_path(stream_content, &path, scale);
         }
     }
 }

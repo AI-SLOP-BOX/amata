@@ -298,13 +298,28 @@ fn path_to_svg_with_fill(
     effect_attr: &str,
 ) -> String {
     let d = path_data_to_d(path, transform);
+    // `d` is baked, so the width has to follow the same matrix.
+    let width_scale = crate::core::geometry::matrix_scale(&transform.matrix());
     let fill = obj_fill_attr;
     let stroke = obj_stroke
         .or(path.stroke.as_ref())
-        .map(stroke_svg_attrs)
+        .map(|s| stroke_svg_attrs(s, width_scale))
         .unwrap_or_default();
 
     format!("  <path d=\"{d}\"{fill}{stroke}{effect_attr} />\n")
+}
+
+/// A stroke number (width or dash step) expressed in the coordinate system
+/// the `d` was written in.
+///
+/// At `width_scale == 1.0` the raw value is printed exactly as before — the
+/// export stays byte-identical for unscaled objects — and a real scale is
+/// rounded to four decimals so a diagonal resize doesn't print twenty digits.
+fn scaled_stroke_value(value: f64, width_scale: f64) -> String {
+    if width_scale == 1.0 {
+        return value.to_string();
+    }
+    ((value * width_scale * 10_000.0).round() / 10_000.0).to_string()
 }
 
 /// Presentation attributes for a stroke: colour, width, dash array and — the
@@ -317,11 +332,19 @@ fn path_to_svg_with_fill(
 /// site in this module funnels through here so the attribute set stays
 /// consistent (it previously existed as seven hand-written copies that only
 /// carried colour/width/dash).
-fn stroke_svg_attrs(s: &StrokeStyle) -> String {
+///
+/// `width_scale` is the scale of the coordinate system the `d` was written
+/// in.  Elements that keep a `transform=` attribute pass `1.0` — the
+/// transform scales their stroke on its own — while branches that bake the
+/// object transform into `d` pass [`Object::visual_scale`], so the stroke
+/// and its dashes keep the weight and spacing the canvas gives them
+/// (otherwise a scaled object exports with a hairline of its on-screen
+/// thickness).
+fn stroke_svg_attrs(s: &StrokeStyle, width_scale: f64) -> String {
     let mut out = format!(
         " stroke=\"{}\" stroke-width=\"{}\"",
         color_to_svg_str(&s.color),
-        s.width
+        scaled_stroke_value(s.width, width_scale)
     );
     out.push_str(&format!(
         " stroke-linecap=\"{}\"",
@@ -344,7 +367,7 @@ fn stroke_svg_attrs(s: &StrokeStyle) -> String {
         out.push_str(&format!(
             " stroke-dasharray=\"{}\"",
             dp.iter()
-                .map(|n| n.to_string())
+                .map(|n| scaled_stroke_value(*n, width_scale))
                 .collect::<Vec<_>>()
                 .join(" ")
         ));
@@ -670,7 +693,8 @@ fn render_object_to_svg(
                     .stroke
                     .as_ref()
                     .or(path.stroke.as_ref())
-                    .map(stroke_svg_attrs)
+                    // `d` carries the object transform baked in.
+                    .map(|s| stroke_svg_attrs(s, obj.visual_scale()))
                     .unwrap_or_default(),
             };
 
@@ -686,7 +710,9 @@ fn render_object_to_svg(
             let stroke = obj
                 .stroke
                 .as_ref()
-                .map(stroke_svg_attrs)
+                // `<rect>`/`<ellipse>` keep `transform=`: it scales the
+                // stroke along with the geometry, so nothing extra here.
+                .map(|s| stroke_svg_attrs(s, 1.0))
                 .unwrap_or_default();
             let rx_str = if *corner_radius > 0.0 {
                 format!(" rx=\"{corner_radius}\" ry=\"{corner_radius}\"")
@@ -710,7 +736,9 @@ fn render_object_to_svg(
             let stroke = obj
                 .stroke
                 .as_ref()
-                .map(stroke_svg_attrs)
+                // `<rect>`/`<ellipse>` keep `transform=`: it scales the
+                // stroke along with the geometry, so nothing extra here.
+                .map(|s| stroke_svg_attrs(s, 1.0))
                 .unwrap_or_default();
             if transform_has_linear_part(&obj.transform) {
                 let transform_attr = svg_transform_attr(&obj.transform);
@@ -729,7 +757,7 @@ fn render_object_to_svg(
             let stroke = obj
                 .stroke
                 .as_ref()
-                .map(stroke_svg_attrs)
+                .map(|s| stroke_svg_attrs(s, 1.0))
                 .unwrap_or_else(|| " stroke=\"#000000\" stroke-width=\"1\"".to_string());
             if transform_has_linear_part(&obj.transform) {
                 let transform_attr = svg_transform_attr(&obj.transform);
@@ -961,7 +989,7 @@ fn render_object_to_svg(
                 .stroke
                 .as_ref()
                 .or(path.stroke.as_ref())
-                .map(stroke_svg_attrs)
+                .map(|s| stroke_svg_attrs(s, obj.visual_scale()))
                 .unwrap_or_default();
             svg.push_str(&format!(
                 "  <path{id_attr} d=\"{d}\"{fill}{stroke}{effect_attr} />\n"
@@ -1071,7 +1099,8 @@ fn render_object_to_svg(
             let stroke = obj
                 .stroke
                 .as_ref()
-                .map(stroke_svg_attrs)
+                // `d` carries the object transform baked in.
+                .map(|s| stroke_svg_attrs(s, obj.visual_scale()))
                 .unwrap_or_default();
             svg.push_str(&format!(
                 "  <path{id_attr} d=\"{d}\"{fill_attr}{stroke}{effect_attr} />\n"
