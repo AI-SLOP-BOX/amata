@@ -318,6 +318,11 @@ pub fn apply_adobe_theme(ctx: &egui::Context, theme: &str) {
     visuals.widgets.open.bg_stroke = Stroke::new(1.0_f32, Color32::from_rgb(20, 115, 230));
     visuals.widgets.open.fg_stroke = Stroke::new(1.0_f32, strong_fg);
 
+    // ComboBox dropdown list / DragValue / Slider all draw from the
+    // WidgetVisuals above plus panel_fill / window_fill (set at the top of
+    // this function), so the whole stock-widget family shares the Adobe
+    // Charcoal look: recessed idle fill, hairline stroke, accent on open.
+
     // Noninteractive (labels, static frames)
     visuals.widgets.noninteractive.bg_fill = p.noninteractive;
     visuals.widgets.noninteractive.bg_stroke =

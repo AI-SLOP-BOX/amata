@@ -18,7 +18,7 @@ struct TreeRow {
     parent: Option<String>,
     id: String,
     name: String,
-    icon: &'static str,
+    icon: fn(&egui::Painter, egui::Rect, egui::Color32),
     depth: usize,
     is_group: bool,
     visible: bool,
@@ -62,23 +62,24 @@ enum DropTarget {
     LayerEnd(usize),
 }
 
-fn type_icon(obj: &Object) -> &'static str {
+/// Vector icon painter for each object type (replaces the old emoji glyphs).
+fn type_icon(obj: &Object) -> fn(&egui::Painter, egui::Rect, egui::Color32) {
     match &obj.object_type {
-        ObjectType::Path(_) => "✒",
-        ObjectType::Rectangle { .. } => "▭",
-        ObjectType::Ellipse { .. } => "◯",
-        ObjectType::Star { .. } => "★",
-        ObjectType::Polygon { .. } => "⬡",
-        ObjectType::Line { .. } => "╱",
-        ObjectType::Text { .. } => "𝐓",
-        ObjectType::Group(_) => "🗂",
-        ObjectType::ClippingMask { .. } => "🎭",
-        ObjectType::Use { .. } => "❖",
-        ObjectType::Image { .. } => "🖼",
-        ObjectType::PixelArt(_) => "👾",
-        ObjectType::GradientMesh(_) => "🌈",
-        ObjectType::TextOnPath { .. } => "↻",
-        ObjectType::Envelope { .. } => "🌀",
+        ObjectType::Path(_) => crate::app::icons::icon_pen,
+        ObjectType::Rectangle { .. } => crate::app::icons::icon_rectangle,
+        ObjectType::Ellipse { .. } => crate::app::icons::icon_ellipse,
+        ObjectType::Star { .. } => crate::app::icons::icon_star,
+        ObjectType::Polygon { .. } => crate::app::icons::icon_polygon,
+        ObjectType::Line { .. } => crate::app::icons::icon_line,
+        ObjectType::Text { .. } => crate::app::icons::icon_text,
+        ObjectType::Group(_) => crate::app::icons::icon_folder,
+        ObjectType::ClippingMask { .. } => crate::app::icons::icon_clip,
+        ObjectType::Use { .. } => crate::app::icons::icon_duplicate,
+        ObjectType::Image { .. } => crate::app::icons::icon_camera,
+        ObjectType::PixelArt(_) => crate::app::icons::icon_pixel_pencil,
+        ObjectType::GradientMesh(_) => crate::app::icons::icon_gradient_mesh,
+        ObjectType::TextOnPath { .. } => crate::app::icons::icon_text_on_path,
+        ObjectType::Envelope { .. } => crate::app::icons::icon_envelope,
     }
 }
 
@@ -368,7 +369,8 @@ impl LayerPanel {
                 }
 
                 // Drag source wrapping name + icon.
-                let label = format!("{} {}", row.icon, row.name);
+                let icon_fn = row.icon;
+                let label = row.name.clone();
                 let drag_id = egui::Id::new(("tree_item", row.id.clone()));
                 let inner = ui.dnd_drag_source(drag_id, row.id.clone(), |ui| {
                     if rename_id.as_deref() == Some(row.id.as_str()) {
@@ -397,7 +399,16 @@ impl LayerPanel {
                             ))));
                         }
                     } else {
-                        let resp = ui.selectable_label(row.selected, &label);
+                        let resp = ui
+                            .horizontal(|ui| {
+                                let (icon_rect, _) = ui.allocate_exact_size(
+                                    egui::vec2(18.0, 18.0),
+                                    egui::Sense::hover(),
+                                );
+                                icon_fn(ui.painter(), icon_rect, ui.visuals().text_color());
+                                ui.selectable_label(row.selected, &label)
+                            })
+                            .inner;
                         if resp.clicked() {
                             row_actions.push(TreeAction::Select(row.id.clone()));
                         }
@@ -1438,7 +1449,7 @@ mod tests {
             parent: None,
             id: "g".into(),
             name: "G".into(),
-            icon: "🗂",
+            icon: crate::app::icons::icon_folder,
             depth: 0,
             is_group: true,
             visible: true,

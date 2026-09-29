@@ -1160,6 +1160,102 @@ pub fn icon_close(p: &Painter, rect: Rect, color: Color32) {
     );
 }
 
+/// Clipping mask: a rectangle with a diagonal cut-out corner.
+pub fn icon_clip(p: &Painter, rect: Rect, color: Color32) {
+    let r = pad(rect, 0.16);
+    let stroke = Stroke::new(1.5_f32, color);
+    let cut = r.width() * 0.30;
+    p.add(egui::Shape::closed_line(
+        vec![
+            Pos2::new(r.min.x, r.max.y),
+            Pos2::new(r.min.x, r.min.y),
+            Pos2::new(r.max.x, r.min.y),
+            Pos2::new(r.max.x, r.max.y - cut),
+            Pos2::new(r.max.x - cut, r.max.y),
+        ],
+        stroke,
+    ));
+}
+
+/// Gradient mesh: a 2x2 grid with curved cell edges.
+pub fn icon_gradient_mesh(p: &Painter, rect: Rect, color: Color32) {
+    let r = pad(rect, 0.16);
+    let stroke = Stroke::new(1.4_f32, color);
+    let mid_x = r.center().x;
+    let mid_y = r.center().y;
+    p.line_segment(
+        [Pos2::new(r.min.x, mid_y), Pos2::new(r.max.x, mid_y)],
+        stroke,
+    );
+    p.line_segment(
+        [Pos2::new(mid_x, r.min.y), Pos2::new(mid_x, r.max.y)],
+        stroke,
+    );
+    p.rect_stroke(r, 2.0, stroke, egui::StrokeKind::Middle);
+}
+
+/// Text on path: a curved baseline with a "T" above it.
+pub fn icon_text_on_path(p: &Painter, rect: Rect, color: Color32) {
+    let r = pad(rect, 0.16);
+    let stroke = Stroke::new(1.5_f32, color);
+    let base_y = r.max.y - r.height() * 0.18;
+    let curve = egui::epaint::QuadraticBezierShape::from_points_stroke(
+        [
+            Pos2::new(r.min.x, base_y),
+            Pos2::new(r.center().x, r.min.y + r.height() * 0.10),
+            Pos2::new(r.max.x, base_y),
+        ],
+        false,
+        egui::Color32::TRANSPARENT,
+        stroke,
+    );
+    p.add(egui::Shape::QuadraticBezier(curve));
+    p.line_segment(
+        [
+            Pos2::new(r.center().x, r.min.y),
+            Pos2::new(r.center().x, r.min.y + r.height() * 0.34),
+        ],
+        stroke,
+    );
+    p.line_segment(
+        [
+            Pos2::new(r.center().x - r.width() * 0.16, r.min.y + r.height() * 0.10),
+            Pos2::new(r.center().x + r.width() * 0.16, r.min.y + r.height() * 0.10),
+        ],
+        stroke,
+    );
+}
+
+/// Envelope distort: a warped rectangle (sides bow outward).
+pub fn icon_envelope(p: &Painter, rect: Rect, color: Color32) {
+    let r = pad(rect, 0.16);
+    let stroke = Stroke::new(1.5_f32, color);
+    let bow = r.width() * 0.10;
+    p.add(egui::Shape::closed_line(
+        vec![
+            Pos2::new(r.min.x - bow, r.min.y),
+            Pos2::new(r.max.x + bow, r.min.y),
+            Pos2::new(r.max.x + bow, r.max.y),
+            Pos2::new(r.min.x - bow, r.max.y),
+        ],
+        stroke,
+    ));
+    p.line_segment(
+        [
+            Pos2::new(r.min.x - bow, r.min.y),
+            Pos2::new(r.min.x - bow, r.max.y),
+        ],
+        stroke,
+    );
+    p.line_segment(
+        [
+            Pos2::new(r.max.x + bow, r.min.y),
+            Pos2::new(r.max.x + bow, r.max.y),
+        ],
+        stroke,
+    );
+}
+
 /// Play-style triangle pointing left (previous item).
 pub fn icon_seek_prev(p: &Painter, rect: Rect, color: Color32) {
     let r = pad(rect, 0.20);
