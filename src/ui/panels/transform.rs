@@ -92,13 +92,13 @@ impl AlignPanel {
         ui.label(RichText::new("等間隔:").weak().size(11.0));
         ui.horizontal(|ui| {
             if ui
-                .add_enabled(sel.len() >= 3, egui::Button::new("⬌ Distribute H"))
+                .add_enabled(sel.len() >= 3, egui::Button::new("水平に等間隔"))
                 .clicked()
             {
                 distribute_h(state, &sel);
             }
             if ui
-                .add_enabled(sel.len() >= 3, egui::Button::new("⬍ Distribute V"))
+                .add_enabled(sel.len() >= 3, egui::Button::new("垂直に等間隔"))
                 .clicked()
             {
                 distribute_v(state, &sel);
@@ -137,12 +137,12 @@ impl AlignPanel {
         });
 
         ui.add_space(4.0);
-        ui.label(RichText::new("Arrange:").weak().size(11.0));
+        ui.label(RichText::new("配置:").weak().size(11.0));
         ui.horizontal(|ui| {
             let mk = mod_key();
             let has_sel = !sel.is_empty();
             if ui
-                .add_enabled(has_sel, egui::Button::new("⬍ To Front"))
+                .add_enabled(has_sel, egui::Button::new("最前面へ"))
                 .on_hover_text(format!("{mk}+Shift+]"))
                 .clicked()
             {
@@ -198,7 +198,7 @@ impl AlignPanel {
                 });
             }
             if ui
-                .add_enabled(has_sel, egui::Button::new("⬌ To Back"))
+                .add_enabled(has_sel, egui::Button::new("最背面へ"))
                 .on_hover_text(format!("{mk}+Shift+["))
                 .clicked()
             {

@@ -45,7 +45,7 @@ impl PixelPanel {
             for tool in [Tool::PixelPencil, Tool::PixelEraser, Tool::PixelBucket] {
                 let active = state.current_tool == tool;
                 if ui
-                    .selectable_label(active, format!("{} {}", tool.icon(), tool.name()))
+                    .selectable_label(active, tool.name())
                     .on_hover_text(format!("ショートカット: {}", tool.shortcut()))
                     .clicked()
                 {
