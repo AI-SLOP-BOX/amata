@@ -175,7 +175,7 @@ impl PixelPanel {
                 state.pixel_palette_index = 0;
                 state.commit_object_edits("Pixel Palette Preset");
             }
-            if ui.small_button("Grayscale").clicked() {
+            if ui.small_button("グレースケール").clicked() {
                 state.ensure_object_snapshot(&id);
                 if let Some(obj) = state.document.find_object_mut(&id) {
                     if let ObjectType::PixelArt(p) = &mut obj.object_type {

@@ -44,7 +44,7 @@ impl FlowFieldPanel {
                 }
             }
 
-            if ui.button("⚡ Cyber").clicked() {
+            if ui.button("サイバー").clicked() {
                 let lines = crate::core::flowfield::generate_flowfield_streamlines(
                     crate::core::flowfield::FlowFieldPreset::CyberChaos,
                     w,
@@ -166,7 +166,7 @@ impl AudioWavePanel {
                 state.undo_manager.execute(cmd, &mut state.document);
             }
 
-            if ui.button("⚡ FM Synth").clicked() {
+            if ui.button("FMシンセ").clicked() {
                 let path = crate::core::audio_curve::generate_audio_waveform(
                     crate::core::audio_curve::WaveformType::FM,
                     3.0,
@@ -381,7 +381,7 @@ impl GradientMeshPanel {
         // Node picker.
         let mut node_rc: Option<(usize, usize)> = None;
         ui.horizontal(|ui| {
-            ui.label("Node:");
+            ui.label("ノード:");
             // Persist picker in egui memory (panel is stateless).
             let mem_id = egui::Id::new(("mesh_node", id.clone()));
             let (mut r, mut c): (usize, usize) = ui.memory_mut(|m| *m.data.get_temp_mut_or_default(mem_id));
@@ -451,7 +451,7 @@ impl GradientMeshPanel {
                 }
             });
             ui.horizontal(|ui| {
-                ui.label("Color:");
+                ui.label("カラー:");
                 if color_edit_srgba_u8(ui, &mut ncolor)
                     .changed()
                 {
@@ -705,7 +705,7 @@ impl EnvelopePanel {
             if amt_resp.drag_stopped() {
                 state.commit_object_edits("Edit Envelope");
             }
-            if ui.button("Release (restore source path)").clicked() {
+            if ui.button("リリース（ソースパスを復元）").clicked() {
                 let source = state.document.find_object(&id).and_then(|o| match &o.object_type {
                     crate::core::document::ObjectType::Envelope { source, .. } => {
                         Some(source.as_ref().clone())

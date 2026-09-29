@@ -935,7 +935,7 @@ impl CanvasWidget {
                                     .strong()
                                     .color(egui::Color32::from_rgb(100, 190, 255)),
                             );
-                            if ui.small_button("‹ Exit (Esc)").clicked() {
+                            if ui.small_button("終了（Esc）").clicked() {
                                 state.exit_isolation();
                             }
                         });

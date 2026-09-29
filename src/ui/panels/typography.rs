@@ -873,7 +873,7 @@ impl WidthToolPanel {
             return;
         };
 
-        ui.label("Add width points along the stroke path:");
+        ui.label("ストロークパスに線幅ポイントを追加:");
         ui.add_space(4.0);
 
         // Any widget interaction snapshots once; drags commit on stop so a
@@ -930,7 +930,7 @@ impl WidthToolPanel {
             prof_changed = true;
         }
 
-        if ui.button("+ Add Width Point").clicked() {
+        if ui.button("線幅ポイントを追加").clicked() {
             let last_pos = profile.points.last().map(|p| p.position).unwrap_or(0.5);
             profile.points.push(crate::core::document::WidthPoint {
                 position: (last_pos + 0.5).min(1.0),
@@ -945,7 +945,7 @@ impl WidthToolPanel {
         }
 
         // Reset profile
-        if ui.button("Reset Profile").clicked() {
+        if ui.button("プロファイルをリセット").clicked() {
             *profile = crate::core::document::WidthProfile::default();
             prof_changed = true;
         }
@@ -981,7 +981,7 @@ impl PatternPanel {
         let id = state.selected_ids[0].clone();
 
         // Pattern type selector
-        ui.label("Pattern Type:");
+        ui.label("パターンタイプ:");
         let mut pattern = crate::core::path::PatternFill::default();
 
         ui.horizontal_wrapped(|ui| {
@@ -1004,7 +1004,7 @@ impl PatternPanel {
 
         // Tile size
         ui.horizontal(|ui| {
-            ui.label("Tile W:");
+            ui.label("タイル幅:");
             ui.add(
                 egui::DragValue::new(&mut pattern.tile_width)
                     .speed(1.0)
@@ -1020,13 +1020,13 @@ impl PatternPanel {
 
         // Scale
         ui.horizontal(|ui| {
-            ui.label("Scale:");
+            ui.label("スケール:");
             ui.add(egui::Slider::new(&mut pattern.scale, 0.1..=5.0).show_value(true));
         });
 
         // Rotation
         ui.horizontal(|ui| {
-            ui.label("Rotation:");
+            ui.label("回転:");
             ui.add(
                 egui::DragValue::new(&mut pattern.rotation)
                     .speed(1.0)
@@ -1038,7 +1038,7 @@ impl PatternPanel {
         ui.add_space(4.0);
 
         // Apply pattern
-        if ui.button("Apply Pattern").clicked() {
+        if ui.button("パターンを適用").clicked() {
             let fill = FillStyle {
                 color: state.fill_color,
                 fill_type: FillType::Pattern(pattern.clone()),

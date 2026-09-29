@@ -440,7 +440,7 @@ impl IrasuApp {
                                 Stroke::new(1.3_f32, col),
                             );
                         })
-                        .on_hover_text("Swap Fill and Stroke (Shift+X)");
+                        .on_hover_text("塗りと線を入れ替え（Shift+X）");
                         if swap_resp.clicked() {
                             std::mem::swap(
                                 &mut self.state.fill_color,
@@ -466,7 +466,7 @@ impl IrasuApp {
                                 col,
                             );
                         })
-                        .on_hover_text("Default Colors: White Fill, Black Stroke (D)");
+                        .on_hover_text("デフォルト色：白塗り、黒線（D）");
                         if default_resp.clicked() {
                             self.state.fill_color = [1.0, 1.0, 1.0, 1.0];
                             self.state.stroke_color = [0.0, 0.0, 0.0, 1.0];
@@ -487,7 +487,7 @@ impl IrasuApp {
                                 Stroke::new(1.4_f32, Color32::from_rgb(200, 50, 50)),
                             );
                         })
-                        .on_hover_text("None / Transparent (/)");
+                        .on_hover_text("なし/透明（/）");
                         if none_resp.clicked() {
                             self.state.fill_color = [0.0, 0.0, 0.0, 0.0];
                         }

@@ -60,7 +60,7 @@ impl GradientPanel {
 
         // Fill Type Selector
         ui.horizontal(|ui| {
-            ui.label("Type:");
+            ui.label("タイプ:");
             let mut new_type = fill_type_name.clone();
             for t in ["Solid", "Linear", "Radial"] {
                 if ui.selectable_label(fill_type_name == t, t).clicked() {
@@ -116,14 +116,14 @@ impl GradientPanel {
         // Gradient Stops Editor
         match fill_type_name.as_str() {
             "Linear" => {
-                ui.label("Linear Gradient:");
+                ui.label("線形グラデーション:");
 
                 // Angle
                 let dx = linear_end[0] - linear_start[0];
                 let dy = linear_end[1] - linear_start[1];
                 let mut angle = dy.atan2(dx).to_degrees();
                 ui.horizontal(|ui| {
-                    ui.label("Angle:");
+                    ui.label("角度:");
                     let angle_resp = ui.add(
                         egui::DragValue::new(&mut angle)
                             .speed(1.0)
@@ -151,10 +151,10 @@ impl GradientPanel {
                 Self::render_stops(ui, state, &id, &mut linear_stops, "Linear");
             }
             "Radial" => {
-                ui.label("Radial Gradient:");
+                ui.label("放射グラデーション:");
 
                 ui.horizontal(|ui| {
-                    ui.label("Radius:");
+                    ui.label("半径:");
                     let mut r = radial_radius;
                     let r_resp =
                         ui.add(egui::Slider::new(&mut r, 0.01..=2.0).show_value(true));
@@ -175,7 +175,7 @@ impl GradientPanel {
                 Self::render_stops(ui, state, &id, &mut radial_stops, "Radial");
             }
             _ => {
-                ui.label("Solid fill (no gradient stops)");
+                ui.label("単色（グラデーションストップなし）");
             }
         }
     }
@@ -301,7 +301,7 @@ impl GradientPanel {
         }
 
         // Add stop button
-        if ui.button("+ Add Color Stop").clicked() {
+        if ui.button("カラーストップを追加").clicked() {
             let offset = if stops.len() >= 2 {
                 (stops[stops.len() - 2].offset + stops[stops.len() - 1].offset) / 2.0
             } else {
@@ -406,10 +406,10 @@ impl EffectsPanel {
                 }
             };
 
-            track(&ui.checkbox(&mut has_shadow, "Drop Shadow"));
+            track(&ui.checkbox(&mut has_shadow, "ドロップシャドウ"));
             if has_shadow {
                 ui.horizontal(|ui| {
-                    ui.label("Offset X:");
+                    ui.label("オフセットX:");
                     let r = ui.add(
                         egui::DragValue::new(&mut current_shadow.offset_x).speed(1.0),
                     );
@@ -421,20 +421,20 @@ impl EffectsPanel {
                     track(&r);
                 });
                 ui.horizontal(|ui| {
-                    ui.label("Blur:");
+                    ui.label("ぼかし:");
                     let r = ui.add(
                         egui::DragValue::new(&mut current_shadow.blur_radius)
                             .speed(0.5)
                             .range(0.0..=100.0),
                     );
                     track(&r);
-                    ui.label("Opacity:");
+                    ui.label("不透明度:");
                     let r =
                         ui.add(egui::Slider::new(&mut current_shadow.opacity, 0.0..=1.0));
                     track(&r);
                 });
                 ui.horizontal(|ui| {
-                    ui.label("Color:");
+                    ui.label("カラー:");
                     let r = color_edit_srgba(ui, &mut current_shadow.color);
                     track(&r);
                 });
@@ -443,32 +443,32 @@ impl EffectsPanel {
             let mut has_glow = glow.is_some();
             let mut current_glow = glow.unwrap_or_default();
 
-            track(&ui.checkbox(&mut has_glow, "Outer Glow"));
+            track(&ui.checkbox(&mut has_glow, "アウターグロー"));
             if has_glow {
                 ui.horizontal(|ui| {
-                    ui.label("Radius:");
+                    ui.label("半径:");
                     let r = ui.add(
                         egui::DragValue::new(&mut current_glow.radius)
                             .speed(1.0)
                             .range(1.0..=100.0),
                     );
                     track(&r);
-                    ui.label("Intensity:");
+                    ui.label("強度:");
                     let r =
                         ui.add(egui::Slider::new(&mut current_glow.intensity, 0.0..=1.0));
                     track(&r);
                 });
                 ui.horizontal(|ui| {
-                    ui.label("Glow Color:");
+                    ui.label("グローカラー");
                     let r = color_edit_srgba(ui, &mut current_glow.color);
                     track(&r);
                 });
             }
 
-            track(&ui.checkbox(&mut has_blur, "Gaussian Blur"));
+            track(&ui.checkbox(&mut has_blur, "ガウスぼかし"));
             if has_blur {
                 ui.horizontal(|ui| {
-                    ui.label("Radius:");
+                    ui.label("半径:");
                     let r = ui.add(
                         egui::DragValue::new(&mut blur_radius)
                             .speed(0.5)
@@ -483,7 +483,7 @@ impl EffectsPanel {
                 );
             }
 
-            track(&ui.checkbox(&mut has_adjust, "Color Adjust"));
+            track(&ui.checkbox(&mut has_adjust, "カラー調整"));
             if has_adjust {
                 ui.horizontal(|ui| {
                     ui.label("明度:");

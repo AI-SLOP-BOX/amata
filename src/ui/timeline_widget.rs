@@ -18,7 +18,7 @@ impl TimelineWidget {
                 state.timeline.is_playing = !state.timeline.is_playing;
             }
 
-            if ui.button("⏹ Stop").clicked() {
+            if ui.button("停止").clicked() {
                 state.timeline.is_playing = false;
                 state.timeline.current_frame = 0;
             }
@@ -41,12 +41,12 @@ impl TimelineWidget {
             );
 
             ui.separator();
-            ui.checkbox(&mut state.timeline.loop_playback, "Loop");
+            ui.checkbox(&mut state.timeline.loop_playback, "ループ");
 
             // Keyframing controls for selected object
             if let Some(sel_id) = state.selected_ids.first().cloned() {
                 ui.separator();
-                ui.menu_button("➕ Add Keyframe", |ui| {
+                ui.menu_button("キーフレームを追加", |ui| {
                     let mut obj_tx = 0.0;
                     let mut obj_ty = 0.0;
                     let mut obj_rot = 0.0;
@@ -86,7 +86,7 @@ impl TimelineWidget {
                         ui.close_menu();
                     }
 
-                    if ui.button("⇲ Scale (X, Y)").clicked() {
+                    if ui.button("スケール（X, Y）").clicked() {
                         let track_sx = state
                             .timeline
                             .add_or_get_track_mut(&sel_id, AnimProperty::ScaleX);

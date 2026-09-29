@@ -141,7 +141,7 @@ impl BrushPanel {
         match state.brush_kind_idx {
             0 => {
                 ui.horizontal(|ui| {
-                    ui.label("Angle:");
+                    ui.label("角度:");
                     ui.add(
                         egui::DragValue::new(&mut state.brush_angle)
                             .range(-90.0..=90.0)
@@ -149,7 +149,7 @@ impl BrushPanel {
                     );
                 });
                 ui.horizontal(|ui| {
-                    ui.label("Roundness:");
+                    ui.label("丸み:");
                     ui.add(
                         egui::DragValue::new(&mut state.brush_roundness)
                             .range(5.0..=100.0)
@@ -157,7 +157,7 @@ impl BrushPanel {
                     );
                 });
                 ui.horizontal(|ui| {
-                    ui.label("Size:");
+                    ui.label("サイズ:");
                     ui.add(
                         egui::DragValue::new(&mut state.brush_size)
                             .range(1.0..=200.0)
@@ -167,12 +167,12 @@ impl BrushPanel {
             }
             _ if state.brush_kind_idx == 3 => {
                 ui.horizontal(|ui| {
-                    ui.label("Bristles:");
+                    ui.label("毛:");
                     ui.add(
                         egui::DragValue::new(&mut state.brush_bristles)
                             .range(1.0..=64.0),
                     );
-                    ui.label("Scatter:");
+                    ui.label("散らばり:");
                     ui.add(
                         egui::DragValue::new(&mut state.brush_scatter)
                             .range(0.0..=1.0)
@@ -180,13 +180,13 @@ impl BrushPanel {
                     );
                 });
                 ui.horizontal(|ui| {
-                    ui.label("Size:");
+                    ui.label("サイズ:");
                     ui.add(
                         egui::DragValue::new(&mut state.brush_size)
                             .range(1.0..=200.0)
                             .suffix("pt"),
                     );
-                    ui.label("Opacity:");
+                    ui.label("不透明度:");
                     ui.add(
                         egui::DragValue::new(&mut state.brush_opacity)
                             .range(0.05..=1.0)
@@ -197,7 +197,7 @@ impl BrushPanel {
             }
             _ => {
                 ui.horizontal(|ui| {
-                    ui.label("Source:");
+                    ui.label("ソース:");
                     if ui
                         .selectable_label(!state.brush_custom_art, "Builtin")
                         .clicked()
@@ -228,7 +228,7 @@ impl BrushPanel {
                     }
                 });
                 ui.horizontal(|ui| {
-                    ui.label("Motif:");
+                    ui.label("モチーフ:");
                     for motif in ["arrow", "leaf", "wave"] {
                         if ui
                             .selectable_label(
@@ -246,12 +246,12 @@ impl BrushPanel {
                     ui.label(RichText::new("Motif height := path stroke width.").weak().size(11.0));
                 } else {
                     ui.horizontal(|ui| {
-                        ui.label("Spacing:");
+                        ui.label("間隔:");
                         ui.add(
                             egui::DragValue::new(&mut state.brush_spacing)
                                 .range(1.0..=500.0),
                         );
-                        ui.label("Scale:");
+                        ui.label("スケール:");
                         ui.add(
                             egui::DragValue::new(&mut state.brush_scale)
                                 .range(0.1..=10.0),
@@ -354,7 +354,7 @@ impl BrushPanel {
         ui.separator();
         ui.label(RichText::new("ブラシライブラリ").strong());
         ui.horizontal(|ui| {
-            ui.label("Name:");
+            ui.label("名前:");
             ui.text_edit_singleline(&mut state.brush_lib_name);
             if ui.button("保存").clicked() {
                 if let Some(mut def) = current_def(state) {

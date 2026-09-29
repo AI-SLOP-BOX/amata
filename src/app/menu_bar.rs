@@ -380,7 +380,7 @@ impl IrasuApp {
                         ui.close_menu();
                     }
                     ui.separator();
-                    ui.menu_button("VFX Pipeline", |ui| {
+                    ui.menu_button("VFXパイプライン", |ui| {
                         if ui
                             .button("AEVFXコンポジションを書き出し (.json)...")
                             .clicked()

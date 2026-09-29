@@ -15,7 +15,7 @@ impl TracePanel {
         ui.add_space(4.0);
 
         if ui
-            .button("Open Image to Trace (PNG/JPG/WebP/AVIF)...")
+            .button("トレースする画像を開く（PNG/JPG/WebP/AVIF）...")
             .clicked()
         {
             if let Some(path) = rfd::FileDialog::new()
@@ -60,7 +60,7 @@ impl FormulaPanel {
         ui.horizontal_wrapped(|ui| {
             if ui
                 .button("🌀 Spiral")
-                .on_hover_text("Archimedean Spiral")
+                .on_hover_text("アルキメデスの螺旋")
                 .clicked()
             {
                 let path = crate::core::formula::FormulaCurves::spiral(cx, cy, 4.0, 5.0, 3.0, 180);
@@ -73,7 +73,7 @@ impl FormulaPanel {
 
             if ui
                 .button("〰️ Lissajous")
-                .on_hover_text("Oscilloscope Waveform")
+                .on_hover_text("オシロスコープ波形")
                 .clicked()
             {
                 let path = crate::core::formula::FormulaCurves::lissajous(
@@ -88,7 +88,7 @@ impl FormulaPanel {
 
             if ui
                 .button("💮 Spirograph")
-                .on_hover_text("Geometric Spirograph Pattern")
+                .on_hover_text("幾何学スピログラフパターン")
                 .clicked()
             {
                 let path = crate::core::formula::FormulaCurves::spirograph(
@@ -103,7 +103,7 @@ impl FormulaPanel {
 
             if ui
                 .button("🌸 Rose Curve")
-                .on_hover_text("Rhodonea Mathematical Flower")
+                .on_hover_text("ロドネアの数学的花")
                 .clicked()
             {
                 let path = crate::core::formula::FormulaCurves::rose_curve(cx, cy, 4.0, 90.0, 200);
@@ -363,7 +363,7 @@ impl VoronoiPanel {
         ui.heading(RichText::new("ボロノイ・モザイク分割").strong());
         ui.add_space(4.0);
 
-        if ui.button("Generate Voronoi Mosaic (40 Cells)").clicked() {
+        if ui.button("ボロノイモザイクを生成（40セル）").clicked() {
             let w = state.document.width;
             let h = state.document.height;
             let mut seeds = Vec::with_capacity(40);
@@ -462,7 +462,7 @@ impl QrCodePanel {
         let cy = state.document.height * 0.5;
 
         ui.horizontal(|ui| {
-            if ui.button("Generate QR Code...").clicked() {
+            if ui.button("QRコードを生成...").clicked() {
                 if let Ok(path) = crate::core::barcode::generate_vector_qr(
                     "https://github.com/AI-SLOP-BOX/amata",
                     cx,
@@ -475,7 +475,7 @@ impl QrCodePanel {
                 }
             }
 
-            if ui.button("Barcode (Code-128)").clicked() {
+            if ui.button("バーコード（Code-128）").clicked() {
                 let path = crate::core::barcode::generate_vector_barcode(
                     "IRASU-AEVFX-2026",
                     cx,

@@ -15,7 +15,7 @@ impl PrintPanel {
 
         // Color mode + bleed.
         ui.horizontal(|ui| {
-            ui.label("Mode:");
+            ui.label("モード:");
             let cmyk = state.document.color_mode == ColorMode::Cmyk;
             if ui
                 .selectable_label(cmyk, "CMYK")
@@ -34,7 +34,7 @@ impl PrintPanel {
             }
         });
         ui.horizontal(|ui| {
-            ui.label("Bleed:");
+            ui.label("ブリード:");
             let mut mm = state.document.bleed * 25.4 / 72.0;
             if ui
                 .add(egui::DragValue::new(&mut mm).speed(0.1).range(0.0..=20.0).suffix("mm"))

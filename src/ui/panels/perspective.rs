@@ -35,23 +35,23 @@ impl PerspectivePanel {
         ui.checkbox(&mut grid.snap, "ガイドにスナップ");
         ui.checkbox(&mut grid.two_point, "二点透視（OFFで一点）");
         ui.horizontal(|ui| {
-            ui.label("Horizon Y:");
+            ui.label("水平線Y:");
             ui.add(egui::DragValue::new(&mut grid.horizon_y).speed(1.0));
         });
         ui.horizontal(|ui| {
-            ui.label("Left VP:");
+            ui.label("左VP:");
             ui.add(egui::DragValue::new(&mut grid.left_vp.0).speed(2.0));
             ui.add(egui::DragValue::new(&mut grid.left_vp.1).speed(2.0));
         });
         if grid.two_point {
             ui.horizontal(|ui| {
-                ui.label("Right VP:");
+                ui.label("右VP:");
                 ui.add(egui::DragValue::new(&mut grid.right_vp.0).speed(2.0));
                 ui.add(egui::DragValue::new(&mut grid.right_vp.1).speed(2.0));
             });
         }
         ui.horizontal(|ui| {
-            ui.label("Rays:");
+            ui.label("レイ数:");
             ui.add(egui::DragValue::new(&mut grid.rays).range(2..=64));
         });
         if grid != before {

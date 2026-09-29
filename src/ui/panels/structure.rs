@@ -736,10 +736,10 @@ impl LayerPanel {
         ui.separator();
 
         ui.horizontal(|ui| {
-            if ui.button("+ New Layer").clicked() {
+            if ui.button("レイヤーを追加").clicked() {
                 to_add_layer = true;
             }
-            if ui.button("- Delete Layer").clicked() && layer_count > 1 {
+            if ui.button("レイヤーを削除").clicked() && layer_count > 1 {
                 to_remove_layer = true;
             }
         });
@@ -857,7 +857,7 @@ impl ClippingMaskPanel {
         let sel_count = state.selected_ids.len();
         let has_mask_shape = sel_count >= 2;
 
-        ui.label("Select a mask shape (top) and content objects (below).");
+        ui.label("マスク形状（上）とコンテンツオブジェクト（下）を選択してください");
         ui.label(
             RichText::new(format!(
                 "{}+7 or click below to create mask",
@@ -1171,7 +1171,7 @@ impl MorphPanel {
 
         let sel_count = state.selected_ids.len();
         if sel_count == 2 {
-            ui.label("Select 2 shapes to interpolate/morph between them:");
+            ui.label("補間/モーフする2つの形状を選択してください");
             let mut t = 0.5;
             ui.add(
                 egui::Slider::new(&mut t, 0.0..=1.0)
@@ -1179,7 +1179,7 @@ impl MorphPanel {
                     .step_by(0.05),
             );
 
-            if ui.button("Create Morphed In-between Shape").clicked() {
+            if ui.button("モーフ中間形状を作成").clicked() {
                 let obj1 = state
                     .document
                     .all_objects()

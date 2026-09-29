@@ -13,33 +13,33 @@ impl GridRepeatPanel {
             return;
         }
 
-        ui.label("Grid Layout:");
+        ui.label("グリッドレイアウト:");
         ui.horizontal(|ui| {
-            ui.label("Columns:");
+            ui.label("列:");
             ui.add(egui::DragValue::new(&mut state.repeat_cols).range(1..=50));
-            ui.label("Rows:");
+            ui.label("行:");
             ui.add(egui::DragValue::new(&mut state.repeat_rows).range(1..=50));
         });
 
         ui.horizontal(|ui| {
-            ui.label("H Spacing:");
+            ui.label("水平間隔:");
             ui.add(egui::DragValue::new(&mut state.repeat_h_gap).range(0.0..=500.0));
-            ui.label("V Spacing:");
+            ui.label("垂直間隔:");
             ui.add(egui::DragValue::new(&mut state.repeat_v_gap).range(0.0..=500.0));
         });
 
         ui.add_space(4.0);
 
-        ui.label("Radial Layout:");
+        ui.label("放射レイアウト:");
         ui.horizontal(|ui| {
-            ui.label("Copies:");
+            ui.label("コピー数:");
             ui.add(egui::DragValue::new(&mut state.repeat_radial_count).range(2..=100));
-            ui.label("Radius:");
+            ui.label("半径:");
             ui.add(egui::DragValue::new(&mut state.repeat_radial_radius).range(10.0..=2000.0));
         });
 
         ui.horizontal(|ui| {
-            ui.label("Start Angle:");
+            ui.label("開始角度:");
             ui.add(
                 egui::DragValue::new(&mut state.repeat_start_angle)
                     .range(-360.0..=360.0)
@@ -49,7 +49,7 @@ impl GridRepeatPanel {
 
         ui.add_space(8.0);
 
-        if ui.button("Create Grid Repeat").clicked() {
+        if ui.button("グリッドリピートを作成").clicked() {
             if let Some(id) = state.selected_ids.first() {
                 let obj = state
                     .document
@@ -85,7 +85,7 @@ impl GridRepeatPanel {
             }
         }
 
-        if ui.button("Create Radial Repeat").clicked() {
+        if ui.button("放射リピートを作成").clicked() {
             if let Some(id) = state.selected_ids.first() {
                 let obj = state
                     .document
