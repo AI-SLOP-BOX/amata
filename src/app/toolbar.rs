@@ -233,30 +233,72 @@ impl IrasuApp {
             });
     }
 
-    pub(super) fn tool_button(&mut self, ui: &mut egui::Ui, tool: Tool) {
+    fn select_tool(&mut self, tool: Tool) {
+        if self.state.current_tool == Tool::Pen && self.canvas.pen_state.is_drawing {
+            if let Some(obj) = self.canvas.pen_state.finish_path(
+                self.state.fill_color,
+                self.state.stroke_color,
+                self.state.stroke_width,
+            ) {
+                let cmd = Box::new(crate::core::history::AddObjectCommand::new(obj));
+                self.state
+                    .undo_manager
+                    .execute(cmd, &mut self.state.document);
+            }
+        }
+        self.state.previous_tool = self.state.current_tool;
+        self.state.current_tool = tool;
+    }
+
+    pub(super) fn tool_button(
+        &mut self,
+        ui: &mut egui::Ui,
+        tool: Tool,
+        group: &[Tool],
+        group_idx: usize,
+    ) {
         let is_active = self.state.current_tool == tool;
         // Tool hints preference: name + shortcut tooltip on hover.
         let mut response = tool_icon_button(ui, tool, is_active, Vec2::new(32.0, 30.0));
         if self.state.prefs.show_tool_hints {
-            response = response.on_hover_text(format!("{} ({})", tool.name(), tool.shortcut()));
+            let mut tip = format!("{} ({})", tool.name(), tool.shortcut());
+            if group.len() > 1 {
+                tip.push_str(" — 右クリックでサブツール");
+            }
+            response = response.on_hover_text(tip);
         }
 
         if response.clicked() {
-            if self.state.current_tool == Tool::Pen && self.canvas.pen_state.is_drawing {
-                if let Some(obj) = self.canvas.pen_state.finish_path(
-                    self.state.fill_color,
-                    self.state.stroke_color,
-                    self.state.stroke_width,
-                ) {
-                    let cmd = Box::new(crate::core::history::AddObjectCommand::new(obj));
-                    self.state
-                        .undo_manager
-                        .execute(cmd, &mut self.state.document);
-                }
-            }
-            self.state.previous_tool = self.state.current_tool;
-            self.state.current_tool = tool;
+            self.select_tool(tool);
         }
+        // Sub-tool flyout (Illustrator triangle affordance): right-click
+        // opens the group popup anchored to this button.
+        if group.len() > 1 && response.secondary_clicked() {
+            ui.ctx().memory_mut(|m| {
+                m.toggle_popup(egui::Id::new(("tool_flyout", group_idx)));
+            });
+        }
+        egui::popup::popup_below_widget(
+            ui,
+            egui::Id::new(("tool_flyout", group_idx)),
+            &response,
+            egui::PopupCloseBehavior::CloseOnClickOutside,
+            |ui| {
+                for peer in group {
+                    let active = self.state.current_tool == *peer;
+                    let r = tool_icon_button(ui, *peer, active, Vec2::new(32.0, 30.0));
+                    let r = if self.state.prefs.show_tool_hints {
+                        r.on_hover_text(format!("{} ({})", peer.name(), peer.shortcut()))
+                    } else {
+                        r
+                    };
+                    if r.clicked() {
+                        self.select_tool(*peer);
+                        ui.close_menu();
+                    }
+                }
+            },
+        );
     }
 
     pub(super) fn show_toolbar(&mut self, ctx: &egui::Context) {
@@ -284,10 +326,11 @@ impl IrasuApp {
                         Tool::PixelBucket,
                     ];
 
-                    for (t1, t2) in tool_pairs {
+                    for (gi, (t1, t2)) in tool_pairs.into_iter().enumerate() {
+                        let group = [t1, t2];
                         ui.horizontal(|ui| {
-                            for tool in [t1, t2] {
-                                self.tool_button(ui, tool);
+                            for tool in group {
+                                self.tool_button(ui, tool, &group, gi);
                             }
                         });
                     }
@@ -296,7 +339,7 @@ impl IrasuApp {
                     // pairs above stay untouched.
                     ui.horizontal(|ui| {
                         for tool in pixel_tools {
-                            self.tool_button(ui, tool);
+                            self.tool_button(ui, tool, &[tool], 100);
                         }
                     });
 
