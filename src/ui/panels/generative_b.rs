@@ -14,7 +14,7 @@ impl FlowFieldPanel {
         let h = state.document.height;
 
         ui.horizontal(|ui| {
-            if ui.button("🌀 Vortex").clicked() {
+            if ui.button("渦巻き").clicked() {
                 let lines = crate::core::flowfield::generate_flowfield_streamlines(
                     crate::core::flowfield::FlowFieldPreset::Vortex,
                     w,
@@ -29,7 +29,7 @@ impl FlowFieldPanel {
                 }
             }
 
-            if ui.button("🧲 Magnetic").clicked() {
+            if ui.button("マグネット").clicked() {
                 let lines = crate::core::flowfield::generate_flowfield_streamlines(
                     crate::core::flowfield::FlowFieldPreset::MagneticDipole,
                     w,
@@ -124,7 +124,7 @@ impl AudioWavePanel {
         let h = state.document.height;
 
         ui.horizontal_wrapped(|ui| {
-            if ui.button("〰️ Sine Wave").clicked() {
+            if ui.button("正弦波").clicked() {
                 let path = crate::core::audio_curve::generate_audio_waveform(
                     crate::core::audio_curve::WaveformType::Sine,
                     4.0,
@@ -138,7 +138,7 @@ impl AudioWavePanel {
                 state.undo_manager.execute(cmd, &mut state.document);
             }
 
-            if ui.button("📐 Sawtooth").clicked() {
+            if ui.button("ノコギリ波").clicked() {
                 let path = crate::core::audio_curve::generate_audio_waveform(
                     crate::core::audio_curve::WaveformType::Sawtooth,
                     4.0,
@@ -152,7 +152,7 @@ impl AudioWavePanel {
                 state.undo_manager.execute(cmd, &mut state.document);
             }
 
-            if ui.button("🎹 Harmonics").clicked() {
+            if ui.button("倍音").clicked() {
                 let path = crate::core::audio_curve::generate_audio_waveform(
                     crate::core::audio_curve::WaveformType::Harmonics,
                     3.0,
@@ -200,7 +200,7 @@ impl MeshWarpPanel {
                 .map(|(_, o)| o.clone());
             ui.horizontal(|ui| {
                 if ui
-                    .add_enabled(has_sel, egui::Button::new("⭕ Bulge"))
+                    .add_enabled(has_sel, egui::Button::new("膨らみ"))
                     .clicked()
                 {
                     if let Some(obj) = &target_obj {
@@ -219,7 +219,7 @@ impl MeshWarpPanel {
                 }
 
                 if ui
-                    .add_enabled(has_sel, egui::Button::new("🌀 Twist"))
+                    .add_enabled(has_sel, egui::Button::new("ねじれ"))
                     .clicked()
                 {
                     if let Some(obj) = &target_obj {
@@ -237,10 +237,7 @@ impl MeshWarpPanel {
                     }
                 }
 
-                if ui
-                    .add_enabled(has_sel, egui::Button::new("🌊 Wave"))
-                    .clicked()
-                {
+                if ui.add_enabled(has_sel, egui::Button::new("波形")).clicked() {
                     if let Some(obj) = &target_obj {
                         let warped = crate::core::mesh_warp::apply_lattice_warp(
                             obj,
@@ -326,10 +323,10 @@ impl GradientMeshPanel {
         ui.label(RichText::new("新規メッシュ").weak());
         ui.horizontal_wrapped(|ui| {
             for (label, preset) in [
-                ("🌅 Sunset", crate::core::gradient_mesh::GradientMeshPreset::Sunset),
-                ("🌆 Cyber", crate::core::gradient_mesh::GradientMeshPreset::Cyberpunk),
-                ("🌌 Aurora", crate::core::gradient_mesh::GradientMeshPreset::Aurora),
-                ("🥇 Gold", crate::core::gradient_mesh::GradientMeshPreset::Gold),
+                ("サンセット", crate::core::gradient_mesh::GradientMeshPreset::Sunset),
+                ("サイバー", crate::core::gradient_mesh::GradientMeshPreset::Cyberpunk),
+                ("オーロラ", crate::core::gradient_mesh::GradientMeshPreset::Aurora),
+                ("ゴールド", crate::core::gradient_mesh::GradientMeshPreset::Gold),
             ] {
                 if ui.button(label).clicked() {
                     let size = state.document.width.min(state.document.height) / 2.0;

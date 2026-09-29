@@ -59,7 +59,7 @@ impl FormulaPanel {
 
         ui.horizontal_wrapped(|ui| {
             if ui
-                .button("🌀 Spiral")
+                .button("スパイラル")
                 .on_hover_text("アルキメデスの螺旋")
                 .clicked()
             {
@@ -72,7 +72,7 @@ impl FormulaPanel {
             }
 
             if ui
-                .button("〰️ Lissajous")
+                .button("リサジュー")
                 .on_hover_text("オシロスコープ波形")
                 .clicked()
             {
@@ -87,7 +87,7 @@ impl FormulaPanel {
             }
 
             if ui
-                .button("💮 Spirograph")
+                .button("スピログラフ")
                 .on_hover_text("幾何学スピログラフパターン")
                 .clicked()
             {
@@ -102,7 +102,7 @@ impl FormulaPanel {
             }
 
             if ui
-                .button("🌸 Rose Curve")
+                .button("バラ曲線")
                 .on_hover_text("ロドネアの数学的花")
                 .clicked()
             {
@@ -396,7 +396,7 @@ impl LSystemPanel {
         let cy = state.document.height * 0.5;
 
         ui.horizontal_wrapped(|ui| {
-            if ui.button("🌲 Tree").clicked() {
+            if ui.button("樹木").clicked() {
                 let path = crate::core::lsystem::generate_lsystem(
                     crate::core::lsystem::LSystemPreset::Tree,
                     4,
@@ -409,7 +409,7 @@ impl LSystemPanel {
                 state.undo_manager.execute(cmd, &mut state.document);
             }
 
-            if ui.button("🐉 Dragon").clicked() {
+            if ui.button("ドラゴン").clicked() {
                 let path = crate::core::lsystem::generate_lsystem(
                     crate::core::lsystem::LSystemPreset::Dragon,
                     10,
@@ -422,7 +422,7 @@ impl LSystemPanel {
                 state.undo_manager.execute(cmd, &mut state.document);
             }
 
-            if ui.button("❄️ Snowflake").clicked() {
+            if ui.button("雪の結晶").clicked() {
                 let path = crate::core::lsystem::generate_lsystem(
                     crate::core::lsystem::LSystemPreset::Snowflake,
                     3,
@@ -435,7 +435,7 @@ impl LSystemPanel {
                 state.undo_manager.execute(cmd, &mut state.document);
             }
 
-            if ui.button("🔲 Hilbert").clicked() {
+            if ui.button("ヒルベルト").clicked() {
                 let path = crate::core::lsystem::generate_lsystem(
                     crate::core::lsystem::LSystemPreset::Hilbert,
                     4,
@@ -507,10 +507,7 @@ impl DeformPanel {
                 .find(|(_, o)| o.id == id)
                 .map(|(_, o)| o.clone());
             ui.horizontal(|ui| {
-                if ui
-                    .add_enabled(has_sel, egui::Button::new("🌊 Wave"))
-                    .clicked()
-                {
+                if ui.add_enabled(has_sel, egui::Button::new("波形")).clicked() {
                     if let Some(obj) = &target_obj {
                         let path = obj.to_path_data();
                         let def = crate::core::noise::deform_path(
@@ -530,7 +527,7 @@ impl DeformPanel {
                 }
 
                 if ui
-                    .add_enabled(has_sel, egui::Button::new("🌪️ Noise"))
+                    .add_enabled(has_sel, egui::Button::new("ノイズ"))
                     .clicked()
                 {
                     if let Some(obj) = &target_obj {
@@ -552,7 +549,7 @@ impl DeformPanel {
                 }
 
                 if ui
-                    .add_enabled(has_sel, egui::Button::new("⚡ Glitch"))
+                    .add_enabled(has_sel, egui::Button::new("グリッチ"))
                     .clicked()
                 {
                     if let Some(obj) = &target_obj {
