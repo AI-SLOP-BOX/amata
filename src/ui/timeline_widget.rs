@@ -1,3 +1,4 @@
+use crate::app::icons::{icon_button, icon_pause, icon_play, icon_stop};
 use crate::core::state::AppState;
 use crate::core::timeline::{AnimProperty, EaseType};
 use egui::{Color32, RichText, Ui, Vec2};
@@ -7,18 +8,28 @@ pub struct TimelineWidget;
 impl TimelineWidget {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
         ui.horizontal(|ui| {
-            ui.heading(RichText::new("⏱️ Timeline & Animation").strong().size(14.0));
+            ui.heading(
+                RichText::new("タイムラインとアニメーション")
+                    .strong()
+                    .size(14.0),
+            );
 
-            let play_text = if state.timeline.is_playing {
-                "⏸ Pause"
-            } else {
-                "▶ Play"
-            };
-            if ui.button(play_text).clicked() {
+            let playing = state.timeline.is_playing;
+            if icon_button(
+                ui,
+                Vec2::new(22.0, 20.0),
+                if playing { icon_pause } else { icon_play },
+            )
+            .on_hover_text(if playing { "一時停止" } else { "再生" })
+            .clicked()
+            {
                 state.timeline.is_playing = !state.timeline.is_playing;
             }
 
-            if ui.button("停止").clicked() {
+            if icon_button(ui, Vec2::new(22.0, 20.0), icon_stop)
+                .on_hover_text("停止（先頭に戻る）")
+                .clicked()
+            {
                 state.timeline.is_playing = false;
                 state.timeline.current_frame = 0;
             }
@@ -66,7 +77,7 @@ impl TimelineWidget {
                         }
                     }
 
-                    if ui.button("📍 Position (X, Y)").clicked() {
+                    if ui.button("位置（X, Y）").clicked() {
                         let track_x = state
                             .timeline
                             .add_or_get_track_mut(&sel_id, AnimProperty::PositionX);
@@ -78,7 +89,7 @@ impl TimelineWidget {
                         ui.close_menu();
                     }
 
-                    if ui.button("🔄 Rotation").clicked() {
+                    if ui.button("回転").clicked() {
                         let track_rot = state
                             .timeline
                             .add_or_get_track_mut(&sel_id, AnimProperty::Rotation);
@@ -98,7 +109,7 @@ impl TimelineWidget {
                         ui.close_menu();
                     }
 
-                    if ui.button("👁 Opacity").clicked() {
+                    if ui.button("不透明度").clicked() {
                         let track_op = state
                             .timeline
                             .add_or_get_track_mut(&sel_id, AnimProperty::Opacity);

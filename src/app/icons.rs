@@ -1292,6 +1292,50 @@ pub fn icon_seek_next(p: &Painter, rect: Rect, color: Color32) {
     ));
 }
 
+/// Transport play: right-pointing triangle.
+pub fn icon_play(p: &Painter, rect: Rect, color: Color32) {
+    let r = pad(rect, 0.22);
+    let cy = r.center().y;
+    let h = r.height() * 0.72;
+    p.add(egui::Shape::convex_polygon(
+        vec![
+            Pos2::new(r.min.x + r.width() * 0.12, cy - h * 0.5),
+            Pos2::new(r.min.x + r.width() * 0.12, cy + h * 0.5),
+            Pos2::new(r.max.x - r.width() * 0.08, cy),
+        ],
+        color,
+        Stroke::NONE,
+    ));
+}
+
+/// Transport pause: two vertical bars.
+pub fn icon_pause(p: &Painter, rect: Rect, color: Color32) {
+    let r = pad(rect, 0.22);
+    let w = r.width() * 0.22;
+    p.rect_filled(
+        Rect::from_min_size(
+            Pos2::new(r.min.x + r.width() * 0.14, r.min.y),
+            Vec2::new(w, r.height()),
+        ),
+        CornerRadius::ZERO,
+        color,
+    );
+    p.rect_filled(
+        Rect::from_min_size(
+            Pos2::new(r.max.x - r.width() * 0.14 - w, r.min.y),
+            Vec2::new(w, r.height()),
+        ),
+        CornerRadius::ZERO,
+        color,
+    );
+}
+
+/// Transport stop: filled square.
+pub fn icon_stop(p: &Painter, rect: Rect, color: Color32) {
+    let r = pad(rect, 0.24);
+    p.rect_filled(r, CornerRadius::same(1), color);
+}
+
 /// Jump to the first item: a bar with a left-pointing triangle.
 pub fn icon_seek_first(p: &Painter, rect: Rect, color: Color32) {
     let r = pad(rect, 0.20);
