@@ -272,6 +272,45 @@ fn test_preflight_catches_classics() {
 }
 
 #[test]
+fn test_preflight_flags_press_killers() {
+    use irasu_illustrator::core::document::TextStyle;
+    let mut doc = Document::default();
+    doc.color_mode = ColorMode::Cmyk;
+    doc.bleed = irasu_illustrator::core::print::mm_to_pt(3.0);
+    // Hairline stroke.
+    let mut thin = Object::new_rect("T", 0.0, 0.0, 10.0, 10.0, 0.0);
+    thin.stroke = Some(irasu_illustrator::core::path::StrokeStyle {
+        color: [0.0, 0.0, 0.0, 1.0],
+        width: 0.1,
+        ..Default::default()
+    });
+    doc.add_object(thin);
+    // Transparent object.
+    let mut ghost = Object::new_rect("G", 20.0, 0.0, 10.0, 10.0, 0.0);
+    ghost.opacity = 0.5;
+    doc.add_object(ghost);
+    // Missing font.
+    let txt = Object::new_text_with_style(
+        "X",
+        "hi",
+        0.0,
+        0.0,
+        TextStyle::new("No Such Family XYZ", 12.0),
+    );
+    doc.add_object(txt);
+    // RGB image.
+    doc.add_object(Object::new_image("I", 0.0, 0.0, 8.0, 8.0, tiny_png()));
+    let issues = preflight(&doc);
+    let has = |level: PreflightLevel, check: &str| {
+        issues.iter().any(|i| i.level == level && i.check == check)
+    };
+    assert!(has(PreflightLevel::Warn, "ヘアライン"));
+    assert!(has(PreflightLevel::Warn, "透明・効果"));
+    assert!(has(PreflightLevel::Fail, "未インストールフォント"));
+    assert!(has(PreflightLevel::Warn, "RGB画像"));
+}
+
+#[test]
 fn test_preflight_clean_doc_passes() {
     let mut doc = Document::default();
     doc.color_mode = ColorMode::Cmyk;

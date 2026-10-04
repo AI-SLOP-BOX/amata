@@ -12,14 +12,24 @@ impl LayoutGridPanel {
         ui.add_space(4.0);
 
         // Implicit artboard (document.artboards empty): materialize it so
-        // the grid has somewhere to live.
+        // the grid has somewhere to live. Undoable like every other
+        // artboard-list edit so it can be taken back and marks dirty.
         if state.document.artboards.is_empty() {
             let w = state.document.width;
             let h = state.document.height;
+            let before = state.document.artboards.clone();
             state
                 .document
                 .artboards
-                .push(crate::core::document::Artboard::new("Artboard 1", 0.0, 0.0, w, h));
+                .push(crate::core::document::Artboard::new(
+                    "Artboard 1",
+                    0.0,
+                    0.0,
+                    w,
+                    h,
+                ));
+            let after = state.document.artboards.clone();
+            state.push_artboards_undo("Add Artboard", before, after);
         }
         if state.active_artboard_idx >= state.document.artboards.len() {
             state.active_artboard_idx = state.document.artboards.len() - 1;

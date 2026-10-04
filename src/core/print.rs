@@ -230,13 +230,122 @@ pub fn preflight(doc: &Document) -> Vec<PreflightIssue> {
 
     for layer in &doc.layers {
         for obj in layer.objects.iter() {
-            check_fill_stroke(doc, obj, &mut rgb_count, &mut overprint_white, &mut worst_ink, &mut worst_name, &mut spot_names);
+            check_fill_stroke(
+                doc,
+                obj,
+                &mut rgb_count,
+                &mut overprint_white,
+                &mut worst_ink,
+                &mut worst_name,
+                &mut spot_names,
+            );
         }
+    }
+    // Press-readiness killers the ink math cannot see: hairlines,
+    // transparency/effects (forbidden under PDF/X-1a), missing fonts and
+    // RGB images. Walks into groups/masks, which the ink pass skips.
+    let mut hairlines = 0usize;
+    let mut transparency = 0usize;
+    let mut rgb_images = 0usize;
+    let mut missing_fonts: std::collections::BTreeSet<String> = Default::default();
+    fn walk(
+        obj: &crate::core::document::Object,
+        hairlines: &mut usize,
+        transparency: &mut usize,
+        rgb_images: &mut usize,
+        missing_fonts: &mut std::collections::BTreeSet<String>,
+    ) {
+        use crate::core::document::{BlendMode, ObjectType};
+        if let Some(s) = &obj.stroke {
+            if s.width < 0.25 && s.width > 0.0 {
+                *hairlines += 1;
+            }
+        }
+        if obj.opacity < 1.0
+            || obj.blend_mode != BlendMode::Normal
+            || obj.shadow.is_some()
+            || obj.glow.is_some()
+        {
+            *transparency += 1;
+        }
+        match &obj.object_type {
+            ObjectType::Group(children) => {
+                for c in children {
+                    walk(c, hairlines, transparency, rgb_images, missing_fonts);
+                }
+            }
+            ObjectType::ClippingMask { children } => {
+                for c in children {
+                    walk(c, hairlines, transparency, rgb_images, missing_fonts);
+                }
+            }
+            ObjectType::Text { style, .. } | ObjectType::TextOnPath { style, .. } => {
+                let registry = crate::core::font::FontRegistry::global();
+                if !registry.is_family_available(&style.font_family) {
+                    missing_fonts.insert(style.font_family.clone());
+                }
+            }
+            ObjectType::Image { png_bytes, .. } => {
+                if let Ok(img) = image::load_from_memory(png_bytes) {
+                    use image::ColorType;
+                    match img.color() {
+                        ColorType::Rgb8 | ColorType::Rgba8 => *rgb_images += 1,
+                        _ => {}
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    for layer in &doc.layers {
+        for obj in layer.objects.iter() {
+            walk(
+                obj,
+                &mut hairlines,
+                &mut transparency,
+                &mut rgb_images,
+                &mut missing_fonts,
+            );
+        }
+    }
+    if hairlines > 0 {
+        out.push(PreflightIssue::warn(
+            "ヘアライン",
+            format!("{hairlines}件の線幅が0.25pt未満 — 印刷で消える恐れ"),
+        ));
+    }
+    if transparency > 0 {
+        out.push(PreflightIssue::warn(
+            "透明・効果",
+            format!(
+                "{transparency}件に不透明度/ブレンド/シャドウ/グロー — PDF/X-1aでは要フラット化"
+            ),
+        ));
+    }
+    if !missing_fonts.is_empty() {
+        out.push(PreflightIssue::fail(
+            "未インストールフォント",
+            format!(
+                "{} — 代替グリフで出力されます",
+                missing_fonts.iter().cloned().collect::<Vec<_>>().join(", ")
+            ),
+        ));
+    }
+    if rgb_images > 0 {
+        out.push(PreflightIssue::warn(
+            "RGB画像",
+            format!("{rgb_images}件 — 書き出し時にCMYK変換されます"),
+        ));
     }
     // Images: effective DPI assuming 1 unit = 1pt.
     for layer in &doc.layers {
         for obj in layer.objects.iter() {
-            if let ObjectType::Image { width, height, png_bytes } = &obj.object_type {
+            if let ObjectType::Image {
+                width,
+                height,
+                png_bytes,
+            } = &obj.object_type
+            {
                 if let Ok(img) = image::load_from_memory(png_bytes) {
                     let (pw, ph) = (img.width() as f64, img.height() as f64);
                     let dw = width.max(1.0);

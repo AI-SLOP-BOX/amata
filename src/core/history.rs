@@ -885,6 +885,39 @@ impl Command for SetArtboardsCommand {
     }
 }
 
+/// Replace the document's perspective grid (create / edit / delete).
+pub struct SetPerspectiveCommand {
+    name: String,
+    before: Option<super::perspective::PerspectiveGrid>,
+    after: Option<super::perspective::PerspectiveGrid>,
+}
+
+impl SetPerspectiveCommand {
+    pub fn new(
+        name: impl Into<String>,
+        before: Option<super::perspective::PerspectiveGrid>,
+        after: Option<super::perspective::PerspectiveGrid>,
+    ) -> Self {
+        Self {
+            name: name.into(),
+            before,
+            after,
+        }
+    }
+}
+
+impl Command for SetPerspectiveCommand {
+    fn execute(&mut self, doc: &mut Document) {
+        doc.perspective = self.after.clone();
+    }
+    fn undo(&mut self, doc: &mut Document) {
+        doc.perspective = self.before.clone();
+    }
+    fn name(&self) -> &str {
+        &self.name
+    }
+}
+
 /// Swap the full `symbols` list (component master delete/rename).
 pub struct SetSymbolsCommand {
     name: String,

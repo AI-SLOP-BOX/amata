@@ -244,6 +244,7 @@ pub struct AppState {
     /// Artboard edits (property panel): the artboard list as it was before the
     /// edit started, so a drag collapses into one undo step.
     pub pending_artboards: Option<Vec<crate::core::document::Artboard>>,
+    pub pending_perspective: Option<Option<crate::core::perspective::PerspectiveGrid>>,
     /// Layer-tree collapsed group ids (open when absent from this set).
     pub tree_collapsed: std::collections::HashSet<String>,
     /// Inline rename in the layer tree: (object id, text buffer).
@@ -403,6 +404,7 @@ impl Default for AppState {
             pending_objects: Vec::new(),
             pending_layers: Vec::new(),
             pending_artboards: None,
+            pending_perspective: None,
             tree_collapsed: std::collections::HashSet::new(),
             tree_rename: None,
             tree_rename_focused: false,
@@ -692,6 +694,39 @@ impl AppState {
             return;
         };
         self.push_artboards_undo(label, before, self.document.artboards.clone());
+    }
+
+    /// Record a perspective grid replacement as one undo step.
+    pub fn push_perspective_undo(
+        &mut self,
+        label: &str,
+        before: Option<crate::core::perspective::PerspectiveGrid>,
+        after: Option<crate::core::perspective::PerspectiveGrid>,
+    ) {
+        if before == after {
+            return;
+        }
+        let cmd = Box::new(crate::core::history::SetPerspectiveCommand::new(
+            label, before, after,
+        ));
+        self.undo_manager.execute(cmd, &mut self.document);
+    }
+
+    /// Snapshot the perspective grid before an edit (see the artboard
+    /// variant). Drags coalesce into one step; commit on change end.
+    pub fn ensure_perspective_snapshot(&mut self) {
+        if self.pending_perspective.is_none() {
+            self.pending_perspective = Some(self.document.perspective.clone());
+        }
+    }
+
+    /// Push the pending perspective snapshot as one undo step. No-op when
+    /// nothing actually changed.
+    pub fn commit_perspective_edits(&mut self, label: &str) {
+        let Some(before) = self.pending_perspective.take() else {
+            return;
+        };
+        self.push_perspective_undo(label, before, self.document.perspective.clone());
     }
 
     /// Snapshot a layer before a panel edit (see object variant).

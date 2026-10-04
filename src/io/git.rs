@@ -211,12 +211,14 @@ pub fn preserve_external_version(
         && create_checkpoint(
             file_path,
             "[Amata Snapshot] External version before local overwrite",
-        ).is_ok() {
-            git_saved = true;
-        }
+        )
+        .is_ok()
+    {
+        git_saved = true;
+    }
 
     let backup_path = file_path.with_extension("external_backup.svg");
-    let file_saved = std::fs::write(&backup_path, external_svg).is_ok();
+    let file_saved = super::atomic::atomic_write_str(&backup_path, external_svg).is_ok();
 
     if git_saved || file_saved {
         Ok(backup_path)
