@@ -169,9 +169,21 @@ impl PrintPanel {
                 };
                 let (bytes, warnings) =
                     crate::io::pdf_print::export_pdf_print(&state.document, &opts);
+                // X-1a gate: a file tagged PDF/X-1a must not contain live
+                // transparency or RGB plates. Refuse to write it and say
+                // exactly why, instead of shipping a bogus compliant file.
+                // (Uncheck PDF/X-1a to export the same content untagged.)
+                if opts.pdfx && warnings.iter().any(|w| w.starts_with("PDF/X-1a違反")) {
+                    state.notify_error(format!(
+                        "PDF/X-1a違反のため書き出しを中止: {}",
+                        warnings.join(" / ")
+                    ));
+                    return;
+                }
                 match crate::io::atomic::atomic_write_bytes(&path, &bytes) {
                     Ok(_) => {
-                        let mut msg = format!("印刷用PDFを書き出しました ({}KB)", bytes.len() / 1024);
+                        let mut msg =
+                            format!("印刷用PDFを書き出しました ({}KB)", bytes.len() / 1024);
                         if !warnings.is_empty() {
                             msg.push_str(&format!(" — {}", warnings.join(" / ")));
                         }

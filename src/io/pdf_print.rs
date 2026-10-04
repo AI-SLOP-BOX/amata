@@ -235,6 +235,46 @@ pub fn export_pdf_print(doc: &Document, opts: &PrintPdfOptions) -> (Vec<u8>, Vec
             render_obj(&mut ctx, obj, &[1.0, 0.0, 0.0, 1.0, 0.0, 0.0], &mut content);
         }
     }
+    // Missing families outline as generic blocks: flag them per family so
+    // the export never silently substitutes glyphs.
+    {
+        fn collect(obj: &Object, out: &mut Vec<String>) {
+            match &obj.object_type {
+                ObjectType::Text { style, .. } | ObjectType::TextOnPath { style, .. } => {
+                    out.push(style.font_family.clone());
+                }
+                ObjectType::Group(children) => {
+                    for c in children {
+                        collect(c, out);
+                    }
+                }
+                ObjectType::ClippingMask { children } => {
+                    for c in children {
+                        collect(c, out);
+                    }
+                }
+                _ => {}
+            }
+        }
+        let mut families = Vec::new();
+        for layer in &doc.layers {
+            for obj in &layer.objects {
+                collect(obj, &mut families);
+            }
+        }
+        families.sort();
+        families.dedup();
+        let registry = crate::core::font::FontRegistry::global();
+        for family in families {
+            if !registry.is_family_available(&family) {
+                // Pushed directly (`warn` dedupes by static key): every
+                // missing family must surface.
+                ctx.warnings.push(format!(
+                    "フォント「{family}」未インストール — 代替グリフで出力されます"
+                ));
+            }
+        }
+    }
     if opts.marks {
         render_marks(&mut ctx, tw, th, ox, oy, &mut content);
     }
@@ -331,13 +371,18 @@ pub fn export_pdf_print(doc: &Document, opts: &PrintPdfOptions) -> (Vec<u8>, Vec
     let mut catalog = String::from("<< /Type /Catalog /Pages 2 0 R");
     if opts.pdfx {
         catalog.push_str(" /GTS_PDFXVersion (PDF/X-1a:2001)");
+        // The embedded profile is Amata's synthetic UCR model, not a
+        // measured press characterization — so it must not claim
+        // "Japan Color 2001 Coated" (that assertion fails certified
+        // preflight). Custom identifier + honest Info instead; RIPs fall
+        // back to the embedded DestOutputProfile, which is present.
         let condition = if ctx.cmyk {
-            "Japan Color 2001 Coated"
+            "Amata UCR Coated (naive)"
         } else {
             "sRGB IEC61966-2.1"
         };
         let info = if ctx.cmyk {
-            "press default"
+            "synthetic UCR fallback — not a measured press profile"
         } else {
             "sRGB default"
         };
@@ -808,6 +853,21 @@ fn emit_painted_path(ctx: &mut Ctx, obj: &Object, path: &PathData, scale: f64, o
                     let _ = writeln!(out, "Q");
                 }
                 return;
+            }
+            // Pattern / image fills have no press equivalent here: the flat
+            // `color` field below is only a placeholder. Warn loudly instead
+            // of silently printing a black box.
+            FillType::Pattern(_) => {
+                ctx.warn(
+                    "pattern-fill",
+                    "パターン塗りは印刷PDFで単色近似されます — 効果を確認してください",
+                );
+            }
+            FillType::Image(_) => {
+                ctx.warn(
+                    "image-fill",
+                    "画像塗りは印刷PDFで単色近似されます — 効果を確認してください",
+                );
             }
             _ => {}
         }

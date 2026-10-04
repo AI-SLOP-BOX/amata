@@ -502,6 +502,96 @@ pub fn try_parse_svg_document(svg_text: &str) -> Result<Document, String> {
 }
 
 pub fn parse_svg_document(svg_text: &str) -> Document {
+    parse_svg_document_with_warnings(svg_text).0
+}
+
+/// Parse + report structurally unhandled elements.
+///
+/// The tag parser is element-based: anything outside its handled set is
+/// skipped without drawing. This scans the raw tags and reports what fell
+/// through, so Open can tell the user what did not survive (previously
+/// silent). Benign metadata (`title`/`desc`/…) and content-preserving
+/// wrappers (`a`, `tspan`) are excluded; CSS (`style`) is reported because
+/// presentation rules genuinely do not apply.
+pub fn parse_svg_document_with_warnings(svg_text: &str) -> (Document, Vec<String>) {
+    let doc = parse_svg_document_inner(svg_text);
+    (doc, svg_import_warnings(svg_text))
+}
+
+fn elem_name(tag: &str) -> Option<String> {
+    let t = tag.trim().trim_start_matches('<').trim_start_matches('/');
+    if t.starts_with('!') || t.starts_with('?') {
+        return None;
+    }
+    let end = t
+        .find(|c: char| c.is_whitespace() || c == '/' || c == '>')
+        .unwrap_or(t.len());
+    let name = &t[..end];
+    if name.is_empty() {
+        return None;
+    }
+    Some(name.to_string())
+}
+
+pub fn svg_import_warnings(svg_text: &str) -> Vec<String> {
+    // Elements the parser draws or structurally consumes.
+    const HANDLED: &[&str] = &[
+        "svg",
+        "g",
+        "defs",
+        "linearGradient",
+        "radialGradient",
+        "symbol",
+        "clipPath",
+        "path",
+        "polygon",
+        "polyline",
+        "rect",
+        "circle",
+        "ellipse",
+        "line",
+        "text",
+        "tspan",
+        "use",
+        "image",
+        "stop",
+    ];
+    // Skipped without visual loss (metadata, link wrappers handled by
+    // importing their children as normal elements).
+    const BENIGN: &[&str] = &["title", "desc", "metadata", "a", "namedview"];
+    let mut counts: std::collections::BTreeMap<String, usize> = std::collections::BTreeMap::new();
+    for tag in tokenize_svg_tags(svg_text) {
+        let trimmed = tag.trim();
+        if trimmed.starts_with("</") || trimmed.starts_with("<!") || trimmed.starts_with("<?") {
+            continue;
+        }
+        if let Some(name) = elem_name(trimmed) {
+            let base = name.rsplit(':').next().unwrap_or(&name);
+            if HANDLED.contains(&base) || BENIGN.contains(&base) {
+                continue;
+            }
+            *counts.entry(base.to_string()).or_insert(0) += 1;
+        }
+    }
+    counts
+        .into_iter()
+        .map(|(name, n)| {
+            let detail = match name.as_str() {
+                "style" => "CSSは未適用です",
+                "mask" => "マスクは未対応です",
+                "filter" => "フィルタ効果は未対応です",
+                "pattern" => "パターンは未対応です",
+                "marker" => "マーカーは未対応です",
+                "font" | "font-face" => "埋め込みフォントは未対応です",
+                "foreignObject" => "HTML埋め込みは未対応です",
+                _ => "未対応要素です",
+            };
+            format!("「{name}」×{n} — {detail}")
+        })
+        .collect()
+}
+
+fn parse_svg_document_inner(svg_text: &str) -> Document {
     let mut doc = Document {
         name: "SVG Import".to_string(),
         ..Default::default()

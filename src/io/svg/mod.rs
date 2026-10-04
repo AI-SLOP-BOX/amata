@@ -22,7 +22,10 @@ mod util;
 #[allow(unused_imports)]
 pub use export::{export_svg, export_svg_with_options, export_svg_with_profile};
 #[allow(unused_imports)]
-pub use parse::{parse_svg_color, parse_svg_document, parse_svg_path_data, try_parse_svg_document};
+pub use parse::{
+    parse_svg_color, parse_svg_document, parse_svg_document_with_warnings, parse_svg_path_data,
+    svg_import_warnings, try_parse_svg_document,
+};
 #[allow(unused_imports)]
 pub use util::xml_unescape;
 

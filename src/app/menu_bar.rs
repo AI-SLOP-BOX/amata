@@ -108,10 +108,24 @@ impl IrasuApp {
                                                 self.state.document.height,
                                             );
                                             if obj_count > 0 {
-                                                self.state.notify_info(format!(
+                                                let mut msg = format!(
                                                     "SVGをインポートしました ({} 個のオブジェクト)",
                                                     obj_count
-                                                ));
+                                                );
+                                                // Structural fidelity report: elements
+                                                // the importer skipped.
+                                                let warns =
+                                                    crate::io::svg::svg_import_warnings(&content);
+                                                if !warns.is_empty()
+                                                    && self.state.prefs.notify_file_compat
+                                                {
+                                                    msg.push_str(&format!(
+                                                        " — {}件スキップ: {}",
+                                                        warns.len(),
+                                                        warns.join(" / ")
+                                                    ));
+                                                }
+                                                self.state.notify_info(msg);
                                             } else {
                                                 self.state.notify_info(
                                                     "SVGを読み込みました (オブジェクトなし)",

@@ -247,12 +247,14 @@ pub fn preflight(doc: &Document) -> Vec<PreflightIssue> {
     let mut hairlines = 0usize;
     let mut transparency = 0usize;
     let mut rgb_images = 0usize;
+    let mut approx_fills = 0usize;
     let mut missing_fonts: std::collections::BTreeSet<String> = Default::default();
     fn walk(
         obj: &crate::core::document::Object,
         hairlines: &mut usize,
         transparency: &mut usize,
         rgb_images: &mut usize,
+        approx_fills: &mut usize,
         missing_fonts: &mut std::collections::BTreeSet<String>,
     ) {
         use crate::core::document::{BlendMode, ObjectType};
@@ -268,15 +270,40 @@ pub fn preflight(doc: &Document) -> Vec<PreflightIssue> {
         {
             *transparency += 1;
         }
+        // Pattern / image fills print as a flat approximation and are
+        // invisible to ink math — flag them so TAC never under-reports
+        // silently.
+        if let Some(f) = &obj.fill {
+            match &f.fill_type {
+                crate::core::path::FillType::Pattern(_) | crate::core::path::FillType::Image(_) => {
+                    *approx_fills += 1
+                }
+                _ => {}
+            }
+        }
         match &obj.object_type {
             ObjectType::Group(children) => {
                 for c in children {
-                    walk(c, hairlines, transparency, rgb_images, missing_fonts);
+                    walk(
+                        c,
+                        hairlines,
+                        transparency,
+                        rgb_images,
+                        approx_fills,
+                        missing_fonts,
+                    );
                 }
             }
             ObjectType::ClippingMask { children } => {
                 for c in children {
-                    walk(c, hairlines, transparency, rgb_images, missing_fonts);
+                    walk(
+                        c,
+                        hairlines,
+                        transparency,
+                        rgb_images,
+                        approx_fills,
+                        missing_fonts,
+                    );
                 }
             }
             ObjectType::Text { style, .. } | ObjectType::TextOnPath { style, .. } => {
@@ -304,6 +331,7 @@ pub fn preflight(doc: &Document) -> Vec<PreflightIssue> {
                 &mut hairlines,
                 &mut transparency,
                 &mut rgb_images,
+                &mut approx_fills,
                 &mut missing_fonts,
             );
         }
@@ -335,6 +363,12 @@ pub fn preflight(doc: &Document) -> Vec<PreflightIssue> {
         out.push(PreflightIssue::warn(
             "RGB画像",
             format!("{rgb_images}件 — 書き出し時にCMYK変換されます"),
+        ));
+    }
+    if approx_fills > 0 {
+        out.push(PreflightIssue::warn(
+            "パターン/画像塗り",
+            format!("{approx_fills}件 — 単色近似で出力、インキ計算の対象外"),
         ));
     }
     // Images: effective DPI assuming 1 unit = 1pt.
@@ -423,9 +457,20 @@ pub fn preflight(doc: &Document) -> Vec<PreflightIssue> {
     } else {
         out.push(PreflightIssue::pass(
             "特色",
-            format!("{}版: {}", spot_names.len(), spot_names.iter().cloned().collect::<Vec<_>>().join(", ")),
+            format!(
+                "{}版: {}",
+                spot_names.len(),
+                spot_names.iter().cloned().collect::<Vec<_>>().join(", ")
+            ),
         ));
     }
+    // No trap engine: modern RIPs trap at output, and this file declares
+    // /Trapped /False honestly. Surfaced here so "nothing traps" is a
+    // visible statement, not an unknown.
+    out.push(PreflightIssue::pass(
+        "トラップ",
+        "アプリ側トラップなし（RIP任せ・/Trapped /False宣言）",
+    ));
     out
 }
 
