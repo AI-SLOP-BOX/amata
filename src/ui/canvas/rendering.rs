@@ -201,6 +201,30 @@ impl CanvasWidget {
             )
         });
 
+        // Separations preview: map the resolved paint to the active plate.
+        // Preview-only; the document is untouched. Text, halo and overlays
+        // downstream all read this same `fill_color`, so plates stay
+        // consistent across every fill consumer.
+        let fill_spot = obj.fill.as_ref().and_then(|f| f.spot.clone());
+        let fill_color = fill_color.and_then(|fc| {
+            let rgb = [
+                fc.r() as f32 / 255.0,
+                fc.g() as f32 / 255.0,
+                fc.b() as f32 / 255.0,
+                fc.a() as f32 / 255.0,
+            ];
+            crate::core::print::plate_preview(rgb, fill_spot.as_deref(), &state.preview_plate).map(
+                |c| {
+                    Color32::from_rgba_unmultiplied(
+                        (c[0] * 255.0) as u8,
+                        (c[1] * 255.0) as u8,
+                        (c[2] * 255.0) as u8,
+                        (c[3].clamp(0.0, 1.0) * 255.0) as u8,
+                    )
+                },
+            )
+        });
+
         // Same adjustment for the stroke — but only clone when an effect is
         // in play, so the common path keeps borrowing the document instead
         // of copying every stroke each frame.
@@ -369,14 +393,15 @@ impl CanvasWidget {
                                     path.closed,
                                 );
                                 if ribbon.len() >= 3 {
-                                    let screen_pts: Vec<Pos2> = ribbon
-                                        .iter()
-                                        .map(|p| to_screen(p.x, p.y))
-                                        .collect();
+                                    let screen_pts: Vec<Pos2> =
+                                        ribbon.iter().map(|p| to_screen(p.x, p.y)).collect();
                                     // Ribbon carries stroke color as fill.
                                     let rc = crate::ui::canvas::stroke_paint::stroke_color(
-                                        stroke_style, opacity,
-                                    );
+                                        stroke_style,
+                                        opacity,
+                                        &state.preview_plate,
+                                    )
+                                    .unwrap_or(Color32::TRANSPARENT);
                                     clip::paint_fill(painter, &screen_pts, rc, clip);
                                 }
                             } else {
@@ -390,6 +415,7 @@ impl CanvasWidget {
                                     opacity,
                                     &to_screen,
                                     clip,
+                                    &state.preview_plate,
                                 );
                             }
                         }
@@ -434,6 +460,7 @@ impl CanvasWidget {
                                 opacity,
                                 &to_screen,
                                 clip,
+                                &state.preview_plate,
                             );
                         }
                     }
@@ -455,7 +482,13 @@ impl CanvasWidget {
                 }
                 if let Some(style) = stroke_style {
                     crate::ui::canvas::stroke_paint::paint_path_stroke(
-                        painter, &path, style, opacity, &to_screen, clip,
+                        painter,
+                        &path,
+                        style,
+                        opacity,
+                        &to_screen,
+                        clip,
+                        &state.preview_plate,
                     );
                 }
             }
@@ -471,7 +504,13 @@ impl CanvasWidget {
                 }
                 if let Some(style) = stroke_style {
                     crate::ui::canvas::stroke_paint::paint_path_stroke(
-                        painter, &path, style, opacity, &to_screen, clip,
+                        painter,
+                        &path,
+                        style,
+                        opacity,
+                        &to_screen,
+                        clip,
+                        &state.preview_plate,
                     );
                 }
             }
@@ -491,7 +530,13 @@ impl CanvasWidget {
                 }
                 if let Some(style) = stroke_style {
                     crate::ui::canvas::stroke_paint::paint_path_stroke(
-                        painter, &path, style, opacity, &to_screen, clip,
+                        painter,
+                        &path,
+                        style,
+                        opacity,
+                        &to_screen,
+                        clip,
+                        &state.preview_plate,
                     );
                 }
             }
@@ -507,7 +552,13 @@ impl CanvasWidget {
                 }
                 if let Some(style) = stroke_style {
                     crate::ui::canvas::stroke_paint::paint_path_stroke(
-                        painter, &path, style, opacity, &to_screen, clip,
+                        painter,
+                        &path,
+                        style,
+                        opacity,
+                        &to_screen,
+                        clip,
+                        &state.preview_plate,
                     );
                 }
             }
@@ -526,6 +577,7 @@ impl CanvasWidget {
                         opacity,
                         &to_screen,
                         clip,
+                        &state.preview_plate,
                     ),
                     // Lines created without a stroke style still have to be
                     // visible: keep the plain 2 px screen-space segment.
@@ -1092,7 +1144,13 @@ impl CanvasWidget {
         // different line than solid-filled ones.
         if let Some(style) = obj.stroke.as_ref() {
             crate::ui::canvas::stroke_paint::paint_path_stroke(
-                painter, &path, style, opacity, &to_screen, None,
+                painter,
+                &path,
+                style,
+                opacity,
+                &to_screen,
+                None,
+                &state.preview_plate,
             );
         }
     }
@@ -1206,7 +1264,13 @@ impl CanvasWidget {
         // different line than solid-filled ones.
         if let Some(style) = obj.stroke.as_ref() {
             crate::ui::canvas::stroke_paint::paint_path_stroke(
-                painter, &path, style, opacity, &to_screen, None,
+                painter,
+                &path,
+                style,
+                opacity,
+                &to_screen,
+                None,
+                &state.preview_plate,
             );
         }
     }

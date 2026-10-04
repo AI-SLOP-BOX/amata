@@ -134,6 +134,10 @@ pub struct AppState {
     pub canvas_width: f32,
     pub canvas_height: f32,
     pub show_grid: bool,
+    /// Separations preview plate. `Composite` is the normal view; any
+    /// other plate renders only that plate's ink (preview-only, the
+    /// document is untouched).
+    pub preview_plate: super::print::PreviewPlate,
     pub grid_size: f64,
     pub snap_to_grid: bool,
     pub snap_to_objects: bool,
@@ -278,6 +282,7 @@ impl Default for AppState {
             canvas_width: 0.0,
             canvas_height: 0.0,
             show_grid: true,
+            preview_plate: super::print::PreviewPlate::Composite,
             grid_size: 50.0,
             snap_to_grid: false,
             snap_to_objects: true,

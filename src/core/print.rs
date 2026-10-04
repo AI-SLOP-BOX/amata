@@ -92,6 +92,79 @@ pub fn limit_ink(mut cmyk: [f32; 4], max: f32) -> [f32; 4] {
 /// Japan print default TAC alarm threshold (320%).
 pub const MAX_TOTAL_INK: f32 = 3.2;
 
+/// One plate of a separations preview. `Composite` is the normal view;
+/// anything else renders only that plate's ink as black on white paper.
+#[derive(Debug, Clone, PartialEq)]
+pub enum PreviewPlate {
+    Composite,
+    Cyan,
+    Magenta,
+    Yellow,
+    Black,
+    Spot(String),
+}
+
+impl PreviewPlate {
+    /// Process channel index for C/M/Y/K, `None` for composite/spot.
+    pub fn channel(&self) -> Option<usize> {
+        match self {
+            PreviewPlate::Composite | PreviewPlate::Spot(_) => None,
+            PreviewPlate::Cyan => Some(0),
+            PreviewPlate::Magenta => Some(1),
+            PreviewPlate::Yellow => Some(2),
+            PreviewPlate::Black => Some(3),
+        }
+    }
+
+    pub fn label(&self) -> String {
+        match self {
+            PreviewPlate::Composite => "コンポジット".to_string(),
+            PreviewPlate::Cyan => "C版".to_string(),
+            PreviewPlate::Magenta => "M版".to_string(),
+            PreviewPlate::Yellow => "Y版".to_string(),
+            PreviewPlate::Black => "K版".to_string(),
+            PreviewPlate::Spot(name) => format!("特色「{name}」"),
+        }
+    }
+}
+
+/// Map one resolved paint to separations-preview space.
+///
+/// `rgb` is the already-resolved sRGB paint (0.0..1.0 + alpha), `spot` the
+/// fill/stroke's assigned spot plate (`None` = process). Returns `None`
+/// when this paint puts no ink on `plate` (caller skips drawing).
+///
+/// Process plates skip spot-assigned paints entirely — the exporter writes
+/// those to Separation plates, so they must not ghost onto CMYK either.
+/// Spot plates draw only their own ink, as solid black (tints are not
+/// modeled on fills/strokes). Density is the plate channel; alpha is kept
+/// so translucent paints stay translucent. Overlapping same-plate paints
+/// accumulate through normal alpha blending: an approximation of overprint,
+/// documented as such.
+pub fn plate_preview(rgb: [f32; 4], spot: Option<&str>, plate: &PreviewPlate) -> Option<[f32; 4]> {
+    match plate {
+        PreviewPlate::Composite => Some(rgb),
+        PreviewPlate::Spot(name) => {
+            if spot == Some(name.as_str()) {
+                Some([0.0, 0.0, 0.0, rgb[3]])
+            } else {
+                None
+            }
+        }
+        _ => {
+            if spot.is_some() {
+                return None;
+            }
+            let cmyk = rgb_to_cmyk_ink(rgb[0], rgb[1], rgb[2]);
+            let density = cmyk[plate.channel().unwrap_or(3)];
+            if density <= 0.001 {
+                return None;
+            }
+            Some([0.0, 0.0, 0.0, (density * rgb[3]).clamp(0.0, 1.0)])
+        }
+    }
+}
+
 /// Minimum raster DPI for print (warn) and hard floor (fail).
 pub const MIN_PRINT_DPI: f64 = 300.0;
 pub const FAIL_PRINT_DPI: f64 = 150.0;
@@ -331,5 +404,32 @@ mod tests {
         let s = SpotColor::new("Test", [1.0, 0.0, 0.0, 0.0]);
         let rgb = s.preview_rgb();
         assert!(rgb[0] < 0.01 && rgb[1] > 0.99 && rgb[2] > 0.99);
+    }
+
+    #[test]
+    fn plate_preview_maps_channels_and_spots() {
+        let red = [1.0, 0.0, 0.0, 1.0];
+        // Composite passes through.
+        assert_eq!(
+            plate_preview(red, None, &PreviewPlate::Composite),
+            Some(red)
+        );
+        // Pure red lands on M+Y only.
+        let m = plate_preview(red, None, &PreviewPlate::Magenta).unwrap();
+        assert!((m[3] - 1.0).abs() < 1e-6 && m[0] == 0.0);
+        assert!(plate_preview(red, None, &PreviewPlate::Cyan).is_none());
+        let k = plate_preview([0.0, 0.0, 0.0, 1.0], None, &PreviewPlate::Black).unwrap();
+        assert!((k[3] - 1.0).abs() < 1e-6);
+        // Spot-assigned paint never ghosts onto process plates.
+        assert!(plate_preview(red, Some("Gold"), &PreviewPlate::Magenta).is_none());
+        assert!(plate_preview(red, Some("Gold"), &PreviewPlate::Cyan).is_none());
+        // Spot plate shows only its own ink, as black.
+        let gold = plate_preview(red, Some("Gold"), &PreviewPlate::Spot("Gold".into())).unwrap();
+        assert_eq!(gold, [0.0, 0.0, 0.0, 1.0]);
+        assert!(plate_preview(red, Some("Gold"), &PreviewPlate::Spot("Silver".into())).is_none());
+        assert!(plate_preview(red, None, &PreviewPlate::Spot("Gold".into())).is_none());
+        // Alpha scales density.
+        let half = plate_preview([1.0, 0.0, 0.0, 0.5], None, &PreviewPlate::Magenta).unwrap();
+        assert!((half[3] - 0.5).abs() < 1e-6);
     }
 }

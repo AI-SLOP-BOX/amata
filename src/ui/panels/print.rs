@@ -46,6 +46,47 @@ impl PrintPanel {
         ui.checkbox(&mut state.print_marks, "トンボ・レジスターマーク");
         ui.checkbox(&mut state.print_pdfx, "PDF/X-1a互換出力");
         ui.add_space(4.0);
+
+        // Separations preview: pick which plate the canvas shows.
+        // Preview-only; the document is untouched.
+        ui.horizontal(|ui| {
+            ui.label("版プレビュー:");
+            let mut plates: Vec<print::PreviewPlate> = vec![
+                print::PreviewPlate::Composite,
+                print::PreviewPlate::Cyan,
+                print::PreviewPlate::Magenta,
+                print::PreviewPlate::Yellow,
+                print::PreviewPlate::Black,
+            ];
+            for spot in &state.document.spots {
+                plates.push(print::PreviewPlate::Spot(spot.name.clone()));
+            }
+            // A deleted spot falls back to composite instead of sticking
+            // on a plate that no longer exists.
+            if !plates.contains(&state.preview_plate) {
+                state.preview_plate = print::PreviewPlate::Composite;
+            }
+            egui::ComboBox::from_id_salt("print_plate")
+                .selected_text(state.preview_plate.label())
+                .show_ui(ui, |ui| {
+                    for plate in plates {
+                        if ui
+                            .selectable_label(state.preview_plate == plate, plate.label())
+                            .clicked()
+                        {
+                            state.preview_plate = plate;
+                        }
+                    }
+                });
+        });
+        if state.preview_plate != print::PreviewPlate::Composite {
+            ui.label(
+                RichText::new("版プレビュー中：表示のみ、データは変更されません")
+                    .weak()
+                    .size(10.0),
+            );
+        }
+        ui.add_space(4.0);
         ui.separator();
 
         // Spot library.

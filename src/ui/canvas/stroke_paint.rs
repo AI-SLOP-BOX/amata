@@ -13,6 +13,7 @@
 //! only the true boundary gets a feathering strip.
 
 use crate::core::path::{AnchorPoint, PathData, StrokeStyle};
+use crate::core::print::PreviewPlate;
 use crate::core::stroke_tess;
 use egui::epaint::{Mesh, Shape};
 use egui::{Color32, Pos2};
@@ -30,14 +31,17 @@ fn add_vertex(mesh: &mut Mesh, pos: Pos2, color: Color32) -> u32 {
 const FEATHER: f32 = 1.0;
 
 /// Stroke colour with the object's (and its ancestors') opacity folded in.
-pub fn stroke_color(style: &StrokeStyle, opacity: f32) -> Color32 {
+pub fn stroke_color(style: &StrokeStyle, opacity: f32, plate: &PreviewPlate) -> Option<Color32> {
     let c = style.color;
-    Color32::from_rgba_unmultiplied(
-        (c[0] * 255.0) as u8,
-        (c[1] * 255.0) as u8,
-        (c[2] * 255.0) as u8,
-        (c[3] * opacity * 255.0) as u8,
-    )
+    let rgb = [c[0], c[1], c[2], c[3] * opacity];
+    crate::core::print::plate_preview(rgb, style.spot.as_deref(), plate).map(|m| {
+        Color32::from_rgba_unmultiplied(
+            (m[0] * 255.0) as u8,
+            (m[1] * 255.0) as u8,
+            (m[2] * 255.0) as u8,
+            (m[3].clamp(0.0, 1.0) * 255.0) as u8,
+        )
+    })
 }
 
 /// Shoelace area; positive means counter-clockwise (in the usual math sense).
@@ -189,6 +193,7 @@ pub fn build_mesh(rings: &[Vec<Pos2>], color: Color32) -> Mesh {
 /// `to_screen` must be the same transform the object's fill uses, so the
 /// stroke hugs the fill at every zoom and rotation.  `clip` cuts the finished
 /// rings against a clipping mask the same way the fill is cut.
+#[allow(clippy::too_many_arguments)]
 pub fn paint_stroke(
     painter: &egui::Painter,
     style: &StrokeStyle,
@@ -197,8 +202,11 @@ pub fn paint_stroke(
     opacity: f32,
     to_screen: &impl Fn(f64, f64) -> Pos2,
     clip: Option<&ClipRegion>,
+    plate: &PreviewPlate,
 ) {
-    let color = stroke_color(style, opacity);
+    let Some(color) = stroke_color(style, opacity, plate) else {
+        return;
+    };
     if color.a() == 0 {
         return;
     }
@@ -216,6 +224,7 @@ pub fn paint_stroke(
 }
 
 /// [`paint_stroke`] for every subpath of a [`PathData`].
+#[allow(clippy::too_many_arguments)]
 pub fn paint_path_stroke(
     painter: &egui::Painter,
     path: &PathData,
@@ -223,6 +232,7 @@ pub fn paint_path_stroke(
     opacity: f32,
     to_screen: &impl Fn(f64, f64) -> Pos2,
     clip: Option<&ClipRegion>,
+    plate: &PreviewPlate,
 ) {
     for subpath in path.to_stroke_subpaths(16) {
         paint_stroke(
@@ -233,6 +243,7 @@ pub fn paint_path_stroke(
             opacity,
             to_screen,
             clip,
+            plate,
         );
     }
 }
