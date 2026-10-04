@@ -274,7 +274,7 @@ impl GradientPanel {
                     stopped_slider = true;
                 }
 
-                if stops.len() > 2 && ui.small_button("✕").clicked() {
+                if stops.len() > 2 && ui.small_button("×").clicked() {
                     to_remove = Some(i);
                 }
             });

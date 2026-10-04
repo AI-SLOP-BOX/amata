@@ -116,7 +116,7 @@ impl PrintPanel {
                     spot.cmyk[2] * 100.0,
                     spot.cmyk[3] * 100.0
                 ));
-                if ui.small_button("✕").clicked() {
+                if ui.small_button("×").clicked() {
                     delete = Some(spot.name.clone());
                 }
             });

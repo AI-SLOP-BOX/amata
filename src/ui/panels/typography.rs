@@ -816,7 +816,7 @@ impl SymbolsPanel {
                 });
 
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui.small_button("✕").on_hover_text("削除").clicked() {
+                    if ui.small_button("×").on_hover_text("削除").clicked() {
                         to_remove = Some(i);
                     }
                     if ui
@@ -919,7 +919,7 @@ impl WidthToolPanel {
                 if w_resp.drag_stopped() {
                     prof_stopped = true;
                 }
-                if point_count > 2 && ui.small_button("✕").clicked() {
+                if point_count > 2 && ui.small_button("×").clicked() {
                     to_remove = Some(i);
                 }
             });

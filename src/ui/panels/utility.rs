@@ -139,7 +139,7 @@ impl SmartGuidesPanel {
                         crate::core::state::GuideOrientation::Vertical => "V",
                     };
                     ui.label(format!("{}: {:.1}", orient, guide.position));
-                    if ui.small_button("✕").clicked() {
+                    if ui.small_button("×").clicked() {
                         to_remove = Some(i);
                     }
                 });

@@ -26,7 +26,7 @@ impl ComponentPanel {
             ui.add_space(2.0);
 
             if ui
-                .add_enabled(has_sel, egui::Button::new("❖ 選択からコンポーネントを作成"))
+                .add_enabled(has_sel, egui::Button::new("選択からコンポーネントを作成"))
                 .clicked()
             {
                 // Snapshot selected objects first: create_component removes
@@ -88,7 +88,7 @@ impl ComponentPanel {
                             ui.painter().text(
                                 rect.center(),
                                 egui::Align2::CENTER_CENTER,
-                                "❖",
+                                "◆",
                                 egui::FontId::proportional(12.0),
                                 Color32::from_rgb(100, 180, 255),
                             );
@@ -105,7 +105,7 @@ impl ComponentPanel {
                             ui.with_layout(
                                 egui::Layout::right_to_left(egui::Align::Center),
                                 |ui| {
-                                    if ui.small_button("✕").on_hover_text("マスター削除").clicked()
+                                    if ui.small_button("×").on_hover_text("マスター削除").clicked()
                                     {
                                         to_remove_id = Some(sym.id.clone());
                                     }

@@ -379,7 +379,7 @@ impl BrushPanel {
                 if ui.small_button("適用").clicked() {
                     adopt = Some(b.clone());
                 }
-                if ui.small_button("✕").clicked() {
+                if ui.small_button("×").clicked() {
                     remove = Some(b.name.clone());
                 }
             });
