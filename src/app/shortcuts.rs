@@ -317,7 +317,7 @@ impl IrasuApp {
                 && i.key_pressed(egui::Key::Z)
                 && !i.modifiers.shift
             {
-                self.state.undo_manager.undo(&mut self.state.document);
+                self.state.undo_step();
             }
 
             // Redo
@@ -326,7 +326,7 @@ impl IrasuApp {
                     && i.modifiers.shift
                     && i.key_pressed(egui::Key::Z))
             {
-                self.state.undo_manager.redo(&mut self.state.document);
+                self.state.redo_step();
             }
 
             // Export (Cmd+Shift+E / Ctrl+Shift+E) — menu advertised this

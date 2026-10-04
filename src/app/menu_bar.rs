@@ -83,6 +83,7 @@ impl IrasuApp {
                                             ));
                                         }
                                         Ok(document) => {
+                                            self.state.flush_pending_edits();
                                             self.state.document = document;
                                             self.state.adopt_doc_extras();
                                             let obj_count =
@@ -92,7 +93,7 @@ impl IrasuApp {
                                                 .and_then(|s| s.to_str())
                                                 .unwrap_or("Untitled")
                                                 .to_string();
-                                            self.state.undo_manager.clear();
+                                            self.state.clear_history();
                                             self.state.selected_ids.clear();
                                             let mut watcher =
                                                 crate::core::watcher::FileWatcher::new(
@@ -148,6 +149,7 @@ impl IrasuApp {
                                             let obj_count = document.all_objects().count();
                                             let w = document.width;
                                             let h = document.height;
+                                            self.state.flush_pending_edits();
                                             self.state.document = document;
                                             self.state.adopt_doc_extras();
                                             self.state.document.name = path
@@ -155,7 +157,7 @@ impl IrasuApp {
                                                 .and_then(|s| s.to_str())
                                                 .unwrap_or("Untitled")
                                                 .to_string();
-                                            self.state.undo_manager.clear();
+                                            self.state.clear_history();
                                             self.state.selected_ids.clear();
                                             crate::io::recent::push_recent(&path, w, h);
                                             let mut msg = format!(
@@ -320,9 +322,10 @@ impl IrasuApp {
                         {
                             match crate::io::project::load_project(&path) {
                                 Ok(doc) => {
+                                    self.state.flush_pending_edits();
                                     self.state.document = doc;
                                     self.state.adopt_doc_extras();
-                                    self.state.undo_manager.clear();
+                                    self.state.clear_history();
                                     self.state.selected_ids.clear();
                                     // Rebind save destination + watcher to the loaded project.
                                     // Otherwise Cmd+S would silently overwrite the previously
@@ -486,7 +489,7 @@ impl IrasuApp {
                         )
                         .clicked()
                     {
-                        self.state.undo_manager.undo(&mut self.state.document);
+                        self.state.undo_step();
                         ui.close_menu();
                     }
                     if ui
@@ -499,7 +502,7 @@ impl IrasuApp {
                         )
                         .clicked()
                     {
-                        self.state.undo_manager.redo(&mut self.state.document);
+                        self.state.redo_step();
                         ui.close_menu();
                     }
                     ui.separator();

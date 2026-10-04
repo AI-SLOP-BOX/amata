@@ -116,10 +116,11 @@ impl IrasuApp {
                 })
                 .collect();
         }
+        self.state.flush_pending_edits();
         self.state.document = doc;
         self.state.adopt_doc_extras();
         self.state.zoom_to_fit();
-        self.state.undo_manager.clear();
+        self.state.clear_history();
         self.state.selected_ids.clear();
         self.state.exit_isolation();
         self.file_watcher = None;
@@ -133,14 +134,14 @@ impl IrasuApp {
     pub fn open_path_in_editor(&mut self, path: std::path::PathBuf) {
         match crate::cli::handlers::common::load_any_document(&path) {
             Err(e) => {
-                self.state
-                    .notify_error(format!("開けませんでした: {e}"));
+                self.state.notify_error(format!("開けませんでした: {e}"));
             }
             Ok(doc) => {
+                self.state.flush_pending_edits();
                 self.state.document = doc;
                 self.state.adopt_doc_extras();
                 self.state.zoom_to_fit();
-                self.state.undo_manager.clear();
+                self.state.clear_history();
                 self.state.selected_ids.clear();
                 self.state.exit_isolation();
                 self.version_history_panel.refresh_history(&path);
@@ -170,6 +171,7 @@ impl IrasuApp {
         let mut app = Self::default();
         if let Some(p) = path {
             if let Ok(doc) = crate::cli::handlers::common::load_any_document(&p) {
+                app.state.flush_pending_edits();
                 app.state.document = doc;
                 app.state.adopt_doc_extras();
                 app.state.zoom_to_fit();
@@ -347,11 +349,12 @@ impl eframe::App for IrasuApp {
                 }
                 crate::ui::ExternalChangeAction::Accept => {
                     if let Some(notice) = self.external_change_dialog.notice.take() {
+                        self.state.flush_pending_edits();
                         self.state.document = notice.external_doc;
                         // Whole-document swap invalidates every stacked
                         // command (Open/Load already do this): drop history
                         // and selection instead of only marking saved.
-                        self.state.undo_manager.clear();
+                        self.state.clear_history();
                         self.state.selected_ids.clear();
                         self.state.undo_manager.mark_saved();
                         if let Some(ref mut w) = self.file_watcher {
@@ -375,8 +378,9 @@ impl eframe::App for IrasuApp {
                         } else if let Some(doc) =
                             parse_watched_doc(&notice.file_path, &notice.pre_edit_svg)
                         {
+                            self.state.flush_pending_edits();
                             self.state.document = doc;
-                            self.state.undo_manager.clear();
+                            self.state.clear_history();
                             self.state.selected_ids.clear();
                             self.state.undo_manager.mark_saved();
                             if let Some(ref mut w) = self.file_watcher {
@@ -497,15 +501,14 @@ impl eframe::App for IrasuApp {
                 &mut tour_open,
             );
             match home_action {
-                Some(crate::ui::home_view::HomeAction::OpenFile(p)) => {
-                    self.open_path_in_editor(p)
-                }
+                Some(crate::ui::home_view::HomeAction::OpenFile(p)) => self.open_path_in_editor(p),
                 Some(crate::ui::home_view::HomeAction::RestoreRecovery) => {
                     if let Some((original, doc)) = crate::io::project::load_recovery() {
+                        self.state.flush_pending_edits();
                         self.state.document = doc;
                         self.state.adopt_doc_extras();
                         self.state.zoom_to_fit();
-                        self.state.undo_manager.clear();
+                        self.state.clear_history();
                         self.state.undo_manager.mark_dirty();
                         self.state.selected_ids.clear();
                         self.state.exit_isolation();

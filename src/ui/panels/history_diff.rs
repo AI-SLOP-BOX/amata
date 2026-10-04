@@ -282,9 +282,10 @@ impl VersionHistoryPanel {
                     match git::get_file_content_at_rev(file_path, &rev) {
                         Ok(content) => match parse_stored_doc(file_path, &content) {
                             Some(doc) => {
+                                state.flush_pending_edits();
                                 state.document = doc;
                                 state.adopt_doc_extras();
-                                state.undo_manager.clear();
+                                state.clear_history();
                                 state.selected_ids.clear();
                                 state.notify_info(format!(
                                     "バージョン {} に復元しました",
@@ -309,6 +310,7 @@ impl VersionHistoryPanel {
                             if self.preview_backup.is_none() {
                                 self.preview_backup = Some(state.document.clone());
                             }
+                            state.flush_pending_edits();
                             state.document = doc;
                             state.adopt_doc_extras();
                             // Whole-document swap: pending snapshots and the
@@ -316,7 +318,7 @@ impl VersionHistoryPanel {
                             state.pending_objects.clear();
                             state.pending_layers.clear();
                             state.pending_transforms.clear();
-                            state.undo_manager.clear();
+                            state.clear_history();
                             state.selected_ids.clear();
                             state.notify_info(format!(
                                 "バージョン {} をプレビュー中",
@@ -361,6 +363,7 @@ impl VersionHistoryPanel {
                     self.is_comparing = false;
                     self.active_diff = None;
                     if let Some(backup) = self.preview_backup.take() {
+                        state.flush_pending_edits();
                         state.document = backup;
                         state.adopt_doc_extras();
                         state.notify_info("プレビューを終了し、作業内容に戻しました");

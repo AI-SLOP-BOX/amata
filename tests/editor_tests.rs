@@ -1183,3 +1183,43 @@ fn test_stress_toast_notification_feedback() {
     assert_eq!(err_toast.message, "保存失敗: 書き込み権限がありません");
     assert!(err_toast.is_error);
 }
+
+#[test]
+fn test_flush_pending_edits_saves_undo_and_dirty() {
+    use irasu_illustrator::core::document::Object;
+    let mut state = irasu_illustrator::core::state::AppState::default();
+    state.document.add_object(Object::new_rect("R", 0.0, 0.0, 10.0, 10.0, 0.0));
+    state.undo_manager.clear();
+    assert!(!state.is_dirty());
+    // Simulate a typed DragValue edit: snapshot + mutate, no drag_stopped.
+    let id = state.document.all_objects().next().unwrap().1.id.clone();
+    state.ensure_object_snapshot(&id);
+    if let Some(o) = state.document.find_object_mut(&id) {
+        o.transform.x = 42.0;
+    }
+    // Pending edits must already mark dirty ...
+    assert!(state.is_dirty(), "pending edit marks dirty");
+    // ... and flush must turn them into a real undo step.
+    state.flush_pending_edits();
+    assert!(state.pending_objects.is_empty());
+    state.undo_step();
+    let x = state.document.find_object(&id).unwrap().transform.x;
+    assert_eq!(x, 0.0, "undo restores pre-edit transform");
+}
+
+#[test]
+fn test_undo_step_flushes_before_undoing() {
+    use irasu_illustrator::core::document::Object;
+    let mut state = irasu_illustrator::core::state::AppState::default();
+    state.document.add_object(Object::new_rect("R", 0.0, 0.0, 10.0, 10.0, 0.0));
+    state.undo_manager.clear();
+    let id = state.document.all_objects().next().unwrap().1.id.clone();
+    state.ensure_object_snapshot(&id);
+    if let Some(o) = state.document.find_object_mut(&id) {
+        o.transform.x = 7.0;
+    }
+    // Undo must undo the pending edit itself, not an older step.
+    state.undo_step();
+    let x = state.document.find_object(&id).unwrap().transform.x;
+    assert_eq!(x, 0.0, "undo_step flushes then undoes the edit");
+}

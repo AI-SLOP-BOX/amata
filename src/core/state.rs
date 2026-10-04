@@ -1076,6 +1076,61 @@ impl AppState {
 
     pub fn is_dirty(&self) -> bool {
         self.undo_manager.is_dirty()
+            || !self.pending_transforms.is_empty()
+            || !self.pending_objects.is_empty()
+            || !self.pending_layers.is_empty()
+            || self.pending_artboards.is_some()
+            || self.pending_perspective.is_some()
+    }
+
+    /// Undo one step. Flushes in-progress gestures first so the step
+    /// being undone is the latest edit, never an older one hiding behind
+    /// an invisible pending snapshot.
+    pub fn undo_step(&mut self) {
+        self.flush_pending_edits();
+        self.undo_manager.undo(&mut self.document);
+    }
+
+    /// Redo one step (flushes pending gestures first, symmetric to undo).
+    pub fn redo_step(&mut self) {
+        self.flush_pending_edits();
+        self.undo_manager.redo(&mut self.document);
+    }
+
+    /// Clear history. Flushes first so in-progress edits become a real
+    /// (kept: clear only drops the stack, and the flushed step is part of
+    /// the pre-clear document the caller is about to replace) — nothing
+    /// is silently dropped.
+    pub fn clear_history(&mut self) {
+        self.flush_pending_edits();
+        self.undo_manager.clear();
+    }
+
+    /// Flush every in-progress gesture snapshot into real undo steps.
+    ///
+    /// DragValue/keyboard edits snapshot on `changed()` but only commit on
+    /// `drag_stopped()`; a typed value + Enter/click-away never fires the
+    /// latter, leaving the document mutated with no undo step and (before
+    /// this) no dirty flag. Call this before anything that snapshots,
+    /// swaps or clears history (save, open, preview, undo/redo) so edits
+    /// can neither be silently dropped nor swept into a later unrelated
+    /// step. Labels are generic — the alternative was no step at all.
+    pub fn flush_pending_edits(&mut self) {
+        if !self.pending_transforms.is_empty() {
+            self.commit_transform_edits("Edit Transform");
+        }
+        if !self.pending_objects.is_empty() {
+            self.commit_object_edits("Edit Object");
+        }
+        if !self.pending_layers.is_empty() {
+            self.commit_layer_edits("Edit Layer");
+        }
+        if self.pending_artboards.is_some() {
+            self.commit_artboard_edits("Edit Artboard");
+        }
+        if self.pending_perspective.is_some() {
+            self.commit_perspective_edits("Edit Perspective Grid");
+        }
     }
 
     pub fn mark_saved(&mut self) {
