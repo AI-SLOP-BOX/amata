@@ -263,13 +263,51 @@ impl IrasuApp {
         if self.state.prefs.show_tool_hints {
             let mut tip = format!("{} ({})", tool.name(), tool.shortcut());
             if group.len() > 1 {
-                tip.push_str(" — 右クリックでサブツール");
+                tip.push_str(" — 右クリック/長押しでサブツール");
             }
             response = response.on_hover_text(tip);
         }
 
+        let popup_id = egui::Id::new(("tool_flyout", group_idx));
+        let hold_id = egui::Id::new(("tool_hold", group_idx));
+        let fired_id = egui::Id::new(("tool_hold_fired", group_idx));
+        // Long-press: holding the primary button on the tool opens the
+        // flyout instead of selecting on release.
+        const HOLD_SECS: f64 = 0.5;
+        if group.len() > 1 {
+            let pressing = response.hovered() && ui.input(|i| i.pointer.primary_down());
+            if pressing {
+                let now = ui.input(|i| i.time);
+                let started = ui.memory(|m| m.data.get_temp::<f64>(hold_id).unwrap_or(0.0));
+                if started == 0.0 {
+                    ui.memory_mut(|m| {
+                        m.data.insert_temp(hold_id, now);
+                    });
+                } else if now - started >= HOLD_SECS {
+                    ui.ctx().memory_mut(|m| {
+                        m.open_popup(popup_id);
+                    });
+                    ui.memory_mut(|m| {
+                        m.data.insert_temp(hold_id, 0.0);
+                        m.data.insert_temp(fired_id, true);
+                    });
+                }
+            } else {
+                ui.memory_mut(|m| {
+                    m.data.insert_temp(hold_id, 0.0);
+                });
+            }
+        }
+
         if response.clicked() {
-            self.select_tool(tool);
+            let hold_fired = ui.memory(|m| m.data.get_temp::<bool>(fired_id).unwrap_or(false));
+            if hold_fired {
+                ui.memory_mut(|m| {
+                    m.data.insert_temp(fired_id, false);
+                });
+            } else {
+                self.select_tool(tool);
+            }
         }
         // Sub-tool flyout (Illustrator triangle affordance): right-click
         // opens the group popup anchored to this button.
