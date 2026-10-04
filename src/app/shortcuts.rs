@@ -27,6 +27,30 @@ fn arrange_move(sel: &[String], doc: &mut Document, forward: bool, jump: bool) {
         }
     }
 }
+/// Tool selection keys: the single source of truth for tool switching.
+/// `Tool::shortcut()` provides the display strings; the test pins them.
+pub(super) const TOOL_KEYS: [(Tool, egui::Key); 19] = [
+    (Tool::Select, egui::Key::V),
+    (Tool::Node, egui::Key::A),
+    (Tool::Pen, egui::Key::P),
+    (Tool::Pencil, egui::Key::N),
+    (Tool::Rectangle, egui::Key::U),
+    (Tool::Ellipse, egui::Key::O),
+    (Tool::Star, egui::Key::S),
+    (Tool::Polygon, egui::Key::G),
+    (Tool::Line, egui::Key::L),
+    (Tool::Text, egui::Key::T),
+    (Tool::Eyedropper, egui::Key::I),
+    (Tool::Hand, egui::Key::H),
+    (Tool::Brush, egui::Key::B),
+    (Tool::Eraser, egui::Key::E),
+    (Tool::ShapeBuilder, egui::Key::M),
+    (Tool::Zoom, egui::Key::Z),
+    (Tool::PixelPencil, egui::Key::X),
+    (Tool::PixelEraser, egui::Key::C),
+    (Tool::PixelBucket, egui::Key::K),
+];
+
 impl IrasuApp {
     pub(super) fn handle_shortcuts(&mut self, ctx: &egui::Context) {
         // Modal Escape/Enter handling runs BEFORE the early-return so every
@@ -72,63 +96,16 @@ impl IrasuApp {
         // Keyboard shortcuts
         ctx.input(|i| {
             if !i.modifiers.ctrl && !i.modifiers.mac_cmd && !i.modifiers.alt && !i.modifiers.shift {
-                if i.key_pressed(egui::Key::V) {
-                    self.state.current_tool = Tool::Select;
-                }
-                if i.key_pressed(egui::Key::A) {
-                    self.state.current_tool = Tool::Node;
-                }
-                if i.key_pressed(egui::Key::P) {
-                    self.state.current_tool = Tool::Pen;
-                }
-                if i.key_pressed(egui::Key::N) {
-                    self.state.current_tool = Tool::Pencil;
-                }
-                if i.key_pressed(egui::Key::U) {
-                    self.state.current_tool = Tool::Rectangle;
-                }
-                if i.key_pressed(egui::Key::O) {
-                    self.state.current_tool = Tool::Ellipse;
-                }
-                if i.key_pressed(egui::Key::S) {
-                    self.state.current_tool = Tool::Star;
-                }
-                if i.key_pressed(egui::Key::G) {
-                    self.state.current_tool = Tool::Polygon;
-                }
-                if i.key_pressed(egui::Key::L) {
-                    self.state.current_tool = Tool::Line;
-                }
-                if i.key_pressed(egui::Key::T) {
-                    self.state.current_tool = Tool::Text;
-                }
-                if i.key_pressed(egui::Key::I) {
-                    self.state.previous_tool = self.state.current_tool;
-                    self.state.current_tool = Tool::Eyedropper;
-                }
-                if i.key_pressed(egui::Key::H) {
-                    self.state.current_tool = Tool::Hand;
-                }
-                if i.key_pressed(egui::Key::B) {
-                    self.state.current_tool = Tool::Brush;
-                }
-                if i.key_pressed(egui::Key::E) {
-                    self.state.current_tool = Tool::Eraser;
-                }
-                if i.key_pressed(egui::Key::M) {
-                    self.state.current_tool = Tool::ShapeBuilder;
-                }
-                if i.key_pressed(egui::Key::Z) {
-                    self.state.current_tool = Tool::Zoom;
-                }
-                if i.key_pressed(egui::Key::X) {
-                    self.state.current_tool = Tool::PixelPencil;
-                }
-                if i.key_pressed(egui::Key::C) {
-                    self.state.current_tool = Tool::PixelEraser;
-                }
-                if i.key_pressed(egui::Key::K) {
-                    self.state.current_tool = Tool::PixelBucket;
+                // Single source of truth for tool keys (see TOOL_KEYS):
+                // display strings come from `Tool::shortcut()` and the
+                // test below pins them together.
+                for (tool, key) in TOOL_KEYS {
+                    if i.key_pressed(key) {
+                        if tool == Tool::Eyedropper {
+                            self.state.previous_tool = self.state.current_tool;
+                        }
+                        self.state.current_tool = tool;
+                    }
                 }
 
                 // Default Colors (D key)
@@ -782,5 +759,17 @@ impl IrasuApp {
                 self.state.selected_ids = new_ids;
             }
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    /// The TOOL_KEYS dispatch table and `Tool::shortcut()` display strings
+    /// must agree, otherwise help labels lie about actual bindings.
+    #[test]
+    fn tool_keys_match_display_shortcuts() {
+        for (tool, key) in super::TOOL_KEYS {
+            assert_eq!(tool.shortcut(), format!("{key:?}"), "{tool:?}");
+        }
     }
 }

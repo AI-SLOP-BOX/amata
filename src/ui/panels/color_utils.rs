@@ -1,17 +1,242 @@
 use crate::core::path::FillStyle;
 use crate::core::state::AppState;
-use egui::{Color32, Response, Ui, Vec2};
+use egui::{Color32, Response, Sense, Ui, Vec2};
 
-/// Colour picker for `[f32; 4]` colours (plain sRGB + opacity 0.0..1.0).
-/// `rendering.rs` feeds those straight into `Color32::from_rgba_unmultiplied`,
-/// so the picker must see the same unmultiplied convention.
+/// Adobe-style colour button: a swatch that opens our own picker popup
+/// (SV square + hue strip + hex + alpha) instead of the stock egui
+/// picker, so colour editing matches the app's dark theme and the
+/// unmultiplied-sRGB convention everywhere.
 pub fn color_edit_srgba(ui: &mut Ui, color: &mut [f32; 4]) -> Response {
-    ui.color_edit_button_rgba_unmultiplied(color)
+    adobe_color_button(ui, color)
 }
 
-/// Colour picker for `[u8; 4]` colours (same convention, byte components).
+/// Byte-component variant: converts through `[f32; 4]`, same popup.
 pub fn color_edit_srgba_u8(ui: &mut Ui, color: &mut [u8; 4]) -> Response {
-    ui.color_edit_button_srgba_unmultiplied(color)
+    let mut f = [
+        color[0] as f32 / 255.0,
+        color[1] as f32 / 255.0,
+        color[2] as f32 / 255.0,
+        color[3] as f32 / 255.0,
+    ];
+    let resp = adobe_color_button(ui, &mut f);
+    if resp.changed() {
+        color[0] = (f[0].clamp(0.0, 1.0) * 255.0) as u8;
+        color[1] = (f[1].clamp(0.0, 1.0) * 255.0) as u8;
+        color[2] = (f[2].clamp(0.0, 1.0) * 255.0) as u8;
+        color[3] = (f[3].clamp(0.0, 1.0) * 255.0) as u8;
+    }
+    resp
+}
+
+fn f32_to_c32(c: [f32; 4]) -> Color32 {
+    Color32::from_rgba_unmultiplied(
+        (c[0].clamp(0.0, 1.0) * 255.0) as u8,
+        (c[1].clamp(0.0, 1.0) * 255.0) as u8,
+        (c[2].clamp(0.0, 1.0) * 255.0) as u8,
+        (c[3].clamp(0.0, 1.0) * 255.0) as u8,
+    )
+}
+
+fn white_texture(ctx: &egui::Context) -> egui::TextureHandle {
+    let id = egui::Id::new("amata_white_tex");
+    if let Some(handle) = ctx.memory(|m| m.data.get_temp::<egui::TextureHandle>(id)) {
+        return handle;
+    }
+    let img = egui::ColorImage::new([1, 1], Color32::WHITE);
+    let handle = ctx.load_texture("amata_white_tex", img, egui::TextureOptions::NEAREST);
+    ctx.memory_mut(|m| {
+        m.data.insert_temp(id, handle.clone());
+    });
+    handle
+}
+
+/// Swatch button + custom picker popup. Returns a response whose
+/// `changed()` is true while the popup edits the colour.
+pub fn adobe_color_button(ui: &mut Ui, color: &mut [f32; 4]) -> Response {
+    let before = *color;
+    let c32 = f32_to_c32(*color);
+    // Checkerboard behind translucent colours so alpha reads correctly.
+    let (rect, mut resp) = ui.allocate_exact_size(Vec2::new(44.0, 18.0), Sense::click());
+    if ui.is_rect_visible(rect) {
+        let cell = 4.5_f32;
+        let mut y = rect.min.y;
+        let mut row = 0;
+        while y < rect.max.y {
+            let mut x = rect.min.x;
+            let mut col = row;
+            while x < rect.max.x {
+                let cell_rect = egui::Rect::from_min_size(
+                    egui::Pos2::new(x, y),
+                    Vec2::new(cell.min(rect.max.x - x), cell.min(rect.max.y - y)),
+                );
+                let shade = if col % 2 == 0 { 200 } else { 150 };
+                ui.painter()
+                    .rect_filled(cell_rect, 0.0, Color32::from_gray(shade));
+                x += cell;
+                col += 1;
+            }
+            y += cell;
+            row += 1;
+        }
+        ui.painter().rect_filled(rect, 2.0, c32);
+        ui.painter().rect_stroke(
+            rect,
+            2.0,
+            egui::Stroke::new(1.0_f32, Color32::from_gray(90)),
+            egui::StrokeKind::Middle,
+        );
+        if resp.hovered() {
+            ui.painter().rect_stroke(
+                rect,
+                2.0,
+                egui::Stroke::new(1.0_f32, Color32::from_gray(200)),
+                egui::StrokeKind::Outside,
+            );
+        }
+    }
+    let popup_id = egui::Id::new(("adobe_color_popup", resp.id));
+    if resp.clicked() {
+        ui.ctx().memory_mut(|m| {
+            m.toggle_popup(popup_id);
+        });
+    }
+    egui::popup::popup_below_widget(
+        ui,
+        popup_id,
+        &resp,
+        egui::PopupCloseBehavior::CloseOnClickOutside,
+        |ui| {
+            adobe_color_popup_body(ui, color);
+        },
+    );
+    if *color != before {
+        resp.mark_changed();
+    }
+    resp
+}
+
+/// Popup content: SV square, hue strip, hex field, alpha slider.
+fn adobe_color_popup_body(ui: &mut Ui, color: &mut [f32; 4]) {
+    let (mut h, mut s, mut v) = rgb_to_hsv(color[0], color[1], color[2]);
+    if v == 0.0 {
+        // Black has no hue/saturation signal; keep the previous hue corner
+        // stable instead of snapping to red.
+        h = 0.0;
+        s = 0.0;
+    }
+    ui.set_min_width(220.0);
+    ui.horizontal(|ui| {
+        // Saturation (x) × Value (y) square, one bilinear mesh quad.
+        let sq = Vec2::splat(150.0);
+        let (sq_rect, sq_resp) = ui.allocate_exact_size(sq, Sense::click_and_drag());
+        let corner = |ss: f32, vv: f32| {
+            let (r, g, b) = hsv_to_rgb(h, ss.clamp(0.0, 1.0), vv.clamp(0.0, 1.0));
+            f32_to_c32([r, g, b, 1.0])
+        };
+        if ui.is_rect_visible(sq_rect) {
+            let tex = white_texture(ui.ctx());
+            let mut mesh = egui::epaint::Mesh::with_texture(tex.id());
+            let p = |x: f32, y: f32| {
+                egui::Pos2::new(
+                    sq_rect.min.x + x * sq_rect.width(),
+                    sq_rect.min.y + y * sq_rect.height(),
+                )
+            };
+            mesh.colored_vertex(p(0.0, 0.0), corner(0.0, 1.0));
+            mesh.colored_vertex(p(1.0, 0.0), corner(1.0, 1.0));
+            mesh.colored_vertex(p(0.0, 1.0), corner(0.0, 0.0));
+            mesh.colored_vertex(p(1.0, 1.0), corner(1.0, 0.0));
+            mesh.add_triangle(0, 2, 1);
+            mesh.add_triangle(1, 2, 3);
+            ui.painter().add(mesh);
+            ui.painter().rect_stroke(
+                sq_rect,
+                2.0,
+                egui::Stroke::new(1.0_f32, Color32::from_gray(90)),
+                egui::StrokeKind::Middle,
+            );
+            // Crosshair at the current SV.
+            let dot = egui::Pos2::new(
+                sq_rect.min.x + s.clamp(0.0, 1.0) * sq_rect.width(),
+                sq_rect.min.y + (1.0 - v.clamp(0.0, 1.0)) * sq_rect.height(),
+            );
+            ui.painter()
+                .circle_stroke(dot, 4.0, egui::Stroke::new(1.5_f32, Color32::WHITE));
+            ui.painter()
+                .circle_stroke(dot, 4.0, egui::Stroke::new(0.75_f32, Color32::BLACK));
+        }
+        if sq_resp.dragged() {
+            if let Some(pos) = sq_resp.interact_pointer_pos() {
+                s = ((pos.x - sq_rect.min.x) / sq_rect.width().max(1.0)).clamp(0.0, 1.0);
+                v = (1.0 - (pos.y - sq_rect.min.y) / sq_rect.height().max(1.0)).clamp(0.0, 1.0);
+            }
+        }
+        // Hue strip.
+        let strip_w = 16.0_f32;
+        let (hue_rect, hue_resp) =
+            ui.allocate_exact_size(Vec2::new(strip_w, sq.y), Sense::click_and_drag());
+        if ui.is_rect_visible(hue_rect) {
+            let segs = 24;
+            for i in 0..segs {
+                let t0 = i as f32 / segs as f32;
+                let t1 = (i + 1) as f32 / segs as f32;
+                let (r, g, b) = hsv_to_rgb(t0 * 360.0, 1.0, 1.0);
+                ui.painter().rect_filled(
+                    egui::Rect::from_min_size(
+                        egui::Pos2::new(hue_rect.min.x, hue_rect.min.y + t0 * hue_rect.height()),
+                        Vec2::new(strip_w, (t1 - t0) * hue_rect.height() + 1.0),
+                    ),
+                    0.0,
+                    f32_to_c32([r, g, b, 1.0]),
+                );
+            }
+            let mark_y = hue_rect.min.y + (h / 360.0).clamp(0.0, 1.0) * hue_rect.height();
+            ui.painter().line_segment(
+                [
+                    egui::Pos2::new(hue_rect.min.x - 2.0, mark_y),
+                    egui::Pos2::new(hue_rect.max.x + 2.0, mark_y),
+                ],
+                egui::Stroke::new(2.0_f32, Color32::WHITE),
+            );
+        }
+        if hue_resp.dragged() {
+            if let Some(pos) = hue_resp.interact_pointer_pos() {
+                h = ((pos.y - hue_rect.min.y) / hue_rect.height().max(1.0)).clamp(0.0, 1.0) * 360.0;
+            }
+        }
+    });
+    let (r, g, b) = hsv_to_rgb(h, s, v);
+    color[0] = r;
+    color[1] = g;
+    color[2] = b;
+    ui.horizontal(|ui| {
+        ui.label("Hex:");
+        let mut hex = format!(
+            "#{:02X}{:02X}{:02X}",
+            (color[0].clamp(0.0, 1.0) * 255.0) as u8,
+            (color[1].clamp(0.0, 1.0) * 255.0) as u8,
+            (color[2].clamp(0.0, 1.0) * 255.0) as u8,
+        );
+        if ui
+            .add(egui::TextEdit::singleline(&mut hex).desired_width(70.0))
+            .lost_focus()
+        {
+            let digits = hex.trim().trim_start_matches('#');
+            if digits.len() == 6 {
+                if let (Ok(rr), Ok(gg), Ok(bb)) = (
+                    u8::from_str_radix(&digits[0..2], 16),
+                    u8::from_str_radix(&digits[2..4], 16),
+                    u8::from_str_radix(&digits[4..6], 16),
+                ) {
+                    color[0] = rr as f32 / 255.0;
+                    color[1] = gg as f32 / 255.0;
+                    color[2] = bb as f32 / 255.0;
+                }
+            }
+        }
+        ui.label("α:");
+        ui.add(egui::Slider::new(&mut color[3], 0.0..=1.0).show_value(false));
+    });
 }
 
 /// Convert RGB (0.0..1.0) to CMYK (0.0..1.0 each).

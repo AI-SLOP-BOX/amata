@@ -254,6 +254,9 @@ impl eframe::App for IrasuApp {
         // Timeline animation playback tick
         if self.state.timeline.is_playing {
             if !self.state.timeline_was_playing {
+                // Flush first: otherwise the stop-commit below would sweep
+                // unrelated in-progress edits into "Timeline Playback".
+                self.state.flush_pending_edits();
                 // Snapshot animated objects once so the whole playback
                 // becomes a single undo step on stop.
                 self.state.timeline_was_playing = true;
