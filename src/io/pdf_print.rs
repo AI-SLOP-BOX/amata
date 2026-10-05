@@ -6,7 +6,7 @@
 //! of [`crate::core::icc`] (with the documented naive-UCR model as its
 //! fallback), and PDF/X output carries total-ink reporting.
 
-use crate::core::document::{ColorMode, Document, Object, ObjectType};
+use crate::core::document::{BlendMode, ColorMode, Document, Object, ObjectType};
 use crate::core::geometry::matrix_scale;
 use crate::core::icc::rgb_to_cmyk;
 use crate::core::path::{
@@ -227,13 +227,114 @@ pub fn export_pdf_print(doc: &Document, opts: &PrintPdfOptions) -> (Vec<u8>, Vec
     // Shift so trim (0,0) lands inside media.
     let _ = writeln!(content, "1 0 0 1 {} {} cm", f2(ox), f2(-oy));
 
+    // Transparency flattening for PDF/X: vector objects that carry live
+    // transparency are baked into opaque press-DPI raster regions (see
+    // `flatten_regions`). Skipped objects must not draw twice.
+    let flat = if opts.pdfx {
+        flatten_regions(doc, &mut ctx)
+    } else {
+        Vec::new()
+    };
+    // Embedded-font collection: gather faces + shaped lines for text
+    // eligible for Tj output (strict gate in `embed_candidate`).
+    let mut faces: Vec<embed::EmbedFace> = Vec::new();
+    let mut face_index: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+    let mut embed_lines: std::collections::HashMap<String, Vec<embed::EmbeddedLine>> =
+        std::collections::HashMap::new();
+    fn collect_text(
+        obj: &Object,
+        faces: &mut Vec<embed::EmbedFace>,
+        face_index: &mut std::collections::HashMap<String, usize>,
+        embed_lines: &mut std::collections::HashMap<String, Vec<embed::EmbeddedLine>>,
+    ) {
+        if let ObjectType::Group(children) | ObjectType::ClippingMask { children } =
+            &obj.object_type
+        {
+            for c in children {
+                collect_text(c, faces, face_index, embed_lines);
+            }
+            return;
+        }
+        let (text, style, area) = match &obj.object_type {
+            ObjectType::Text {
+                text, style, area, ..
+            } => (text, style, *area),
+            _ => return,
+        };
+        if !embed_eligible(obj, style) {
+            return;
+        }
+        let key = embed::face_key(style);
+        let idx = match face_index.get(&key) {
+            Some(&i) => i,
+            None => {
+                let (_, _, face) = match embed::resolve_face(style) {
+                    Some(v) => v,
+                    None => return,
+                };
+                faces.push(face);
+                let i = faces.len() - 1;
+                face_index.insert(key, i);
+                i
+            }
+        };
+        let layout = crate::core::document::layout_text(text, style, area);
+        let face = &mut faces[idx];
+        let mut lines = Vec::new();
+        for (li, line) in layout.lines.iter().take(layout.visible).enumerate() {
+            let glyphs = match embed::shape_line(&face.data, face.index, line, style) {
+                Some(g) => g,
+                None => return,
+            };
+            embed::collect_line(face, line, &glyphs);
+            lines.push(embed::EmbeddedLine {
+                li,
+                face_idx: idx,
+                glyphs,
+            });
+        }
+        if lines.iter().any(|l| !l.glyphs.is_empty()) {
+            embed_lines.insert(obj.id.clone(), lines);
+        }
+    }
+    for layer in &doc.layers {
+        for obj in &layer.objects {
+            collect_text(obj, &mut faces, &mut face_index, &mut embed_lines);
+        }
+    }
+    for (i, face) in faces.iter_mut().enumerate() {
+        face.res_idx = i + 1;
+    }
     for layer in &doc.layers {
         if !layer.visible {
             continue;
         }
         for obj in &layer.objects {
-            render_obj(&mut ctx, obj, &[1.0, 0.0, 0.0, 1.0, 0.0, 0.0], &mut content);
+            if flat.iter().any(|r| region_contains(r, obj)) {
+                continue;
+            }
+            render_obj_embed(
+                &mut ctx,
+                obj,
+                &[1.0, 0.0, 0.0, 1.0, 0.0, 0.0],
+                &mut content,
+                &faces,
+                &embed_lines,
+            );
         }
+    }
+    // Flattened regions draw as opaque press raster on top, in object
+    // order (regions were merged so they never overlap each other).
+    for (i, r) in flat.iter().enumerate() {
+        let _ = writeln!(
+            content,
+            "q {} 0 0 {} {} {} cm /Fm{} Do Q",
+            f2(r.w),
+            f2(-r.h),
+            f2(r.x),
+            f2(r.y + r.h),
+            i + 1
+        );
     }
     // Missing families outline as generic blocks: flag them per family so
     // the export never silently substitutes glyphs.
@@ -356,12 +457,33 @@ pub fn export_pdf_print(doc: &Document, opts: &PrintPdfOptions) -> (Vec<u8>, Vec
     for i in 0..ctx.images.len() {
         image_res.push_str(&format!("/Im{} {} 0 R ", i + 1, img_base + i));
     }
+    // Five objects per face (Type0, CIDFont, Descriptor, FontFile2,
+    // ToUnicode) placed after the flattened regions; numbers are analytic
+    // so this dict can reference them before assembly.
+    let font_base = img_base
+        + ctx.images.len()
+        + ctx.images.iter().filter(|im| im.mask.is_some()).count()
+        + flat.len();
+    for (i, face) in faces.iter_mut().enumerate() {
+        face.type0_no = font_base + i * 5;
+    }
+    // Flattened regions sit right after the masks (see assembly).
+    let flat_base =
+        img_base + ctx.images.len() + ctx.images.iter().filter(|im| im.mask.is_some()).count();
+    for (i, _) in flat.iter().enumerate() {
+        image_res.push_str(&format!("/Fm{} {} 0 R ", i + 1, flat_base + i));
+    }
 
+    let mut font_res = String::new();
+    for face in &faces {
+        font_res.push_str(&format!("/F{} {} 0 R ", face.res_idx, face.type0_no));
+    }
     let resources = format!(
-        "<< /ExtGState {} /Pattern << {}>> /XObject << {}>> /ColorSpace << {}>> >>",
+        "<< /ExtGState {} /Pattern << {}>> /XObject << {}>> /Font << {}>> /ColorSpace << {}>> >>",
         ctx.gs_dict(),
         pattern_res,
         image_res,
+        font_res,
         spot_cs
     );
 
@@ -496,9 +618,103 @@ pub fn export_pdf_print(doc: &Document, opts: &PrintPdfOptions) -> (Vec<u8>, Vec
         }
     }
 
+    // Flattened regions: opaque press raster, Flate (never DCT/SMask,
+    // so X-1a stays clean). Numbers follow the masks, matching `flat_base`.
+    for (i, r) in flat.iter().enumerate() {
+        offsets.push(pdf.len());
+        debug_assert_eq!(offsets.len(), flat_base + i);
+        let cs = if r.cmyk { "DeviceCMYK" } else { "DeviceRGB" };
+        pdf.extend_from_slice(
+            format!(
+                "{} 0 obj\n<< /Type /XObject /Subtype /Image /Width {} /Height {} /ColorSpace /{cs} /BitsPerComponent 8 /Filter /FlateDecode /Length {} >>\nstream\n",
+                flat_base + i, r.pw, r.ph, r.data.len()
+            )
+            .as_bytes(),
+        );
+        pdf.extend_from_slice(&r.data);
+        pdf.extend_from_slice(b"\nendstream\nendobj\n");
+    }
+
+    // Embedded fonts: Type0 + CIDFontType2 + Descriptor + FontFile2 +
+    // ToUnicode per face (full font, never subset).
+    for (i, face) in faces.iter().enumerate() {
+        let base = font_base + i * 5;
+        let w_ranges = embed::embed_width_ranges(face);
+        // Type0.
+        offsets.push(pdf.len());
+        debug_assert_eq!(offsets.len(), base);
+        pdf.extend_from_slice(
+            format!(
+                "{base} 0 obj\n<< /Type /Font /Subtype /Type0 /BaseFont /{ps} /Encoding /Identity-H /DescendantFonts [{cid} 0 R] /ToUnicode {cmap} 0 R >>\nendobj\n",
+                ps = face.ps_name,
+                cid = base + 1,
+                cmap = base + 4,
+            )
+            .as_bytes(),
+        );
+        // CIDFontType2 with Identity map (CID == GID).
+        offsets.push(pdf.len());
+        pdf.extend_from_slice(
+            format!(
+                "{cid} 0 obj\n<< /Type /Font /Subtype /CIDFontType2 /BaseFont /{ps} /CIDSystemInfo << /Registry (Adobe) /Ordering (Identity) /Supplement 0 >> /DW 1000 /W [{w}] /FontDescriptor {desc} 0 R /CIDToGIDMap /Identity >>\nendobj\n",
+                cid = base + 1,
+                ps = face.ps_name,
+                w = w_ranges,
+                desc = base + 2,
+            )
+            .as_bytes(),
+        );
+        // Descriptor.
+        offsets.push(pdf.len());
+        pdf.extend_from_slice(
+            format!(
+                "{desc} 0 obj\n<< /Type /FontDescriptor /FontName /{ps} /Flags 4 /FontBBox [{bb}] /ItalicAngle 0 /Ascent {asc} /Descent {des} /CapHeight {cap} /StemV 80 /FontFile2 {file} 0 R >>\nendobj\n",
+                desc = base + 2,
+                ps = face.ps_name,
+                bb = face
+                    .bbox_1000
+                    .iter()
+                    .map(|v| v.to_string())
+                    .collect::<Vec<_>>()
+                    .join(" "),
+                asc = face.ascent_1000,
+                des = face.descent_1000,
+                cap = face.cap_1000,
+                file = base + 3,
+            )
+            .as_bytes(),
+        );
+        // Full font bytes (never subset: searchability and fidelity over size).
+        offsets.push(pdf.len());
+        let comp = flate_compress(&face.data);
+        pdf.extend_from_slice(
+            format!(
+                "{file} 0 obj\n<< /Length {n} /Filter /FlateDecode >>\nstream\n",
+                file = base + 3,
+                n = comp.len(),
+            )
+            .as_bytes(),
+        );
+        pdf.extend_from_slice(&comp);
+        pdf.extend_from_slice(b"\nendstream\nendobj\n");
+        // ToUnicode.
+        offsets.push(pdf.len());
+        let cmap = embed::embed_tounicode_cmap(face);
+        pdf.extend_from_slice(
+            format!(
+                "{cmap_no} 0 obj\n<< /Length {n} >>\nstream\n",
+                cmap_no = base + 4,
+                n = cmap.len(),
+            )
+            .as_bytes(),
+        );
+        pdf.extend_from_slice(cmap.as_bytes());
+        pdf.extend_from_slice(b"\nendstream\nendobj\n");
+    }
+
     // Info dict.
     offsets.push(pdf.len());
-    let info_no = next_no;
+    let info_no = next_no + flat.len() + faces.len() * 5;
     pdf.extend_from_slice(
         format!(
             "{info_no} 0 obj\n<< /Title ({}) /Creator (Amata) /Producer (Amata print export) /CreationDate (D:20260101000000+09'00') >>\nendobj\n",
@@ -508,7 +724,7 @@ pub fn export_pdf_print(doc: &Document, opts: &PrintPdfOptions) -> (Vec<u8>, Vec
     );
 
     // xref.
-    let total = next_no + 1; // Size counts object 0.
+    let total = next_no + flat.len() + faces.len() * 5 + 1; // Size counts object 0.
     let xref_at = pdf.len();
     pdf.extend_from_slice(format!("xref\n0 {total}\n0000000000 65535 f \n").as_bytes());
     for off in &offsets {
@@ -683,7 +899,616 @@ fn flate_compress(data: &[u8]) -> Vec<u8> {
     enc.finish().unwrap_or_default()
 }
 
-fn render_obj(ctx: &mut Ctx, obj: &Object, parent: &[f64; 6], out: &mut String) {
+/// One baked transparency region: opaque press raster in document coords.
+struct FlatRegion {
+    x: f64,
+    y: f64,
+    w: f64,
+    h: f64,
+    /// Flate-compressed raw samples (RGB or CMYK, no alpha, no mask).
+    data: Vec<u8>,
+    pw: u32,
+    ph: u32,
+    cmyk: bool,
+}
+
+/// Press raster density for flattened regions.
+const FLATTEN_DPI: f64 = 300.0;
+const FLATTEN_MAX_PX: f32 = 8192.0;
+/// Pad around bboxes: strokes, glows and shadows paint outside the
+/// geometry box, and clipping them would show.
+const FLATTEN_PAD: f64 = 16.0;
+
+fn subtree_needs_flatten(obj: &Object) -> bool {
+    // Object-level transparency.
+    if obj.opacity < 1.0
+        || obj.blend_mode != BlendMode::Normal
+        || obj.shadow.is_some()
+        || obj.glow.is_some()
+    {
+        return true;
+    }
+    // Paint-level alpha: translucent fills/strokes (incl. gradient stops)
+    // also emit live ExtGState alpha.
+    fn paint_alpha(obj: &Object) -> bool {
+        let fill_alpha = obj.fill.as_ref().map(|f| {
+            let mut a = f.color[3];
+            match &f.fill_type {
+                crate::core::path::FillType::Linear(g) => {
+                    for s in &g.stops {
+                        a = a.min(s.color[3]);
+                    }
+                }
+                crate::core::path::FillType::Radial(g) => {
+                    for s in &g.stops {
+                        a = a.min(s.color[3]);
+                    }
+                }
+                _ => {}
+            }
+            a
+        });
+        let stroke_alpha = obj.stroke.as_ref().map(|s| s.color[3]);
+        fill_alpha.is_some_and(|a| a < 1.0) || stroke_alpha.is_some_and(|a| a < 1.0)
+    }
+    if paint_alpha(obj) {
+        return true;
+    }
+    match &obj.object_type {
+        ObjectType::Group(children) | ObjectType::ClippingMask { children } => {
+            children.iter().any(subtree_needs_flatten)
+        }
+        _ => false,
+    }
+}
+
+fn obj_flat_box(obj: &Object) -> Option<(f64, f64, f64, f64)> {
+    obj.bounding_box().map(|(a, b)| {
+        (
+            a.x.min(b.x) - FLATTEN_PAD,
+            a.y.min(b.y) - FLATTEN_PAD,
+            a.x.max(b.x) + FLATTEN_PAD,
+            a.y.max(b.y) + FLATTEN_PAD,
+        )
+    })
+}
+
+fn boxes_overlap(a: &(f64, f64, f64, f64), b: &(f64, f64, f64, f64)) -> bool {
+    a.0 <= b.2 && b.0 <= a.2 && a.1 <= b.3 && b.1 <= a.3
+}
+
+fn region_contains(r: &FlatRegion, obj: &Object) -> bool {
+    match obj_flat_box(obj) {
+        Some((x0, y0, x1, y1)) => {
+            x0 >= r.x - 1e-6 && y0 >= r.y - 1e-6 && x1 <= r.x + r.w + 1e-6 && y1 <= r.y + r.h + 1e-6
+        }
+        None => false,
+    }
+}
+
+/// Bake every transparency-carrying area into opaque press raster.
+///
+/// Only used for the PDF/X path (plain PDFs keep live transparency, which
+/// they support natively). Merges each transparent object with everything
+/// it overlaps into whole-object regions, rasterizes the page once at
+/// press DPI on white, and crops per region — so overlaps composite
+/// exactly as on canvas and no vector object draws twice. Returns empty
+/// (with a warning) when rasterization is impossible; the caller then
+/// falls back to vector output and the X-1a gate refuses the file.
+fn flatten_regions(doc: &Document, ctx: &mut Ctx) -> Vec<FlatRegion> {
+    let mut seeds: Vec<(f64, f64, f64, f64)> = Vec::new();
+    let mut all: Vec<(f64, f64, f64, f64)> = Vec::new();
+    for layer in &doc.layers {
+        if !layer.visible {
+            continue;
+        }
+        for obj in &layer.objects {
+            if !obj.visible {
+                continue;
+            }
+            let Some(b) = obj_flat_box(obj) else {
+                continue;
+            };
+            all.push(b);
+            if subtree_needs_flatten(obj) {
+                seeds.push(b);
+            }
+        }
+    }
+    if seeds.is_empty() {
+        return Vec::new();
+    }
+    // Absorb everything each seed touches, to fixpoint: regions always
+    // contain whole objects, so skipping vector output inside them can
+    // never double-draw or drop an edge.
+    let mut regions = seeds;
+    loop {
+        let mut grown = false;
+        let mut rest: Vec<(f64, f64, f64, f64)> = Vec::new();
+        for b in all.drain(..) {
+            if regions.iter().any(|r| boxes_overlap(r, &b)) {
+                for r in regions.iter_mut() {
+                    if boxes_overlap(r, &b) {
+                        r.0 = r.0.min(b.0);
+                        r.1 = r.1.min(b.1);
+                        r.2 = r.2.max(b.2);
+                        r.3 = r.3.max(b.3);
+                    }
+                }
+                grown = true;
+            } else {
+                rest.push(b);
+            }
+        }
+        all = rest;
+        // Regions that now touch each other merge as well.
+        let mut merged: Vec<(f64, f64, f64, f64)> = Vec::new();
+        for b in regions.drain(..) {
+            if let Some(r) = merged.iter_mut().find(|r| boxes_overlap(r, &b)) {
+                r.0 = r.0.min(b.0);
+                r.1 = r.1.min(b.1);
+                r.2 = r.2.max(b.2);
+                r.3 = r.3.max(b.3);
+                grown = true;
+            } else {
+                merged.push(b);
+            }
+        }
+        regions = merged;
+        if !grown {
+            break;
+        }
+    }
+    if regions.len() > 32 {
+        ctx.warn(
+            "flatten-many",
+            "透明領域が多すぎるためフラット化を中止しました",
+        );
+        return Vec::new();
+    }
+    // Full-page raster once, on white (opaque ⇒ no SMask, X-1a clean).
+    let longest = doc.width.max(doc.height).max(1.0) as f32;
+    let mut scale = (FLATTEN_DPI / 72.0) as f32;
+    if longest * scale > FLATTEN_MAX_PX {
+        scale = FLATTEN_MAX_PX / longest;
+    }
+    if scale < 0.1 {
+        ctx.warn(
+            "flatten-scale",
+            "用紙が大きすぎるためフラット化を中止しました",
+        );
+        return Vec::new();
+    }
+    let png =
+        match crate::io::raster::export_png_with_limit(doc, scale, false, FLATTEN_MAX_PX as u32) {
+            Ok(p) => p,
+            Err(e) => {
+                ctx.warn("flatten-raster", format!("ラスタライズに失敗: {e}"));
+                return Vec::new();
+            }
+        };
+    let img = match image::load_from_memory(&png) {
+        Ok(i) => i.to_rgba8(),
+        Err(_) => {
+            ctx.warn("flatten-decode", "ラスタのデコードに失敗しました");
+            return Vec::new();
+        }
+    };
+    let (iw, ih) = (img.width() as f64, img.height() as f64);
+    let sx = iw / doc.width.max(1.0);
+    let sy = ih / doc.height.max(1.0);
+    let mut out = Vec::new();
+    let mut flat_count = 0usize;
+    for (x0, y0, x1, y1) in regions {
+        let cx0 = (x0.max(0.0) * sx).round().clamp(0.0, iw - 1.0) as u32;
+        let cy0 = (y0.max(0.0) * sy).round().clamp(0.0, ih - 1.0) as u32;
+        let cx1 = (x1.max(0.0) * sx).round().clamp(1.0, iw) as u32;
+        let cy1 = (y1.max(0.0) * sy).round().clamp(1.0, ih) as u32;
+        if cx1 <= cx0 || cy1 <= cy0 {
+            continue;
+        }
+        let pw = cx1 - cx0;
+        let ph = cy1 - cy0;
+        if pw * ph > 16_777_216 {
+            ctx.warn("flatten-huge", "領域が大きすぎるため一部をベクタ出力します");
+            continue;
+        }
+        let crop = image::imageops::crop_imm(&img, cx0, cy0, pw, ph).to_image();
+        let mut raw = Vec::with_capacity((pw * ph) as usize * 4);
+        if ctx.cmyk {
+            for p in crop.pixels() {
+                let c = crate::core::print::rgb_to_cmyk_ink(
+                    p[0] as f32 / 255.0,
+                    p[1] as f32 / 255.0,
+                    p[2] as f32 / 255.0,
+                );
+                raw.extend_from_slice(&[
+                    (c[0] * 255.0) as u8,
+                    (c[1] * 255.0) as u8,
+                    (c[2] * 255.0) as u8,
+                    (c[3] * 255.0) as u8,
+                ]);
+            }
+        } else {
+            for p in crop.pixels() {
+                raw.extend_from_slice(&[p[0], p[1], p[2]]);
+            }
+        }
+        flat_count += 1;
+        out.push(FlatRegion {
+            x: x0.max(0.0),
+            y: y0.max(0.0),
+            w: (x1.max(0.0) - x0.max(0.0)).max(1.0),
+            h: (y1.max(0.0) - y0.max(0.0)).max(1.0),
+            data: flate_compress(&raw),
+            pw,
+            ph,
+            cmyk: ctx.cmyk,
+        });
+    }
+    if !out.is_empty() {
+        ctx.warn(
+            "flatten",
+            format!(
+                "透明{flat_count}領域を{:.0}dpiでフラット化ラスタライズしました",
+                sx * 72.0
+            ),
+        );
+    }
+    out
+}
+
+/// Embedded-font text for press PDFs: full-font CIDFontType2 (never
+/// subset) + Identity map + ToUnicode, so text stays selectable instead of
+/// being outlined. Eligibility is strict — anything exotic (area wrap is
+/// fine; vertical/variable/faux/slanted faces, non-solid fills, strokes,
+/// translucency) keeps the old outline path, which already handles it.
+/// Outlined and embedded output share the same HarfBuzz shaping, so metrics
+/// agree by construction.
+mod embed {
+
+    /// One shaped line ready for Tj emission.
+    pub struct EmbeddedLine {
+        pub li: usize,
+        pub face_idx: usize,
+        pub glyphs: Vec<crate::core::text_path::ShapedGlyph>,
+    }
+
+    pub struct EmbedFace {
+        pub ps_name: String,
+        pub data: Vec<u8>,
+        pub index: u32,
+        pub upem: u32,
+        pub gids: std::collections::BTreeSet<u32>,
+        /// GID -> unicode scalar for ToUnicode (first cluster wins).
+        pub uni: std::collections::HashMap<u32, u32>,
+        pub ascent_1000: i32,
+        pub descent_1000: i32,
+        pub cap_1000: i32,
+        pub bbox_1000: [i32; 4],
+        /// Assigned object numbers at assembly.
+        pub type0_no: usize,
+        pub res_idx: usize,
+    }
+
+    pub fn face_key(style: &crate::core::document::TextStyle) -> String {
+        format!(
+            "{}|{}|{:?}",
+            style.font_family, style.font_weight, style.font_style
+        )
+    }
+
+    fn ps_sanitize(s: &str) -> String {
+        let mut out: String = s
+            .chars()
+            .map(|c| {
+                if c.is_ascii_alphanumeric() || c == '-' {
+                    c
+                } else {
+                    '_'
+                }
+            })
+            .collect();
+        if out.is_empty() {
+            out = "AmataFont".to_string();
+        }
+        out.truncate(60);
+        out
+    }
+
+    /// Resolve face bytes + metrics. `None` = caller keeps outlines.
+    pub fn resolve_face(
+        style: &crate::core::document::TextStyle,
+    ) -> Option<(Vec<u8>, u32, EmbedFace)> {
+        if style.vertical || !style.variations.is_empty() {
+            return None;
+        }
+        let registry = crate::core::font::FontRegistry::global();
+        if registry.needs_synthetic_style(&style.font_family, style.font_weight, style.font_style) {
+            return None;
+        }
+        let (data, index) = registry.query_face_data(
+            &style.font_family,
+            style.font_weight,
+            style.font_style,
+            |d, i| (d.to_vec(), i),
+        )?;
+        let face = ttf_parser::Face::parse(&data, index).ok()?;
+        let upem = face.units_per_em() as u32;
+        if upem == 0 {
+            return None;
+        }
+        let q = |v: i16| (v as f32 * 1000.0 / upem as f32).round() as i32;
+        let (ascent, descent) = (face.ascender() as f32, face.descender() as f32);
+        let cap_1000 = face
+            .tables()
+            .os2
+            .as_ref()
+            .and_then(|os2| os2.capital_height())
+            .map(q)
+            .unwrap_or(700);
+        let (x0, y0, x1, y1) = (
+            face.global_bounding_box().x_min,
+            face.global_bounding_box().y_min,
+            face.global_bounding_box().x_max,
+            face.global_bounding_box().y_max,
+        );
+        let ps_name = ps_sanitize(&style.font_family);
+        Some((
+            data.clone(),
+            index,
+            EmbedFace {
+                ps_name,
+                data,
+                index,
+                upem,
+                gids: Default::default(),
+                uni: Default::default(),
+                ascent_1000: (ascent * 1000.0 / upem as f32).round() as i32,
+                descent_1000: (descent * 1000.0 / upem as f32).round() as i32,
+                cap_1000,
+                bbox_1000: [q(x0), q(y0), q(x1), q(y1)],
+                type0_no: 0,
+                res_idx: 0,
+            },
+        ))
+    }
+
+    /// Shape one line for embedding. Returns glyph runs with font-unit
+    /// advances; `None` = outlines fallback (unshapable, vertical offsets
+    /// that TJ cannot express, .notdef).
+    pub fn shape_line(
+        data: &[u8],
+        index: u32,
+        line: &str,
+        style: &crate::core::document::TextStyle,
+    ) -> Option<Vec<crate::core::text_path::ShapedGlyph>> {
+        let shaped = crate::core::text_path::shape_run_hb(data, index, line, style.ligatures)?;
+        for g in &shaped {
+            if g.y_offset != 0.0 {
+                return None;
+            }
+            let ch = line.get(g.cluster as usize..)?.chars().next()?;
+            if g.gid == 0 && ch != ' ' && ch != '\t' {
+                return None;
+            }
+        }
+        Some(shaped)
+    }
+
+    /// Register glyph usage from a shaped line (widths + ToUnicode map).
+    pub fn collect_line(
+        face: &mut EmbedFace,
+        line: &str,
+        shaped: &[crate::core::text_path::ShapedGlyph],
+    ) {
+        for g in shaped {
+            face.gids.insert(g.gid);
+            face.uni.entry(g.gid).or_insert_with(|| {
+                line.get(g.cluster as usize..)
+                    .and_then(|s| s.chars().next())
+                    .map(|ch| ch as u32)
+                    .unwrap_or(0xFFFD)
+            });
+        }
+    }
+
+    /// W array over consecutive used-GID runs (`gid [w ...]`).
+    pub fn embed_width_ranges(face: &EmbedFace) -> String {
+        let mut gids: Vec<u32> = face.gids.iter().copied().collect();
+        gids.sort_unstable();
+        let mut out = String::new();
+        let mut i = 0;
+        while i < gids.len() {
+            let start = gids[i];
+            let mut run = vec![gid_width_1000(face, start)];
+            let mut j = i + 1;
+            while j < gids.len() && gids[j] == gids[j - 1] + 1 {
+                run.push(gid_width_1000(face, gids[j]));
+                j += 1;
+            }
+            use std::fmt::Write as _;
+            let _ = write!(
+                out,
+                "{} [{}] ",
+                start,
+                run.iter()
+                    .map(|w| w.to_string())
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            );
+            i = j;
+        }
+        out
+    }
+
+    /// ToUnicode CMap (GID-as-CID -> UTF-16BE), 100 entries per block.
+    pub fn embed_tounicode_cmap(face: &EmbedFace) -> String {
+        let mut entries: Vec<(u32, u32)> = face.uni.iter().map(|(g, u)| (*g, *u)).collect();
+        entries.sort_unstable();
+        let mut out = String::from(
+            "/CIDInit /ProcSet findresource begin\n12 dict begin\nbegincmap\n/CIDSystemInfo << /Registry (Adobe) /Ordering (Identity) /Supplement 0 >> def\n/CMapName /Amata-Identity def\n/CMapType 2 def\n1 begincodespacerange\n<0000> <FFFF>\nendcodespacerange\n",
+        );
+        use std::fmt::Write as _;
+        for chunk in entries.chunks(100) {
+            let _ = writeln!(out, "{} beginbfchar", chunk.len());
+            for (gid, uni) in chunk {
+                let mut utf16 = [0u16; 2];
+                let enc = char::from_u32(*uni)
+                    .unwrap_or('\u{FFFD}')
+                    .encode_utf16(&mut utf16);
+                let hex: String = enc.iter().map(|u| format!("{u:04X}")).collect();
+                let _ = writeln!(out, "<{gid:04X}> <{hex}>");
+            }
+            out.push_str("endbfchar\n");
+        }
+        out.push_str("endcmap\nCMapName currentdict /CMap defineresource pop\nend\nend\n");
+        out
+    }
+
+    pub fn gid_width_1000(face: &EmbedFace, gid: u32) -> u32 {
+        let ttf = match ttf_parser::Face::parse(&face.data, face.index) {
+            Ok(f) => f,
+            Err(_) => return 1000,
+        };
+        let adv = ttf
+            .glyph_hor_advance(ttf_parser::GlyphId(gid.min(0xFFFF) as u16))
+            .unwrap_or(face.upem as u16);
+        (adv as f32 * 1000.0 / face.upem as f32).round().max(0.0) as u32
+    }
+}
+
+/// Strict gate for embedded-font text: anything exotic keeps outlines.
+/// Outlines already handle gradients, strokes, translucency, vertical and
+/// synthetic faces; embedding covers the common solid-fill case.
+fn embed_eligible(obj: &Object, style: &crate::core::document::TextStyle) -> bool {
+    if style.vertical || !style.variations.is_empty() {
+        return false;
+    }
+    if obj.opacity < 1.0
+        || obj.blend_mode != BlendMode::Normal
+        || obj.shadow.is_some()
+        || obj.glow.is_some()
+        || obj.stroke.is_some()
+    {
+        return false;
+    }
+    matches!(
+        obj.fill.as_ref().map(|f| &f.fill_type),
+        Some(crate::core::path::FillType::Solid(c)) if c[3] >= 1.0
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn emit_embedded_text(
+    ctx: &mut Ctx,
+    obj: &Object,
+    style: &crate::core::document::TextStyle,
+    area: Option<crate::core::document::TextArea>,
+    world: &[f64; 6],
+    faces: &[embed::EmbedFace],
+    lines: &[embed::EmbeddedLine],
+    out: &mut String,
+) {
+    use crate::core::document::TextAnchor;
+    let layout = crate::core::document::layout_text(
+        match &obj.object_type {
+            ObjectType::Text { text, .. } => text,
+            _ => return,
+        },
+        style,
+        area,
+    );
+    let line_h = style.effective_line_height();
+    let fill = match obj.fill.as_ref() {
+        Some(f) => f,
+        None => return,
+    };
+    let paint = ctx.fill_paint(fill.color, &fill.spot);
+    let gs = ctx.gs_for(fill.overprint, 1.0);
+    let s = style.font_size;
+    let tc = if s > 0.0 {
+        style.letter_spacing / s * 1000.0
+    } else {
+        0.0
+    };
+    let _ = writeln!(out, "q");
+    let _ = writeln!(out, "{paint}");
+    if !gs.is_empty() {
+        let _ = writeln!(out, "{gs}");
+    }
+    for eline in lines {
+        let face = &faces[eline.face_idx];
+        let upem = face.upem as f64;
+        if upem <= 0.0 {
+            continue;
+        }
+        let scale = s / upem;
+        let n = eline.glyphs.len();
+        if n == 0 {
+            continue;
+        }
+        // Anchor from shaped advances (same shaping as outlines).
+        let mut adv_sum = 0.0;
+        for g in &eline.glyphs {
+            adv_sum += g.x_advance as f64;
+        }
+        let lw = adv_sum * scale + style.letter_spacing * (n as f64 - 1.0).max(0.0);
+        let (ox, _) = layout.origin;
+        let ax = match style.text_anchor {
+            TextAnchor::Start => ox,
+            TextAnchor::Middle => area.map(|a| a.x + a.width / 2.0).unwrap_or(ox) - lw / 2.0,
+            TextAnchor::End => area.map(|a| a.x + a.width).unwrap_or(ox) - lw,
+        };
+        let ay = layout.origin.1 + eline.li as f64 * line_h;
+        // Tm = world * T(ax,ay) * S(s,-s): content stream is y-flipped,
+        // so glyphs (y-up in text space) land upright.
+        let (a, b, c, d, e, f) = (world[0], world[1], world[2], world[3], world[4], world[5]);
+        let ex = a * ax + c * ay + e;
+        let ey = b * ax + d * ay + f;
+        // TJ array with kerning corrections (shaped minus nominal).
+        let mut tj = String::from("[");
+        for (i, g) in eline.glyphs.iter().enumerate() {
+            use std::fmt::Write as _;
+            let _ = write!(tj, "<{:04X}>", g.gid.min(0xFFFF));
+            if i + 1 < n {
+                let nom = embed::gid_width_1000(face, g.gid) as f64 * upem / 1000.0;
+                let next = &eline.glyphs[i + 1];
+                let adj = (g.x_advance as f64 - nom) + (next.x_offset as f64 - g.x_offset as f64);
+                let tjn = -adj * 1000.0 / upem;
+                if tjn.abs() >= 0.5 {
+                    let _ = write!(tj, " {} ", tjn.round() as i32);
+                } else {
+                    tj.push(' ');
+                }
+            }
+        }
+        tj.push_str("] TJ");
+        let _ = writeln!(
+            out,
+            "BT /F{} {} Tf {} Tc {} {} {} {} {} {} Tm {tj} ET",
+            face.res_idx,
+            f2(s),
+            f2(tc),
+            f2(a * s),
+            f2(b * s),
+            f2(-c * s),
+            f2(-d * s),
+            f2(ex),
+            f2(ey),
+        );
+    }
+    let _ = writeln!(out, "Q");
+}
+
+fn render_obj_embed(
+    ctx: &mut Ctx,
+    obj: &Object,
+    parent: &[f64; 6],
+    out: &mut String,
+    faces: &[embed::EmbedFace],
+    embed_lines: &std::collections::HashMap<String, Vec<embed::EmbeddedLine>>,
+) {
     if !obj.visible {
         return;
     }
@@ -707,16 +1532,24 @@ fn render_obj(ctx: &mut Ctx, obj: &Object, parent: &[f64; 6], out: &mut String) 
                     .unwrap_or(false);
                 let _ = writeln!(out, "{} n", if rule { "W*" } else { "W" });
                 for child in &children[1..] {
-                    render_obj(ctx, child, &world, out);
+                    render_obj_embed(ctx, child, &world, out, faces, embed_lines);
                 }
                 let _ = writeln!(out, "Q");
                 return;
             }
             for child in children {
-                render_obj(ctx, child, &world, out);
+                render_obj_embed(ctx, child, &world, out, faces, embed_lines);
             }
         }
-        ObjectType::Text { text, style, area, .. } => {
+        ObjectType::Text {
+            text, style, area, ..
+        } => {
+            // Embedded text when eligible (selectable, compact); outlines
+            // otherwise (fonts never missing).
+            if let Some(lines) = embed_lines.get(&obj.id) {
+                emit_embedded_text(ctx, obj, style, *area, &world, faces, lines, out);
+                return;
+            }
             // Deterministic press text: outlines (fonts never missing).
             let layout = crate::core::document::layout_text(text, style, *area);
             let line_h = style.effective_line_height();

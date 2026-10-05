@@ -244,6 +244,58 @@ fn test_pdfx_validator_flags_live_transparency() {
 }
 
 #[test]
+fn test_pdfx_flattens_transparency_to_clean_plates() {
+    // A translucent object under PDF/X-1a must come out as opaque raster,
+    // not live transparency: no violations, parseable, region placed.
+    let mut doc = Document::default();
+    doc.color_mode = ColorMode::Cmyk;
+    doc.width = 200.0;
+    doc.height = 200.0;
+    doc.bleed = irasu_illustrator::core::print::mm_to_pt(3.0);
+    let mut ghost = Object::new_rect("G", 20.0, 20.0, 60.0, 60.0, 0.0);
+    ghost.fill = Some(FillStyle::solid([1.0, 0.0, 0.0, 1.0]));
+    ghost.opacity = 0.5;
+    doc.add_object(ghost);
+    let (pdf, warnings) = export_pdf_print(&doc, &PrintPdfOptions::default());
+    assert!(
+        !warnings.iter().any(|w| w.contains("PDF/X-1a違反")),
+        "flattened file is X-1a clean: {warnings:?}"
+    );
+    assert!(
+        warnings.iter().any(|w| w.contains("フラット化")),
+        "flattening reported: {warnings:?}"
+    );
+    let text = String::from_utf8_lossy(&pdf);
+    assert!(text.contains("/Fm1 Do"), "region placed");
+    assert!(!text.contains("/SMask"), "no soft masks");
+    assert!(!text.contains("/CA"), "no live alpha states");
+    parse(&pdf);
+}
+
+#[test]
+fn test_embedded_text_stays_selectable() {
+    // Resolvable font + solid fill => embedded CIDFontType2 with ToUnicode,
+    // not outlines: text remains selectable in the press PDF.
+    let mut doc = Document::default();
+    doc.color_mode = ColorMode::Cmyk;
+    doc.width = 200.0;
+    doc.height = 100.0;
+    doc.bleed = irasu_illustrator::core::print::mm_to_pt(3.0);
+    let mut txt = Object::new_text("T", "Hello", 10.0, 40.0, 24.0);
+    txt.fill = Some(FillStyle::solid([0.0, 0.0, 0.0, 1.0]));
+    doc.add_object(txt);
+    let (pdf, warnings) = export_pdf_print(&doc, &PrintPdfOptions::default());
+    let text = String::from_utf8_lossy(&pdf);
+    assert!(
+        text.contains("/CIDFontType2"),
+        "embedded font: {warnings:?}"
+    );
+    assert!(text.contains("/ToUnicode"), "searchable");
+    assert!(text.contains("] TJ"), "positioned text");
+    parse(&pdf);
+}
+
+#[test]
 fn test_rgb_doc_stays_rgb() {
     let mut doc = Document::default();
     doc.width = 100.0;
