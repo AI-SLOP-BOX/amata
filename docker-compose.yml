@@ -1,0 +1,24 @@
+name: amata
+services:
+  amata:
+    build: .
+    image: amata:latest
+    container_name: amata-api
+    restart: unless-stopped
+    ports:
+      - "${AMATA_PORT:-9260}:9260"
+    environment:
+      # Empty = open loopback-style server (dev default). Set a secret to
+      # require `Authorization: Bearer <token>` on every non-OPTIONS request.
+      AMATA_API_TOKEN: "${AMATA_API_TOKEN:-}"
+    volumes:
+      # Persisted documents served via `serve --input /data/...`.
+      - amata-data:/data
+    healthcheck:
+      test: ["CMD", "amata", "--help"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  amata-data:

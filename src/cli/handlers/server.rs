@@ -54,6 +54,10 @@ const IO_TIMEOUT: Duration = Duration::from_secs(10);
 pub struct ApiState {
     pub document: Document,
     pub request_count: u64,
+    /// Optional bearer token (`AMATA_API_TOKEN`). `None` = open loopback
+    /// server, exactly as before; `Some` = every non-OPTIONS request must
+    /// carry `Authorization: Bearer <token>`.
+    pub auth_token: Option<String>,
 }
 
 impl ApiState {
@@ -61,6 +65,7 @@ impl ApiState {
         Self {
             document,
             request_count: 0,
+            auth_token: None,
         }
     }
 }
@@ -590,6 +595,7 @@ struct Request {
     method: String,
     target: String,
     body: Vec<u8>,
+    authorization: Option<String>,
 }
 
 fn header_end(raw: &[u8]) -> Option<usize> {
@@ -635,6 +641,7 @@ fn read_request(stream: &mut TcpStream) -> std::io::Result<Request> {
     }
 
     let mut content_length = 0usize;
+    let mut authorization: Option<String> = None;
     for line in lines {
         let Some((name, value)) = line.split_once(':') else {
             continue;
@@ -652,6 +659,9 @@ fn read_request(stream: &mut TcpStream) -> std::io::Result<Request> {
                     ErrorKind::InvalidData,
                     "chunked transfer encoding is not supported",
                 ));
+            }
+            "authorization" if authorization.is_none() => {
+                authorization = Some(value.to_string());
             }
             _ => {}
         }
@@ -678,6 +688,7 @@ fn read_request(stream: &mut TcpStream) -> std::io::Result<Request> {
         method,
         target,
         body,
+        authorization,
     })
 }
 
@@ -721,6 +732,30 @@ fn drain_pending_request_bytes(stream: &mut TcpStream) {
     }
 }
 
+/// Bearer gate for self-hosting. `None` token = open (loopback default,
+/// unchanged behaviour); otherwise every non-OPTIONS request must carry
+/// `Authorization: Bearer <token>`. Constant-time compare, length-checked
+/// first so the timing signal carries nothing.
+fn authorized(api: &ApiState, req: &Request) -> bool {
+    let Some(token) = &api.auth_token else {
+        return true;
+    };
+    req.authorization.as_deref().is_some_and(|h| {
+        h.len() == token.len() + 7 && h.starts_with("Bearer ") && subtle_eq(&h[7..], token)
+    })
+}
+fn subtle_eq(a: &str, b: &str) -> bool {
+    let (a, b) = (a.as_bytes(), b.as_bytes());
+    if a.len() != b.len() {
+        return false;
+    }
+    let mut diff = 0u8;
+    for (x, y) in a.iter().zip(b.iter()) {
+        diff |= x ^ y;
+    }
+    diff == 0
+}
+
 /// Serve one connection: parse, route, answer. Errors are reported to the
 /// client when possible and otherwise swallowed (a broken peer must not take
 /// the server down).
@@ -736,6 +771,12 @@ pub fn handle_connection(mut stream: TcpStream, api: &mut ApiState) {
         Ok(request) => {
             if request.method.eq_ignore_ascii_case("OPTIONS") {
                 let response = ApiResponse::text(200, "");
+                let _ = write_response(&mut stream, &response);
+                drain_pending_request_bytes(&mut stream);
+                return;
+            }
+            if !authorized(api, &request) {
+                let response = ApiResponse::error(401, "missing or invalid bearer token");
                 let _ = write_response(&mut stream, &response);
                 drain_pending_request_bytes(&mut stream);
                 return;
@@ -774,7 +815,11 @@ pub fn serve(listener: TcpListener, mut api: ApiState, stop: &AtomicBool) -> std
 }
 
 /// `amata serve` entry point.
-pub fn handle_serve(port: u16, input: Option<PathBuf>) -> Result<bool, Box<dyn std::error::Error>> {
+pub fn handle_serve(
+    port: u16,
+    host: &str,
+    input: Option<PathBuf>,
+) -> Result<bool, Box<dyn std::error::Error>> {
     let document = match input {
         Some(path) => {
             println!("📂 Loading '{:?}'...", path);
@@ -783,8 +828,10 @@ pub fn handle_serve(port: u16, input: Option<PathBuf>) -> Result<bool, Box<dyn s
         None => Document::default(),
     };
 
-    // Loopback only: this is a local integration surface, not a public service.
-    let addr = format!("127.0.0.1:{port}");
+    // Default loopback: a local integration surface. `--host 0.0.0.0`
+    // (typically behind a reverse proxy, with AMATA_API_TOKEN set) is how
+    // this becomes a self-hosted service.
+    let addr = format!("{host}:{port}");
     let listener = match TcpListener::bind(&addr) {
         Ok(listener) => listener,
         Err(err) => {
@@ -806,8 +853,45 @@ pub fn handle_serve(port: u16, input: Option<PathBuf>) -> Result<bool, Box<dyn s
     }
     println!("   Stop with Ctrl+C.");
 
+    let mut api = ApiState::new(document);
+    if let Ok(token) = std::env::var("AMATA_API_TOKEN") {
+        if !token.is_empty() {
+            api.auth_token = Some(token);
+            println!("   Auth: bearer token required (AMATA_API_TOKEN)");
+        }
+    }
     let stop = AtomicBool::new(false);
-    serve(listener, ApiState::new(document), &stop)?;
+    serve(listener, api, &stop)?;
     Ok(false)
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn req(auth: Option<&str>) -> Request {
+        Request {
+            method: "GET".to_string(),
+            target: "/api/health".to_string(),
+            body: Vec::new(),
+            authorization: auth.map(|s| s.to_string()),
+        }
+    }
+
+    #[test]
+    fn open_server_allows_everything() {
+        let api = ApiState::new(Document::default());
+        assert!(authorized(&api, &req(None)));
+        assert!(authorized(&api, &req(Some("Bearer anything"))));
+    }
+
+    #[test]
+    fn token_server_checks_bearer() {
+        let mut api = ApiState::new(Document::default());
+        api.auth_token = Some("secret".to_string());
+        assert!(!authorized(&api, &req(None)));
+        assert!(!authorized(&api, &req(Some("Bearer wrong"))));
+        assert!(!authorized(&api, &req(Some("Basic c2VjcmV0"))));
+        assert!(authorized(&api, &req(Some("Bearer secret"))));
+    }
+}

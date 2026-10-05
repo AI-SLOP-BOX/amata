@@ -498,6 +498,8 @@ pub enum Commands {
     Serve {
         #[arg(short, long, default_value_t = 9260)]
         port: u16,
+        #[arg(long, default_value = "127.0.0.1")]
+        host: String,
         #[arg(short, long)]
         input: Option<PathBuf>,
     },

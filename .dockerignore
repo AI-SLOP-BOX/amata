@@ -1,0 +1,5 @@
+*.log
+target/
+.DS_Store
+amata-data/
+.env

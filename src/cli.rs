@@ -264,7 +264,7 @@ pub fn run_cli(cli: Cli) -> Result<bool, Box<dyn std::error::Error>> {
             input,
         }) => handle_script(&script, output, input),
         Some(Commands::Plugins { info }) => handle_plugins(info),
-        Some(Commands::Serve { port, input }) => handle_serve(port, input),
+        Some(Commands::Serve { port, host, input }) => handle_serve(port, &host, input),
         Some(Commands::Logo {
             output,
             variant,
