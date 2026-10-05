@@ -805,6 +805,108 @@ pub fn layout_text_thread(
     out
 }
 
+/// Resolve the threaded story containing `obj_id` and return THIS frame's
+/// layout (its slice of the head's text, positioned at its own area).
+/// Returns `None` when the object is not part of a thread — callers fall
+/// back to their own `layout_text`. Cycles degrade to single-frame layout.
+///
+/// The story text/style always come from the head frame; linked frames
+/// contribute only their boxes. This is what makes overflow flow instead
+/// of duplicating or vanishing.
+pub fn thread_frame_layout(doc: &super::Document, obj_id: &str) -> Option<TextLayout> {
+    // Collect (id, area, is_head_candidate) for area-text frames.
+    struct Frame {
+        id: String,
+        text: String,
+        style: TextStyle,
+        area: TextArea,
+        next: Option<String>,
+    }
+    let mut frames: Vec<Frame> = Vec::new();
+    fn gather(obj: &Object, out: &mut Vec<Frame>) {
+        match &obj.object_type {
+            ObjectType::Text {
+                text,
+                style,
+                area: Some(a),
+                next_frame,
+                ..
+            } => {
+                out.push(Frame {
+                    id: obj.id.clone(),
+                    text: text.clone(),
+                    style: style.clone(),
+                    area: *a,
+                    next: next_frame.clone(),
+                });
+            }
+            ObjectType::Text { .. } => {}
+            ObjectType::Group(children) | ObjectType::ClippingMask { children } => {
+                for c in children {
+                    gather(c, out);
+                }
+            }
+            _ => {}
+        }
+    }
+    for layer in &doc.layers {
+        for obj in &layer.objects {
+            gather(obj, &mut frames);
+        }
+    }
+    if !frames.iter().any(|f| f.id == obj_id) {
+        return None;
+    }
+    // Referenced ids = non-heads. If obj is unreferenced it may still head
+    // a chain (or stand alone without links).
+    let referenced: std::collections::HashSet<&str> =
+        frames.iter().filter_map(|f| f.next.as_deref()).collect();
+    // Find the head: walk `next` links from obj with cycle guard; the head
+    // is the unreferenced frame that reaches obj, or obj itself.
+    let by_id: std::collections::HashMap<&str, &Frame> =
+        frames.iter().map(|f| (f.id.as_str(), f)).collect();
+    // Walk backwards: find who points at obj, iteratively, to the head.
+    let mut head_id = obj_id;
+    let mut seen = std::collections::HashSet::new();
+    seen.insert(obj_id);
+    loop {
+        let mut pred = None;
+        for f in &frames {
+            if f.next.as_deref() == Some(head_id) && !seen.contains(f.id.as_str()) {
+                pred = Some(f.id.as_str());
+                break;
+            }
+        }
+        match pred {
+            Some(p) => {
+                seen.insert(p);
+                head_id = p;
+            }
+            None => break,
+        }
+    }
+    let head = by_id.get(head_id)?;
+    if head.next.is_none() && !referenced.contains(head_id) {
+        // Standalone frame, no links either way: not a thread.
+        return None;
+    }
+    // Forward chain from head (cycle-guarded).
+    let mut chain: Vec<&Frame> = Vec::new();
+    let mut cur: Option<&Frame> = Some(head);
+    let mut seen2 = std::collections::HashSet::new();
+    while let Some(f) = cur {
+        if !seen2.insert(f.id.as_str()) {
+            break;
+        }
+        chain.push(f);
+        cur = f.next.as_deref().and_then(|id| by_id.get(id).copied());
+    }
+    let pos = chain.iter().position(|f| f.id == obj_id)?;
+    let areas: Vec<TextArea> = chain.iter().map(|f| f.area).collect();
+    let layouts = layout_text_thread(&head.text, &head.style, &areas);
+    layouts.into_iter().nth(pos)
+}
+
 /// Map every point of a path through a live envelope deform (bbox taken
 /// from the path itself). Curves keep their structure with mapped control
 /// points (exact on straight runs, approximate under strong bending —
@@ -1923,5 +2025,63 @@ mod tests {
         );
         // Normal keeps the source untouched, alpha included.
         assert_close(blend_colors(RED, WHITE, BlendMode::Normal.to_blend()), RED);
+    }
+
+    #[test]
+    fn thread_flow_splits_overflow_across_frames() {
+        use super::{layout_text, TextArea, TextStyle};
+        use crate::core::document::Document;
+        let style = TextStyle {
+            font_size: 12.0,
+            ..Default::default()
+        };
+        // Long text, small head frame: must flow into the tail.
+        let text: String = (0..20)
+            .map(|i| format!("line{i}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let area1 = TextArea::new(0.0, 0.0, 200.0, 30.0);
+        let area2 = TextArea::new(0.0, 100.0, 200.0, 300.0);
+        let mut head = Object::new_text("H", &text, 0.0, 0.0, 12.0);
+        let mut tail = Object::new_text("T", "", 0.0, 0.0, 12.0);
+        let head_id = head.id.clone();
+        let tail_id = tail.id.clone();
+        if let ObjectType::Text {
+            style: s,
+            area,
+            next_frame,
+            ..
+        } = &mut head.object_type
+        {
+            *s = style.clone();
+            *area = Some(area1);
+            *next_frame = Some(tail_id.clone());
+        }
+        if let ObjectType::Text { style: s, area, .. } = &mut tail.object_type {
+            *s = style.clone();
+            *area = Some(area2);
+        }
+        let mut doc = Document::default();
+        doc.add_object(head);
+        doc.add_object(tail);
+        let h = super::thread_frame_layout(&doc, &head_id).expect("head resolves");
+        let t2 = super::thread_frame_layout(&doc, &tail_id).expect("tail resolves");
+        // Head holds a prefix, tail the rest; together they cover all lines.
+        assert!(!h.lines.is_empty() && !t2.lines.is_empty());
+        assert_eq!(h.lines.len() + t2.lines.len(), 20);
+        // Tail is positioned at its own box, not the head's.
+        assert!((t2.origin.0 - 0.0).abs() < 1e-9);
+        assert!((t2.origin.1 - (100.0 + 12.0)).abs() < 1e-9);
+        // Standalone frame (no links): no thread layout.
+        let mut solo = Object::new_text("S", "hi", 0.0, 0.0, 12.0);
+        if let ObjectType::Text { style: s, area, .. } = &mut solo.object_type {
+            *s = style.clone();
+            *area = Some(TextArea::new(0.0, 0.0, 200.0, 200.0));
+        }
+        let mut doc2 = Document::default();
+        doc2.add_object(solo);
+        let sid = doc2.all_objects().next().unwrap().1.id.clone();
+        assert!(super::thread_frame_layout(&doc2, &sid).is_none());
+        let _ = layout_text(&text, &style, Some(area1)).lines.len();
     }
 }

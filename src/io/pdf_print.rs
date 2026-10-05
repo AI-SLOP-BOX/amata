@@ -242,6 +242,7 @@ pub fn export_pdf_print(doc: &Document, opts: &PrintPdfOptions) -> (Vec<u8>, Vec
     let mut embed_lines: std::collections::HashMap<String, Vec<embed::EmbeddedLine>> =
         std::collections::HashMap::new();
     fn collect_text(
+        doc: &Document,
         obj: &Object,
         faces: &mut Vec<embed::EmbedFace>,
         face_index: &mut std::collections::HashMap<String, usize>,
@@ -251,7 +252,7 @@ pub fn export_pdf_print(doc: &Document, opts: &PrintPdfOptions) -> (Vec<u8>, Vec
             &obj.object_type
         {
             for c in children {
-                collect_text(c, faces, face_index, embed_lines);
+                collect_text(doc, c, faces, face_index, embed_lines);
             }
             return;
         }
@@ -278,7 +279,10 @@ pub fn export_pdf_print(doc: &Document, opts: &PrintPdfOptions) -> (Vec<u8>, Vec
                 i
             }
         };
-        let layout = crate::core::document::layout_text(text, style, area);
+        // Thread-aware: linked frames flow the head story instead of
+        // laying out their own (possibly stale) text.
+        let layout = crate::core::document::thread_frame_layout(doc, &obj.id)
+            .unwrap_or_else(|| crate::core::document::layout_text(text, style, area));
         let face = &mut faces[idx];
         let mut lines = Vec::new();
         for (li, line) in layout.lines.iter().take(layout.visible).enumerate() {
@@ -299,7 +303,7 @@ pub fn export_pdf_print(doc: &Document, opts: &PrintPdfOptions) -> (Vec<u8>, Vec
     }
     for layer in &doc.layers {
         for obj in &layer.objects {
-            collect_text(obj, &mut faces, &mut face_index, &mut embed_lines);
+            collect_text(doc, obj, &mut faces, &mut face_index, &mut embed_lines);
         }
     }
     for (i, face) in faces.iter_mut().enumerate() {
@@ -1414,17 +1418,10 @@ fn emit_embedded_text(
     world: &[f64; 6],
     faces: &[embed::EmbedFace],
     lines: &[embed::EmbeddedLine],
+    layout: &crate::core::document::TextLayout,
     out: &mut String,
 ) {
     use crate::core::document::TextAnchor;
-    let layout = crate::core::document::layout_text(
-        match &obj.object_type {
-            ObjectType::Text { text, .. } => text,
-            _ => return,
-        },
-        style,
-        area,
-    );
     let line_h = style.effective_line_height();
     let fill = match obj.fill.as_ref() {
         Some(f) => f,
@@ -1548,16 +1545,33 @@ fn render_obj_embed(
             }
         }
         ObjectType::Text {
-            text, style, area, ..
+            text: _,
+            style,
+            area,
+            ..
         } => {
             // Embedded text when eligible (selectable, compact); outlines
             // otherwise (fonts never missing).
             if let Some(lines) = embed_lines.get(&obj.id) {
-                emit_embedded_text(ctx, obj, style, *area, &world, faces, lines, out);
+                let layout = match &obj.object_type {
+                    ObjectType::Text { text, .. } => crate::core::document::thread_frame_layout(
+                        ctx.doc, &obj.id,
+                    )
+                    .unwrap_or_else(|| crate::core::document::layout_text(text, style, *area)),
+                    _ => return,
+                };
+                emit_embedded_text(ctx, obj, style, *area, &world, faces, lines, &layout, out);
                 return;
             }
             // Deterministic press text: outlines (fonts never missing).
-            let layout = crate::core::document::layout_text(text, style, *area);
+            // Thread-aware like every other text consumer.
+            let layout = match &obj.object_type {
+                ObjectType::Text { text, .. } => {
+                    crate::core::document::thread_frame_layout(ctx.doc, &obj.id)
+                        .unwrap_or_else(|| crate::core::document::layout_text(text, style, *area))
+                }
+                _ => return,
+            };
             let line_h = style.effective_line_height();
             for (li, line) in layout.lines.iter().take(layout.visible).enumerate() {
                 // Anchor per line from real outline width.

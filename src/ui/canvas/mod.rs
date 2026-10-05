@@ -279,18 +279,21 @@ impl CanvasWidget {
                     if !stale {
                         continue;
                     }
-                    let layout = crate::core::document::layout_text(text, style, *area);
+                    // Thread-aware: linked frames flow the head story.
+                    let layout =
+                        crate::core::document::thread_frame_layout(&state.document, &obj.id)
+                            .unwrap_or_else(|| {
+                                crate::core::document::layout_text(text, style, *area)
+                            });
                     let mut real = true;
                     let mut lines = Vec::new();
-                    for line in rendering::text_draw_lines(text, style, *area) {
+                    for line in layout.lines.iter().take(layout.visible) {
                         match crate::core::text_path::try_text_to_outline_path_with_style(
-                            &line, style,
+                            line, style,
                         ) {
                             Some(ol) => {
-                                let width = ol
-                                    .bounding_box()
-                                    .map(|(mn, mx)| mx.x - mn.x)
-                                    .unwrap_or(0.0);
+                                let width =
+                                    ol.bounding_box().map(|(mn, mx)| mx.x - mn.x).unwrap_or(0.0);
                                 // Anchor shift in local coords, baked once:
                                 // point text anchors on the origin, area
                                 // text on the box edges/center.

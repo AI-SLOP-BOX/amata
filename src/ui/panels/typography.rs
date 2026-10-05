@@ -588,6 +588,65 @@ impl TextPanel {
             }
         }
 
+        // Paragraph styles (DTP): named presets, apply to selection.
+        ui.add_space(4.0);
+        ui.separator();
+        ui.label(RichText::new("段落スタイル").strong());
+        let mut apply_style: Option<TextStyle> = None;
+        let mut delete_style: Option<String> = None;
+        for ps in state.document.paragraph_styles.clone() {
+            ui.horizontal(|ui| {
+                ui.label(format!("{} ({:.0}pt)", ps.name, ps.style.font_size));
+                if ui.small_button("適用").clicked() {
+                    apply_style = Some(ps.style.clone());
+                }
+                if ui.small_button("×").on_hover_text("スタイル削除").clicked() {
+                    delete_style = Some(ps.name.clone());
+                }
+            });
+        }
+        if let Some(name) = delete_style {
+            state.document.paragraph_styles.retain(|s| s.name != name);
+            state.notify_info(format!("段落スタイル「{name}」を削除しました"));
+        }
+        if let Some(style) = apply_style {
+            let sel = state.selected_ids.clone();
+            let mut applied = 0;
+            for sid in &sel {
+                state.ensure_object_snapshot(sid);
+                let mut hit = false;
+                for (_, obj) in state.document.all_objects_mut() {
+                    if &obj.id == sid {
+                        if let ObjectType::Text { style: s, .. } = &mut obj.object_type {
+                            *s = style.clone();
+                            hit = true;
+                        }
+                        break;
+                    }
+                }
+                if hit {
+                    applied += 1;
+                }
+            }
+            if applied > 0 {
+                state.commit_object_edits("Apply Paragraph Style");
+                state.notify_success(format!("段落スタイルを{applied}件に適用しました"));
+            }
+        }
+        ui.horizontal(|ui| {
+            if ui.button("選択の書式をスタイル登録").clicked() {
+                let n = state.document.paragraph_styles.len() + 1;
+                state
+                    .document
+                    .paragraph_styles
+                    .push(crate::core::document::ParagraphStyle {
+                        name: format!("スタイル{n}"),
+                        style: current_style.clone(),
+                    });
+                state.notify_success("段落スタイルを登録しました".to_string());
+            }
+        });
+
         // Area text (rect container with overflow).
         ui.add_space(4.0);
         ui.separator();

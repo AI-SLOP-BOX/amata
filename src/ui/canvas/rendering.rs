@@ -95,6 +95,10 @@ pub fn text_shape_key(text: &str, style: &TextStyle, area: Option<TextArea>) -> 
 /// and the SVG exporter so all three agree. Area text wraps to the box
 /// width; `layout_text` also reports how many lines fit (overflow is
 /// clipped on canvas and in export).
+///
+/// Kept as the documented line-splitting primitive (unit-tested); renderers
+/// now prefer thread-aware layouts via `thread_frame_layout`.
+#[allow(dead_code)]
 pub(super) fn text_draw_lines(
     text: &str,
     style: &TextStyle,
