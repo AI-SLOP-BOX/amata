@@ -20,6 +20,7 @@ fn style(size: f64, max_w: f64) -> TextStyle {
         variations: Vec::new(),
         vertical: false,
         ligatures: true,
+        list: irasu_illustrator::core::document::ListStyle::None,
     }
 }
 

@@ -1,4 +1,4 @@
-use crate::core::document::{FontStyle, ObjectType, TextAnchor, TextArea, TextStyle};
+use crate::core::document::{FontStyle, ListStyle, ObjectType, TextAnchor, TextArea, TextStyle};
 use crate::core::font::FontRegistry;
 use crate::core::history::ModifyTextCommand;
 use crate::core::path::{FillStyle, FillType};
@@ -445,6 +445,35 @@ impl TextPanel {
 
         ui.add_space(6.0);
 
+        // 5b. List style (DTP): none / bullet / auto-numbered.
+        ui.label("箇条書き:");
+        ui.horizontal(|ui| {
+            for (list, label) in [
+                (ListStyle::None, "なし"),
+                (ListStyle::Bullet, "• 箇条書き"),
+                (ListStyle::Numbered, "1. 番号付き"),
+            ] {
+                if ui
+                    .selectable_label(current_style.list == list, label)
+                    .clicked()
+                {
+                    let mut new_style = current_style.clone();
+                    new_style.list = list;
+                    let cmd = Box::new(ModifyTextCommand::new(
+                        id.clone(),
+                        current_text.clone(),
+                        current_style.clone(),
+                        current_text.clone(),
+                        new_style.clone(),
+                    ));
+                    state.undo_manager.execute(cmd, &mut state.document);
+                    current_style = new_style;
+                }
+            }
+        });
+
+        ui.add_space(6.0);
+
         // Writing direction (横/縦) + ligatures
         ui.horizontal(|ui| {
             ui.label("組み:");
@@ -706,18 +735,66 @@ impl TextPanel {
                         if resp.changed() {
                             state.object_edit(&id, &resp, |o| {
                                 if let ObjectType::Text { area, .. } = &mut o.object_type {
-                                    *area = Some(TextArea::new(
+                                    // Preserve columns across geometry edits.
+                                    let (cols, gutter) =
+                                        area.map(|a| (a.cols, a.gutter)).unwrap_or((1, 12.0));
+                                    let mut na = TextArea::new(
                                         box_vals[0],
                                         box_vals[1],
                                         box_vals[2],
                                         box_vals[3],
-                                    ));
+                                    );
+                                    na.cols = cols;
+                                    na.gutter = gutter;
+                                    *area = Some(na);
                                 }
                             });
                         }
                         stopped |= resp.drag_stopped();
                     }
                 });
+                // Columns (段組み). Live-apply during drags, one undo
+                // step per finished gesture (same convention as above).
+                {
+                    let (mut cols, mut gutter) = (a.cols.max(1), a.gutter);
+                    let mut col_changed = false;
+                    let mut col_dragging = false;
+                    let mut col_stopped = false;
+                    ui.horizontal(|ui| {
+                        ui.label("段組み:");
+                        let r = ui.add(egui::DragValue::new(&mut cols).speed(0.2).range(1..=4));
+                        col_changed |= r.changed();
+                        col_dragging |= r.dragged();
+                        col_stopped |= r.drag_stopped();
+                        ui.label("間隔:");
+                        let g = ui.add(
+                            egui::DragValue::new(&mut gutter)
+                                .speed(0.5)
+                                .range(0.0..=200.0)
+                                .suffix("pt"),
+                        );
+                        col_changed |= g.changed();
+                        col_dragging |= g.dragged();
+                        col_stopped |= g.drag_stopped();
+                    });
+                    if col_changed {
+                        state.ensure_object_snapshot(&id);
+                        for (_, obj) in state.document.all_objects_mut() {
+                            if obj.id == id {
+                                if let ObjectType::Text { area: Some(ab), .. } =
+                                    &mut obj.object_type
+                                {
+                                    ab.cols = cols.max(1);
+                                    ab.gutter = gutter.max(0.0);
+                                }
+                                break;
+                            }
+                        }
+                    }
+                    if (col_changed && !col_dragging) || col_stopped {
+                        state.commit_object_edits("Edit Text Columns");
+                    }
+                }
                 if stopped {
                     // Drags coalesce into one undo step on release.
                     state.commit_object_edits("Edit Text Area");
