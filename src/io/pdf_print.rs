@@ -1414,7 +1414,7 @@ fn emit_embedded_text(
     ctx: &mut Ctx,
     obj: &Object,
     style: &crate::core::document::TextStyle,
-    area: Option<crate::core::document::TextArea>,
+    _area: Option<crate::core::document::TextArea>,
     world: &[f64; 6],
     faces: &[embed::EmbedFace],
     lines: &[embed::EmbeddedLine],
@@ -1458,10 +1458,23 @@ fn emit_embedded_text(
         }
         let lw = adv_sum * scale + style.letter_spacing * (n as f64 - 1.0).max(0.0);
         let (ox, _) = layout.origin;
+        let col = layout.col_of_line.get(eline.li).copied().unwrap_or(0);
+        let col_x = layout.col_x.get(col).copied().unwrap_or(ox);
+        let col_w = layout.col_w.get(col).copied().unwrap_or(f64::MAX);
+        let col_finite = col_w.is_finite() && col_w < f64::MAX / 2.0;
+        let indent = layout.line_indent.get(eline.li).copied().unwrap_or(0.0);
         let ax = match style.text_anchor {
-            TextAnchor::Start => ox,
-            TextAnchor::Middle => area.map(|a| a.x + a.width / 2.0).unwrap_or(ox) - lw / 2.0,
-            TextAnchor::End => area.map(|a| a.x + a.width).unwrap_or(ox) - lw,
+            TextAnchor::Start => col_x + indent,
+            TextAnchor::Middle => {
+                col_x
+                    + indent
+                    + if col_finite {
+                        (col_w - lw) / 2.0
+                    } else {
+                        -lw / 2.0
+                    }
+            }
+            TextAnchor::End => col_x + indent + if col_finite { col_w - lw } else { -lw },
         };
         let ay = layout.origin.1 + eline.li as f64 * line_h;
         // Tm = world * T(ax,ay) * S(s,-s): content stream is y-flipped,
@@ -1576,18 +1589,26 @@ fn render_obj_embed(
             for (li, line) in layout.lines.iter().take(layout.visible).enumerate() {
                 // Anchor per line from real outline width.
                 let ol = crate::core::text_path::text_to_outline_path_with_style(line, style);
-                let lw = ol
-                    .bounding_box()
-                    .map(|(mn, mx)| mx.x - mn.x)
-                    .unwrap_or(0.0);
+                let lw = ol.bounding_box().map(|(mn, mx)| mx.x - mn.x).unwrap_or(0.0);
                 let (ox, _) = layout.origin;
+                let col = layout.col_of_line.get(li).copied().unwrap_or(0);
+                let col_x = layout.col_x.get(col).copied().unwrap_or(ox);
+                let col_w = layout.col_w.get(col).copied().unwrap_or(f64::MAX);
+                let col_finite = col_w.is_finite() && col_w < f64::MAX / 2.0;
+                let indent = layout.line_indent.get(li).copied().unwrap_or(0.0);
                 let ax = match style.text_anchor {
-                    crate::core::document::TextAnchor::Start => ox,
+                    crate::core::document::TextAnchor::Start => col_x + indent,
                     crate::core::document::TextAnchor::Middle => {
-                        area.map(|a| a.x + a.width / 2.0).unwrap_or(ox) - lw / 2.0
+                        col_x
+                            + indent
+                            + if col_finite {
+                                (col_w - lw) / 2.0
+                            } else {
+                                -lw / 2.0
+                            }
                     }
                     crate::core::document::TextAnchor::End => {
-                        area.map(|a| a.x + a.width).unwrap_or(ox) - lw
+                        col_x + indent + if col_finite { col_w - lw } else { -lw }
                     }
                 };
                 let mut moved = ol;

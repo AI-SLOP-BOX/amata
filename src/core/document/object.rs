@@ -157,6 +157,21 @@ pub struct TextArea {
     pub y: f64,
     pub width: f64,
     pub height: f64,
+    /// Column count for area text (1 = no columns). Lines flow down the
+    /// first column, then continue at the top of the next.
+    #[serde(default = "default_cols")]
+    pub cols: u32,
+    /// Gutter between columns, in document units.
+    #[serde(default = "default_gutter")]
+    pub gutter: f64,
+}
+
+fn default_cols() -> u32 {
+    1
+}
+
+fn default_gutter() -> f64 {
+    12.0
 }
 
 impl TextArea {
@@ -166,7 +181,31 @@ impl TextArea {
             y,
             width: width.max(1.0),
             height: height.max(1.0),
+            cols: 1,
+            gutter: 12.0,
         }
+    }
+
+    /// Per-column widths for `cols` columns across `width`.
+    pub fn column_widths(&self) -> Vec<f64> {
+        let n = self.cols.max(1) as usize;
+        if n == 1 {
+            return vec![self.width];
+        }
+        let total_gutter = self.gutter.max(0.0) * (n as f64 - 1.0);
+        let w = ((self.width - total_gutter) / n as f64).max(1.0);
+        vec![w; n]
+    }
+
+    /// Absolute x of each column's left edge.
+    pub fn column_origins(&self) -> Vec<f64> {
+        let mut xs = Vec::new();
+        let mut x = self.x;
+        for w in self.column_widths() {
+            xs.push(x);
+            x += w + self.gutter.max(0.0);
+        }
+        xs
     }
 }
 
@@ -251,6 +290,22 @@ pub struct TextStyle {
     /// when the face provides them (outline path only; SVG keeps raw text).
     #[serde(default)]
     pub ligatures: bool,
+    /// List marker style (DTP): prefixes each paragraph and hangs wrapped
+    /// continuation lines by the marker width.
+    #[serde(default)]
+    pub list: ListStyle,
+}
+
+/// Paragraph list marker style.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum ListStyle {
+    /// No marker.
+    #[default]
+    None,
+    /// Bulleted (`• `).
+    Bullet,
+    /// Auto-numbered (`1. `, restarting per text object).
+    Numbered,
 }
 
 impl Default for TextStyle {
@@ -268,6 +323,7 @@ impl Default for TextStyle {
             variations: Vec::new(),
             vertical: false,
             ligatures: true,
+            list: ListStyle::None,
         }
     }
 }
@@ -287,6 +343,7 @@ impl TextStyle {
             variations: Vec::new(),
             vertical: false,
             ligatures: true,
+            list: ListStyle::None,
         }
     }
 
@@ -629,6 +686,14 @@ pub struct TextLayout {
     pub visible: usize,
     /// First-baseline origin (start-anchor x, baseline y) in local coords.
     pub origin: (f64, f64),
+    /// Column index per line (all zero when uncolumned).
+    pub col_of_line: Vec<usize>,
+    /// Absolute x of each column's left edge (local coords).
+    pub col_x: Vec<f64>,
+    /// Width of each column.
+    pub col_w: Vec<f64>,
+    /// Hanging indent per line (DTP lists), in local units.
+    pub line_indent: Vec<f64>,
 }
 
 impl TextLayout {
@@ -646,34 +711,61 @@ pub fn layout_text(text: &str, style: &TextStyle, area: Option<TextArea>) -> Tex
     }
     match area {
         None => {
-            let lines = if style.word_wrap {
+            let runs = if style.word_wrap {
                 if let Some(max_w) = style.max_width {
-                    compute_wrapped_lines(text, style, max_w)
+                    compute_wrapped_runs(text, style, max_w)
                 } else {
-                    text.split('\n').map(String::from).collect()
+                    text.split('\n').map(|s| (s.to_string(), 0.0)).collect()
                 }
             } else {
-                text.split('\n').map(String::from).collect()
+                text.split('\n').map(|s| (s.to_string(), 0.0)).collect()
             };
-            let visible = lines.len();
+            let visible = runs.len();
+            let mut lines = Vec::with_capacity(visible);
+            let mut line_indent = Vec::with_capacity(visible);
+            for (line, indent) in runs {
+                lines.push(line);
+                line_indent.push(indent);
+            }
             TextLayout {
                 lines,
                 visible,
                 origin: (0.0, 0.0),
+                col_of_line: vec![0; visible],
+                col_x: vec![0.0],
+                col_w: vec![f64::MAX],
+                line_indent,
             }
         }
         Some(a) => {
-            let lines = compute_wrapped_lines(text, style, a.width);
+            let widths = a.column_widths();
+            let origins = a.column_origins();
+            let ncols = widths.len().max(1);
+            let runs = compute_wrapped_runs(text, style, widths[0]);
+            let mut lines = Vec::with_capacity(runs.len());
+            let mut line_indent = Vec::with_capacity(runs.len());
+            for (line, indent) in runs {
+                lines.push(line);
+                line_indent.push(indent);
+            }
             let line_h = style.effective_line_height().max(1e-6);
             // First baseline at the em-box top + font_size; a line fits
             // while its baseline stays inside the box.
-            let capacity =
+            let per_col =
                 ((((a.height - style.font_size) / line_h).floor() as isize) + 1).max(0) as usize;
-            let visible = lines.len().min(capacity);
+            let visible = lines.len().min(per_col.saturating_mul(ncols));
+            let mut col_of_line = Vec::with_capacity(lines.len());
+            for i in 0..lines.len() {
+                col_of_line.push((i / per_col.max(1)).min(ncols - 1));
+            }
             TextLayout {
                 lines,
                 visible,
-                origin: (a.x, a.y + style.font_size),
+                origin: (origins[0], a.y + style.font_size),
+                col_of_line,
+                col_x: origins,
+                col_w: widths,
+                line_indent,
             }
         }
     }
@@ -747,10 +839,15 @@ fn layout_text_vertical(text: &str, style: &TextStyle, area: Option<TextArea>) -
         }
     };
 
+    let n = columns.len();
     TextLayout {
         lines: columns,
         visible,
         origin,
+        col_of_line: vec![0; n],
+        col_x: vec![origin.0],
+        col_w: vec![f64::MAX],
+        line_indent: vec![0.0; n],
     }
 }
 
@@ -773,32 +870,56 @@ pub fn layout_text_thread(
     let mut out = Vec::with_capacity(frames.len());
     let mut consumed = 0usize;
     for (i, frame) in frames.iter().enumerate() {
+        let col_or_line = style.effective_line_height().max(1e-6);
+        let per_col = if style.vertical {
+            ((((frame.width - style.font_size) / col_or_line).floor() as isize) + 1).max(0) as usize
+        } else {
+            ((((frame.height - style.font_size) / col_or_line).floor() as isize) + 1).max(0)
+                as usize
+        };
+        let ncols = if style.vertical {
+            1
+        } else {
+            frame.cols.max(1) as usize
+        };
         let per_frame = if i + 1 == frames.len() {
             // Last frame keeps whatever is left (may overflow for display).
             full.lines.len().saturating_sub(consumed)
         } else {
-            // Capacity of this frame (same formula as layout_text).
-            let col_or_line = style.effective_line_height().max(1e-6);
-            let capacity = if style.vertical {
-                ((((frame.width - style.font_size) / col_or_line).floor() as isize) + 1)
-                    .max(0) as usize
-            } else {
-                ((((frame.height - style.font_size) / col_or_line).floor() as isize) + 1)
-                    .max(0) as usize
-            };
-            capacity.min(full.lines.len().saturating_sub(consumed))
+            per_col
+                .saturating_mul(ncols)
+                .min(full.lines.len().saturating_sub(consumed))
         };
         let end = (consumed + per_frame).min(full.lines.len());
         let slice: Vec<String> = full.lines[consumed..end].to_vec();
+        let slice_indent: Vec<f64> = full.line_indent.get(consumed..end).unwrap_or(&[]).to_vec();
         let origin = if style.vertical {
-            (frame.x + frame.width - style.font_size, frame.y + style.font_size)
+            (
+                frame.x + frame.width - style.font_size,
+                frame.y + style.font_size,
+            )
         } else {
             (frame.x, frame.y + style.font_size)
+        };
+        // Column assignment inside this frame's slice.
+        let (col_of_line, col_x, col_w) = if style.vertical {
+            (vec![0; slice.len()], vec![origin.0], vec![f64::MAX])
+        } else {
+            let xs = frame.column_origins();
+            let ws = frame.column_widths();
+            let assign: Vec<usize> = (0..slice.len())
+                .map(|k| (k / per_col.max(1)).min(ncols - 1))
+                .collect();
+            (assign, xs, ws)
         };
         out.push(TextLayout {
             visible: slice.len(),
             lines: slice,
             origin,
+            col_of_line,
+            col_x,
+            col_w,
+            line_indent: slice_indent,
         });
         consumed = end;
     }
@@ -963,68 +1084,131 @@ pub fn deform_path_data(
 /// always start a new line. Widths use [`char_advance_estimate`] plus
 /// `letter_spacing`, so wrapping agrees with block measurement.
 pub fn compute_wrapped_lines(text: &str, style: &TextStyle, max_width: f64) -> Vec<String> {
+    compute_wrapped_runs(text, style, max_width)
+        .into_iter()
+        .map(|(line, _)| line)
+        .collect()
+}
+
+/// Wrapped lines plus hanging indent per line (DTP lists): each paragraph
+/// contributes its marker-prefixed first line and indent-matched
+/// continuations. Numbered markers restart at 1 per call (per text object).
+pub fn compute_wrapped_runs(text: &str, style: &TextStyle, max_width: f64) -> Vec<(String, f64)> {
     let unit = |ch: char| char_advance_estimate(ch) * style.font_size + style.letter_spacing;
-    let mut result = Vec::new();
+    let mut result: Vec<(String, f64)> = Vec::new();
+    let mut number = 1u32;
     for paragraph in text.split('\n') {
+        let (prefix, indent_w) = match style.list {
+            ListStyle::None => (String::new(), 0.0),
+            ListStyle::Bullet => {
+                let marker = "\u{2022} ".to_string();
+                let w: f64 = marker.chars().map(&unit).sum();
+                (marker, w)
+            }
+            ListStyle::Numbered => {
+                let marker = format!("{number}. ");
+                number += 1;
+                let w: f64 = marker.chars().map(&unit).sum();
+                (marker, w)
+            }
+        };
         let chars: Vec<char> = paragraph.chars().collect();
         if chars.is_empty() {
-            result.push(String::new());
+            // Empty paragraph keeps its marker slot (numbered counts it).
+            if style.list == ListStyle::None {
+                result.push((String::new(), 0.0));
+            } else {
+                result.push((prefix, 0.0));
+            }
             continue;
         }
-        let mut line_start = 0usize;
-        let mut i = 0usize;
-        // Byte/char width of the current line for quick slicing.
-        let mut line_w = 0.0f64;
-        // Last index (exclusive end of line) where a break is allowed.
-        let mut last_break: Option<usize> = None;
-        while i < chars.len() {
-            let ch = chars[i];
-            let w = unit(ch);
-            // Would this char overflow the line?
-            if line_w + w > max_width && i > line_start {
-                // Prefer the last allowed break; otherwise force-break
-                // before this char.
-                let mut end = last_break.unwrap_or(i);
-                // Kinsoku: never end a line with an opening bracket — move
-                // it (and anything after it on this line) to the next line.
-                while end > line_start + 1 && kinsoku_cannot_end_line(chars[end - 1]) {
-                    end -= 1;
-                }
-                // Kinsoku: never start a line with a closing mark — keep it
-                // on this line even if it overflows (squeeze emulation,
-                // like real Japanese typesetters).
-                while end < chars.len() && kinsoku_cannot_start_line(chars[end]) {
-                    end += 1;
-                }
-                // Degenerate width (nothing fits): emit one char to guarantee
-                // progress.
-                if end <= line_start {
-                    end = (line_start + 1).min(chars.len());
-                }
-                result.push(chars[line_start..end].iter().collect());
-                // Skip a single leading space on the new line (Western
-                // word-wrap convention); CJK needs no such trimming.
-                line_start = end;
-                if line_start < chars.len() && chars[line_start] == ' ' {
-                    line_start += 1;
-                }
-                i = line_start;
-                line_w = 0.0;
-                last_break = None;
-                continue;
+        let raws = wrap_chars(
+            &chars,
+            &unit,
+            max_width - prefix_visual_width(&prefix, &unit),
+            max_width - indent_w,
+        );
+        for (i, raw) in raws.iter().enumerate() {
+            if i == 0 {
+                let mut line = prefix.clone();
+                line.push_str(raw);
+                result.push((line, 0.0));
+            } else {
+                result.push((raw.clone(), indent_w));
             }
-            line_w += w;
-            // A break is allowed *after* this char when the next char may
-            // legally start a line and this char may legally end one.
-            let next_ok = i + 1 >= chars.len()
-                || !kinsoku_cannot_start_line(chars[i + 1]);
-            if (ch == ' ' || is_fullwidth(ch)) && !kinsoku_cannot_end_line(ch) && next_ok {
-                last_break = Some(i + 1);
-            }
-            i += 1;
         }
-        result.push(chars[line_start..].iter().collect());
     }
+    result
+}
+
+fn prefix_visual_width(prefix: &str, unit: &impl Fn(char) -> f64) -> f64 {
+    prefix.chars().map(unit).sum()
+}
+
+/// Greedy wrap of one paragraph's chars: the first visual line may use
+/// `first_max` width, continuation lines `rest_max` (hanging indent).
+fn wrap_chars(
+    chars: &[char],
+    unit: &impl Fn(char) -> f64,
+    first_max: f64,
+    rest_max: f64,
+) -> Vec<String> {
+    let mut result = Vec::new();
+    let mut line_start = 0usize;
+    let mut i = 0usize;
+    let mut first = true;
+    // Byte/char width of the current line for quick slicing.
+    let mut line_w = 0.0f64;
+    // Last index (exclusive end of line) where a break is allowed.
+    let mut last_break: Option<usize> = None;
+    while i < chars.len() {
+        let ch = chars[i];
+        let w = unit(ch);
+        let max_width = if first { first_max } else { rest_max };
+        // Would this char overflow the line?
+        if line_w + w > max_width && i > line_start {
+            // Prefer the last allowed break; otherwise force-break
+            // before this char.
+            let mut end = last_break.unwrap_or(i);
+            // Kinsoku: never end a line with an opening bracket — move
+            // it (and anything after it on this line) to the next line.
+            while end > line_start + 1 && kinsoku_cannot_end_line(chars[end - 1]) {
+                end -= 1;
+            }
+            // Kinsoku: never start a line with a closing mark — keep it
+            // on this line even if it overflows (squeeze emulation,
+            // like real Japanese typesetters).
+            while end < chars.len() && kinsoku_cannot_start_line(chars[end]) {
+                end += 1;
+            }
+            // Degenerate width (nothing fits): emit one char to guarantee
+            // progress.
+            if end <= line_start {
+                end = (line_start + 1).min(chars.len());
+            }
+            result.push(chars[line_start..end].iter().collect());
+            // Skip a single leading space on the new line (Western
+            // word-wrap convention); CJK needs no such trimming.
+            line_start = end;
+            if line_start < chars.len() && chars[line_start] == ' ' {
+                line_start += 1;
+            }
+            i = line_start;
+            line_w = 0.0;
+            last_break = None;
+            first = false;
+            continue;
+        }
+        line_w += w;
+        // A break is allowed *after* this char when the next char may
+        // legally start a line and this char may legally end one.
+        let next_ok = i + 1 >= chars.len() || !kinsoku_cannot_start_line(chars[i + 1]);
+        if (ch == ' ' || is_fullwidth(ch)) && !kinsoku_cannot_end_line(ch) && next_ok {
+            last_break = Some(i + 1);
+        }
+        i += 1;
+    }
+    result.push(chars[line_start..].iter().collect());
     result
 }
 
@@ -2025,6 +2209,55 @@ mod tests {
         );
         // Normal keeps the source untouched, alpha included.
         assert_close(blend_colors(RED, WHITE, BlendMode::Normal.to_blend()), RED);
+    }
+
+    #[test]
+    fn columns_split_lines_across_origins() {
+        use super::{layout_text, TextArea, TextStyle};
+        let style = TextStyle {
+            font_size: 12.0,
+            ..Default::default()
+        };
+        let text: String = (0..10)
+            .map(|i| format!("line{i}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let mut area = TextArea::new(0.0, 0.0, 400.0, 60.0);
+        area.cols = 2;
+        area.gutter = 20.0;
+        let one = layout_text(&text, &style, Some(TextArea::new(0.0, 0.0, 400.0, 60.0)));
+        let two = layout_text(&text, &style, Some(area));
+        // Two columns hold more lines than one.
+        assert!(two.visible >= one.visible);
+        // Column origins: second starts after first width + gutter.
+        assert_eq!(two.col_x.len(), 2);
+        assert!((two.col_x[1] - two.col_x[0] - two.col_w[0] - 20.0).abs() < 1e-6);
+        // Lines past the first column capacity carry column index 1.
+        assert!(two.col_of_line.contains(&1));
+        assert_eq!(two.col_of_line.len(), two.lines.len());
+    }
+
+    #[test]
+    fn list_markers_prefix_and_hang() {
+        use super::{compute_wrapped_runs, ListStyle, TextStyle};
+        let mut style = TextStyle {
+            font_size: 12.0,
+            ..Default::default()
+        };
+        style.list = ListStyle::Bullet;
+        let runs = compute_wrapped_runs("a\nb", &style, 500.0);
+        assert_eq!(runs.len(), 2);
+        assert!(runs[0].0.starts_with("\u{2022} "));
+        assert!(runs[1].0.starts_with("\u{2022} "));
+        assert_eq!(runs[0].1, 0.0);
+        style.list = ListStyle::Numbered;
+        let runs = compute_wrapped_runs("a\nb", &style, 500.0);
+        assert!(runs[0].0.starts_with("1. "));
+        assert!(runs[1].0.starts_with("2. "));
+        // Narrow width: continuation hangs by the marker width.
+        let runs = compute_wrapped_runs("aaa bbb ccc ddd", &style, 40.0);
+        assert!(runs.len() >= 2);
+        assert!(runs[1].1 > 0.0, "hanging indent: {runs:?}");
     }
 
     #[test]

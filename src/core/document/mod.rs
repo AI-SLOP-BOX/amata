@@ -1,7 +1,7 @@
 pub mod object;
 pub use object::{
-    BlendMode, FontStyle, Object, ObjectType, TextAnchor, TextArea, TextLayout, TextStyle,
-    TextPathSide, Transform, VariationSetting, char_advance_estimate, layout_text,
+    BlendMode, FontStyle, ListStyle, Object, ObjectType, TextAnchor, TextArea, TextLayout,
+    TextStyle, TextPathSide, Transform, VariationSetting, char_advance_estimate, layout_text,
     thread_frame_layout,
 };
 #[allow(unused_imports)]

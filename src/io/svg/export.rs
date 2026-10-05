@@ -897,9 +897,19 @@ fn render_object_to_svg(
             let body = if emit_lines.len() > 1 {
                 let mut spans = String::new();
                 for (i, ln) in emit_lines.iter().enumerate() {
+                    // Column-aware x: multi-column frames offset each line
+                    // into its column (single-column collapses to base_x).
+                    let col = layout.col_of_line.get(i).copied().unwrap_or(0);
+                    let lx = layout.col_x.get(col).copied().unwrap_or(area_tx);
+                    let indent = layout.line_indent.get(i).copied().unwrap_or(0.0);
+                    let line_x = if transform_has_linear_part(&obj.transform) {
+                        lx + indent
+                    } else {
+                        tx + lx + indent
+                    };
                     if i == 0 {
                         spans.push_str(&format!(
-                            "<tspan x=\"{base_x}\">{}</tspan>",
+                            "<tspan x=\"{line_x}\">{}</tspan>",
                             xml_escape(ln)
                         ));
                     } else {
@@ -910,7 +920,7 @@ fn render_object_to_svg(
                             format!("{:.2}em", ratio)
                         };
                         spans.push_str(&format!(
-                            "<tspan x=\"{base_x}\" dy=\"{dy_str}\">{}</tspan>",
+                            "<tspan x=\"{line_x}\" dy=\"{dy_str}\">{}</tspan>",
                             xml_escape(ln)
                         ));
                     }

@@ -287,7 +287,13 @@ impl CanvasWidget {
                             });
                     let mut real = true;
                     let mut lines = Vec::new();
-                    for line in layout.lines.iter().take(layout.visible) {
+                    for (li, line) in layout.lines.iter().take(layout.visible).enumerate() {
+                        // Per-line column base: multi-column frames offset
+                        // each line into its column (single-column layouts
+                        // collapse to the frame origin).
+                        let col = layout.col_of_line.get(li).copied().unwrap_or(0);
+                        let col_x = layout.col_x.get(col).copied().unwrap_or(layout.origin.0);
+                        let col_w = layout.col_w.get(col).copied().unwrap_or(f64::MAX);
                         match crate::core::text_path::try_text_to_outline_path_with_style(
                             line, style,
                         ) {
@@ -298,17 +304,28 @@ impl CanvasWidget {
                                 // point text anchors on the origin, area
                                 // text on the box edges/center.
                                 let ox = layout.origin.0;
-                                let x_off = match style.text_anchor {
+                                // Column frames anchor inside their column;
+                                // point text keeps the legacy origin anchor.
+                                let col_finite = col_w.is_finite() && col_w < f64::MAX / 2.0;
+                                let anchor = match style.text_anchor {
                                     crate::core::document::TextAnchor::Start => 0.0,
                                     crate::core::document::TextAnchor::Middle => {
-                                        area.map(|a| a.x + a.width / 2.0).unwrap_or(ox)
-                                            - (ox + width / 2.0)
+                                        if col_finite {
+                                            (col_w - width) / 2.0
+                                        } else {
+                                            -width / 2.0
+                                        }
                                     }
                                     crate::core::document::TextAnchor::End => {
-                                        area.map(|a| a.x + a.width).unwrap_or(ox)
-                                            - (ox + width)
+                                        if col_finite {
+                                            col_w - width
+                                        } else {
+                                            -width
+                                        }
                                     }
                                 };
+                                let indent = layout.line_indent.get(li).copied().unwrap_or(0.0);
+                                let x_off = (col_x - ox) + anchor + indent;
                                 lines.push(rendering::CachedTextLine {
                                     tris: ol.to_triangles(12),
                                     width,
