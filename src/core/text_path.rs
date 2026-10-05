@@ -485,10 +485,29 @@ pub fn shape_run_hb(
     index: u32,
     text: &str,
     ligatures: bool,
+    variations: &[crate::core::document::VariationSetting],
 ) -> Option<Vec<ShapedGlyph>> {
     let font = read_fonts::FontRef::from_index(data, index).ok()?;
     let shaper_data = harfrust::ShaperData::new(&font);
-    let shaper = shaper_data.shaper(&font).build();
+    // Variable-font axes: without the instance the shaper (and the
+    // outlines below) would silently use the default master while the
+    // manual fallback path applies coordinates — same text, two widths.
+    let vars: Vec<(read_fonts::types::Tag, f32)> = variations
+        .iter()
+        .filter(|v| v.axis.len() == 4)
+        .map(|v| {
+            let mut tag = [0u8; 4];
+            tag.copy_from_slice(&v.axis.as_bytes()[..4.min(v.axis.len())]);
+            (read_fonts::types::Tag::new(&tag), v.value as f32)
+        })
+        .collect();
+    let instance;
+    let mut builder = shaper_data.shaper(&font);
+    if !vars.is_empty() {
+        instance = harfrust::ShaperInstance::from_variations(&font, vars);
+        builder = builder.instance(Some(&instance));
+    }
+    let shaper = builder.build();
     let mut buffer = harfrust::UnicodeBuffer::new();
     buffer.push_str(text);
     buffer.guess_segment_properties();
@@ -579,7 +598,9 @@ pub fn try_text_to_outline_path_with_style(
                     // kerning incl. GPOS pairs, mark attachment, complex
                     // scripts). HarfBuzz positions are y-up font units, so
                     // y_offset is negated into the builder's y-down space.
-                    if let Some(shaped) = shape_run_hb(data, index, text, style.ligatures) {
+                    if let Some(shaped) =
+                        shape_run_hb(data, index, text, style.ligatures, &style.variations)
+                    {
                         let mut usable = true;
                         for g in &shaped {
                             // .notdef for a real character: fall back to the
@@ -922,7 +943,7 @@ mod tests {
     #[test]
     fn harfbuzz_shapes_with_font_unit_advances() {
         let data = include_bytes!("../../assets/fonts/Inter.ttf");
-        let shaped = shape_run_hb(data, 0, "fi", true).expect("shapes");
+        let shaped = shape_run_hb(data, 0, "fi", true, &[]).expect("shapes");
         // Every glyph carries a positive advance in font units.
         assert!(!shaped.is_empty());
         for g in &shaped {
@@ -933,6 +954,21 @@ mod tests {
     }
 
     #[test]
+    fn harfbuzz_variable_instance_changes_advances() {
+        // Bundled Inter is variable: wght=700 must shape wider than the
+        // default master, proving axis coordinates reach the shaper.
+        use crate::core::document::VariationSetting;
+        let data = include_bytes!("../../assets/fonts/Inter.ttf");
+        let plain = shape_run_hb(data, 0, "AV", true, &[]).expect("shapes");
+        let vars = vec![VariationSetting::new("wght", 700.0)];
+        let bold = shape_run_hb(data, 0, "AV", true, &vars).expect("shapes");
+        assert_eq!(plain.len(), bold.len());
+        let w_plain: f32 = plain.iter().map(|g| g.x_advance).sum();
+        let w_bold: f32 = bold.iter().map(|g| g.x_advance).sum();
+        assert!(w_bold > w_plain, "bold wider: {w_bold} vs {w_plain}");
+    }
+
+    #[test]
     fn harfbuzz_gpos_kern_differs_from_flat_advances() {
         // Inter kerns AV via GPOS (no legacy `kern` row for it): the shaped
         // advance of A must be tighter than its nominal advance.
@@ -940,7 +976,7 @@ mod tests {
         let face = ttf_parser::Face::parse(data, 0).unwrap();
         let a = face.glyph_index('A').unwrap();
         let nominal = face.glyph_hor_advance(a).unwrap() as f32;
-        let shaped = shape_run_hb(data, 0, "AV", true).expect("shapes");
+        let shaped = shape_run_hb(data, 0, "AV", true, &[]).expect("shapes");
         assert_eq!(shaped.len(), 2);
         assert!(
             shaped[0].x_advance < nominal,

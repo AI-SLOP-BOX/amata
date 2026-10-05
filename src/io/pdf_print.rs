@@ -1283,7 +1283,13 @@ mod embed {
         line: &str,
         style: &crate::core::document::TextStyle,
     ) -> Option<Vec<crate::core::text_path::ShapedGlyph>> {
-        let shaped = crate::core::text_path::shape_run_hb(data, index, line, style.ligatures)?;
+        let shaped = crate::core::text_path::shape_run_hb(
+            data,
+            index,
+            line,
+            style.ligatures,
+            &style.variations,
+        )?;
         for g in &shaped {
             if g.y_offset != 0.0 {
                 return None;
