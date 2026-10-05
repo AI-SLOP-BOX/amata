@@ -3,10 +3,15 @@
 
 use irasu_illustrator::core::document::{Document, Object, ObjectType};
 use irasu_illustrator::core::path::FillStyle;
-use irasu_illustrator::io::pdf_import::parse_pdf_bytes;
+use irasu_illustrator::io::pdf_import::{parse_ai_bytes, parse_pdf_bytes};
 
 /// Assemble a minimal one-page PDF with correct xref offsets.
 fn build_pdf(content: &[u8]) -> Vec<u8> {
+    build_pdf_with_info(content, None)
+}
+
+/// Same, plus an Info dict (used to mimic Illustrator-saved files).
+fn build_pdf_with_info(content: &[u8], info: Option<&[u8]>) -> Vec<u8> {
     let mut objs: Vec<Vec<u8>> = Vec::new();
     objs.push(b"<< /Type /Catalog /Pages 2 0 R >>".to_vec());
     objs.push(b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_vec());
@@ -19,7 +24,9 @@ fn build_pdf(content: &[u8]) -> Vec<u8> {
     stream.extend_from_slice(b"\nendstream");
     objs.push(stream);
     objs.push(b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>".to_vec());
-
+    if let Some(info_body) = info {
+        objs.push(info_body.to_vec());
+    }
     let mut out = b"%PDF-1.4\n".to_vec();
     let mut offsets = Vec::new();
     for (i, body) in objs.iter().enumerate() {
@@ -34,15 +41,47 @@ fn build_pdf(content: &[u8]) -> Vec<u8> {
     for off in &offsets {
         out.extend_from_slice(format!("{:010} 00000 n \n", off).as_bytes());
     }
-    out.extend_from_slice(
-        format!(
-            "trailer\n<< /Size {} /Root 1 0 R >>\nstartxref\n{}\n%%EOF",
-            objs.len() + 1,
-            xref_at
-        )
-        .as_bytes(),
-    );
+    let mut trailer = format!("trailer\n<< /Size {} /Root 1 0 R", objs.len() + 1);
+    if info.is_some() {
+        trailer.push_str(&format!(" /Info {} 0 R", objs.len()));
+    }
+    out.extend_from_slice(format!("{trailer} >>\nstartxref\n{xref_at}\n%%EOF").as_bytes());
     out
+}
+#[test]
+fn test_ai_import_reads_pdf_compatible_part() {
+    let content = b"1 0 0 rg\n10 10 50 30 re f\n";
+    let info = b"<< /Creator (Adobe Illustrator(R) 28.0) /Producer (Adobe PDF library) >>";
+    let ai = build_pdf_with_info(content, Some(info));
+    let (doc, warnings) = parse_ai_bytes(&ai).expect("ai import");
+    assert_eq!(doc.all_objects().count(), 1);
+    assert!(
+        warnings.first().is_some_and(|w| w.contains("Illustrator")),
+        "skip report first: {warnings:?}"
+    );
+    assert!(
+        warnings.first().unwrap().contains("28.0"),
+        "version surfaced: {warnings:?}"
+    );
+}
+
+#[test]
+fn test_ai_rejects_non_pdf_bytes() {
+    assert!(parse_ai_bytes(b"definitely not a pdf").is_err());
+    assert!(parse_ai_bytes(b"").is_err());
+    assert!(parse_ai_bytes(b"%PDF").is_err());
+}
+
+#[test]
+fn test_ai_without_creator_still_imports() {
+    let content = b"0 0 1 RG\n2 w\n0 0 m 200 100 l S\n";
+    let ai = build_pdf_with_info(content, None);
+    let (doc, warnings) = parse_ai_bytes(&ai).expect("ai import");
+    assert_eq!(doc.all_objects().count(), 1);
+    assert!(
+        warnings.first().is_some_and(|w| w.contains("スキップ")),
+        "generic skip report: {warnings:?}"
+    );
 }
 
 #[test]

@@ -14,6 +14,54 @@ pub(crate) const SHOW_SHARE_W: f32 = 260.0;
 pub(crate) const SHOW_BELL_W: f32 = 220.0;
 
 impl IrasuApp {
+    /// Shared PDF/.ai importer: parses bytes, swaps the document and
+    /// reports object count + compatibility warnings. `is_ai` selects the
+    /// Illustrator entry point (PDF-compatible content, private data skipped).
+    fn import_pdf_bytes(&mut self, path: &std::path::Path, bytes: &[u8], is_ai: bool) {
+        let label = if is_ai { "Illustrator" } else { "PDF" };
+        let parsed = if is_ai {
+            crate::io::pdf_import::parse_ai_bytes(bytes)
+        } else {
+            crate::io::pdf_import::parse_pdf_bytes(bytes)
+        };
+        match parsed {
+            Err(e) => {
+                self.state
+                    .notify_error(format!("{label}の解析に失敗しました: {e}"));
+            }
+            Ok((document, warnings)) => {
+                let obj_count = document.all_objects().count();
+                let w = document.width;
+                let h = document.height;
+                self.state.flush_pending_edits();
+                self.state.document = document;
+                self.state.adopt_doc_extras();
+                self.state.document.name = path
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("Untitled")
+                    .to_string();
+                self.state.clear_history();
+                self.state.selected_ids.clear();
+                crate::io::recent::push_recent(path, w, h);
+                let mut msg = format!(
+                    "{label}をインポートしました ({} 個のオブジェクト)",
+                    obj_count
+                );
+                // 互換性の警告（飛び捨てた要素の一覧）は
+                // 通知設定に従ってのみ添付する。
+                if !warnings.is_empty() && self.state.prefs.notify_file_compat {
+                    msg.push_str(&format!(
+                        " — {}件スキップ: {}",
+                        warnings.len(),
+                        warnings.join(" / ")
+                    ));
+                }
+                self.state.notify_info(msg);
+            }
+        }
+    }
+
     pub(super) fn show_menu_bar(&mut self, ctx: &egui::Context) {
         // Top Menu Bar
         egui::TopBottomPanel::top("menu_bar").show(ctx, |ui| {
@@ -147,52 +195,29 @@ impl IrasuApp {
                             .add_filter("PDF", &["pdf"])
                             .pick_file()
                         {
-                            match std::fs::read(&path) {
-                                Err(e) => {
-                                    self.state
-                                        .notify_error(format!("PDFの読み込みに失敗しました: {e}"));
-                                }
-                                Ok(bytes) => {
-                                    match crate::io::pdf_import::parse_pdf_bytes(&bytes) {
-                                        Err(e) => {
-                                            self.state.notify_error(format!(
-                                                "PDFの解析に失敗しました: {e}"
-                                            ));
-                                        }
-                                        Ok((document, warnings)) => {
-                                            let obj_count = document.all_objects().count();
-                                            let w = document.width;
-                                            let h = document.height;
-                                            self.state.flush_pending_edits();
-                                            self.state.document = document;
-                                            self.state.adopt_doc_extras();
-                                            self.state.document.name = path
-                                                .file_stem()
-                                                .and_then(|s| s.to_str())
-                                                .unwrap_or("Untitled")
-                                                .to_string();
-                                            self.state.clear_history();
-                                            self.state.selected_ids.clear();
-                                            crate::io::recent::push_recent(&path, w, h);
-                                            let mut msg = format!(
-                                                "PDFをインポートしました ({} 個のオブジェクト)",
-                                                obj_count
-                                            );
-                                            // 互換性の警告（飛び捨てた要素の一覧）は
-                                            // 通知設定に従ってのみ添付する。
-                                            if !warnings.is_empty()
-                                                && self.state.prefs.notify_file_compat
-                                            {
-                                                msg.push_str(&format!(
-                                                    " — {}件スキップ: {}",
-                                                    warnings.len(),
-                                                    warnings.join(" / ")
-                                                ));
-                                            }
-                                            self.state.notify_info(msg);
-                                        }
-                                    }
-                                }
+                            if let Ok(bytes) = std::fs::read(&path) {
+                                self.import_pdf_bytes(&path, &bytes, false);
+                            } else {
+                                self.state
+                                    .notify_error("PDFの読み込みに失敗しました".to_string());
+                            }
+                        }
+                        ui.close_menu();
+                    }
+                    if ui
+                        .button("Illustratorを開く... (.ai)")
+                        .on_hover_text("PDF互換部を読み込み（編集用データはスキップ）")
+                        .clicked()
+                    {
+                        if let Some(path) = rfd::FileDialog::new()
+                            .add_filter("Illustrator", &["ai"])
+                            .pick_file()
+                        {
+                            if let Ok(bytes) = std::fs::read(&path) {
+                                self.import_pdf_bytes(&path, &bytes, true);
+                            } else {
+                                self.state
+                                    .notify_error("ファイルの読み込みに失敗しました".to_string());
                             }
                         }
                         ui.close_menu();

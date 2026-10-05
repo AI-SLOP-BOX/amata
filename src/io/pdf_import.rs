@@ -18,6 +18,52 @@ use crate::core::path::{
 };
 use lopdf::content::{Content, Operation};
 
+/// Illustrator (.ai) import: modern .ai files are PDF with Illustrator
+/// private data, so the PDF-compatible content parses with the regular
+/// importer. Returns the document plus warnings; the first warnings always
+/// describe what was skipped (private edit data, version), so "it opened
+/// but something is missing" is never silent.
+pub fn parse_ai_bytes(bytes: &[u8]) -> Result<(Document, Vec<String>), String> {
+    if bytes.len() < 5 || &bytes[0..5] != b"%PDF-" {
+        return Err("Illustratorファイルではありません（PDF互換部がありません）".to_string());
+    }
+    let (doc, warnings) = parse_pdf_bytes(bytes)?;
+    // Illustrator version from the Info dict, when present.
+    let mut version = String::new();
+    if let Ok(loaded) = lopdf::Document::load_mem(bytes) {
+        if let Ok(info) = loaded.trailer.get(b"Info") {
+            let dict_opt: Option<lopdf::Dictionary> = match info {
+                lopdf::Object::Dictionary(d) => Some(d.clone()),
+                lopdf::Object::Reference(id) => loaded.get_object(*id).ok().and_then(|o| match o {
+                    lopdf::Object::Dictionary(d) => Some(d.clone()),
+                    _ => None,
+                }),
+                _ => None,
+            };
+            if let Some(dict) = dict_opt {
+                for key in [b"Creator".as_slice(), b"Producer".as_slice()] {
+                    if let Ok(obj) = dict.get(key) {
+                        if let Ok(s) = obj.as_str() {
+                            let text = String::from_utf8_lossy(s).into_owned();
+                            if text.contains("Illustrator") {
+                                version = text;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    let mut out = vec![if version.is_empty() {
+        "Illustrator編集用データはスキップしPDF互換部を読み込み".to_string()
+    } else {
+        format!("{version}の編集用データをスキップしPDF互換部を読み込み")
+    }];
+    out.extend(warnings);
+    Ok((doc, out))
+}
+
 /// Imported document plus non-fatal warnings (shown as one toast).
 pub fn parse_pdf_bytes(bytes: &[u8]) -> Result<(Document, Vec<String>), String> {
     match lopdf::Document::load_mem(bytes) {

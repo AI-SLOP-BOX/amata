@@ -16,6 +16,11 @@ pub fn load_any_document(
         crate::io::pdf_import::parse_pdf_bytes(&bytes)
             .map(|(doc, _)| doc)
             .map_err(|e| e.into())
+    } else if ext == "ai" {
+        let bytes = std::fs::read(path)?;
+        crate::io::pdf_import::parse_ai_bytes(&bytes)
+            .map(|(doc, _)| doc)
+            .map_err(|e| e.into())
     } else {
         crate::io::project::load_project(path).map_err(|e| e.into())
     }
