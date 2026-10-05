@@ -45,6 +45,7 @@ pub mod symmetry;
 pub mod text_path;
 pub mod timeline;
 pub mod trace;
+pub mod trap;
 pub mod unit;
 pub mod vfx_particles;
 pub mod voronoi;

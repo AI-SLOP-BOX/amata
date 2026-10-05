@@ -8,6 +8,82 @@ use egui::{Color32, RichText, Ui};
 
 pub struct PrintPanel;
 
+/// (Re)generate spread traps on the Traps layer (undoable, one step).
+fn generate_traps(state: &mut AppState) {
+    use crate::core::document::Layer;
+    use crate::core::history::{AddLayerCommand, BatchCommand, Command, RemoveLayerCommand};
+    use crate::core::trap::{find_trap_strokes, trap_object, TRAP_LAYER_NAME};
+    let width = state.document.trap_width;
+    if width <= 0.0 {
+        state.notify_info("トラップ幅を0より大きくしてください".to_string());
+        return;
+    }
+    let (strokes, skipped) = find_trap_strokes(&state.document, width);
+    if strokes.is_empty() {
+        let mut msg = "共有辺がありません — トラップなし".to_string();
+        if skipped > 0 {
+            msg.push_str(&format!("（特色境界{skipped}件は対象外）"));
+        }
+        state.notify_info(msg);
+        return;
+    }
+    let mut cmds: Vec<Box<dyn Command>> = Vec::new();
+    if let Some(pos) = state
+        .document
+        .layers
+        .iter()
+        .position(|l| l.name == TRAP_LAYER_NAME)
+    {
+        cmds.push(Box::new(RemoveLayerCommand {
+            layer: state.document.layers[pos].clone(),
+            index: pos,
+        }));
+    }
+    let mut layer = Layer::new(TRAP_LAYER_NAME);
+    for (i, s) in strokes.iter().enumerate() {
+        layer.objects.push(trap_object(s, width, i + 1));
+    }
+    let n = strokes.len();
+    cmds.push(Box::new(AddLayerCommand {
+        layer,
+        index: state.document.layers.len(),
+        prev_active: state.document.active_layer_idx,
+    }));
+    state.undo_manager.execute(
+        Box::new(BatchCommand::new("Generate Traps", cmds)),
+        &mut state.document,
+    );
+    let mut msg = format!("トラップ{n}件を配置しました");
+    if skipped > 0 {
+        msg.push_str(&format!("（特色境界{skipped}件は対象外）"));
+    }
+    state.notify_success(msg);
+}
+
+/// Delete the Traps layer (undoable).
+fn remove_traps(state: &mut AppState) {
+    use crate::core::history::RemoveLayerCommand;
+    use crate::core::trap::TRAP_LAYER_NAME;
+    let Some(pos) = state
+        .document
+        .layers
+        .iter()
+        .position(|l| l.name == TRAP_LAYER_NAME)
+    else {
+        state.notify_info("トラップはありません".to_string());
+        return;
+    };
+    let cmd = RemoveLayerCommand {
+        layer: state.document.layers[pos].clone(),
+        index: pos,
+    };
+    state.undo_manager.execute(
+        Box::new(cmd) as Box<dyn crate::core::history::Command>,
+        &mut state.document,
+    );
+    state.notify_success("トラップを削除しました".to_string());
+}
+
 impl PrintPanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
         ui.heading(RichText::new("Print").strong());
@@ -137,6 +213,46 @@ impl PrintPanel {
             state.document.spots.push(print::SpotColor::new(name.clone(), ink));
             state.notify_success(format!("特色「{name}」を登録しました"));
         }
+        ui.add_space(4.0);
+        ui.separator();
+
+        // Trapping: spread strokes along shared edges.
+        ui.label(RichText::new("トラップ").strong());
+        ui.horizontal(|ui| {
+            ui.label("幅:");
+            ui.add(
+                egui::DragValue::new(&mut state.document.trap_width)
+                    .speed(0.05)
+                    .range(0.0..=3.0)
+                    .suffix("pt"),
+            );
+        });
+        let trap_count: usize = state
+            .document
+            .layers
+            .iter()
+            .filter(|l| l.name == crate::core::trap::TRAP_LAYER_NAME)
+            .map(|l| l.objects.len())
+            .sum();
+        ui.horizontal(|ui| {
+            if ui
+                .button("トラップ生成")
+                .on_hover_text("共有辺に濃色スプレッド（オーバープリント）を配置")
+                .clicked()
+            {
+                generate_traps(state);
+            }
+            if ui.button("トラップ削除").clicked() {
+                remove_traps(state);
+            }
+        });
+        ui.label(
+            RichText::new(format!(
+                "配置済み: {trap_count}件（特色境界・グラデーションは対象外）"
+            ))
+            .weak()
+            .size(10.0),
+        );
         ui.add_space(4.0);
         ui.separator();
 

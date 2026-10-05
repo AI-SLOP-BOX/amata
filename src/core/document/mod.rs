@@ -1,7 +1,8 @@
 pub mod object;
 pub use object::{
-    BlendMode, FontStyle, Object, ObjectType, TextAnchor, TextArea, TextStyle, TextPathSide,
-    Transform, VariationSetting, char_advance_estimate, layout_text,
+    BlendMode, FontStyle, Object, ObjectType, TextAnchor, TextArea, TextLayout, TextStyle,
+    TextPathSide, Transform, VariationSetting, char_advance_estimate, layout_text,
+    thread_frame_layout,
 };
 #[allow(unused_imports)]
 pub use object::compute_wrapped_lines;
@@ -104,6 +105,40 @@ pub struct Layer {
     pub opacity: f32,
 }
 
+/// Named paragraph style: a reusable text style preset.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ParagraphStyle {
+    pub name: String,
+    pub style: object::TextStyle,
+}
+
+fn default_paragraph_styles() -> Vec<ParagraphStyle> {
+    vec![
+        ParagraphStyle {
+            name: "見出し".to_string(),
+            style: object::TextStyle {
+                font_size: 24.0,
+                font_weight: 700,
+                ..Default::default()
+            },
+        },
+        ParagraphStyle {
+            name: "本文".to_string(),
+            style: object::TextStyle {
+                font_size: 12.0,
+                ..Default::default()
+            },
+        },
+        ParagraphStyle {
+            name: "キャプション".to_string(),
+            style: object::TextStyle {
+                font_size: 9.0,
+                ..Default::default()
+            },
+        },
+    ]
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Document {
     pub name: String,
@@ -137,6 +172,13 @@ pub struct Document {
     /// artboard using `width`/`height`.
     #[serde(default)]
     pub artboards: Vec<Artboard>,
+    /// Automatic trap width in points (0 = traps off). Used by the trap
+    /// generator in the print panel; persisted so regeneration matches.
+    #[serde(default)]
+    pub trap_width: f64,
+    /// Named paragraph styles (DTP): reusable TextStyle presets.
+    #[serde(default)]
+    pub paragraph_styles: Vec<ParagraphStyle>,
 }
 
 impl Default for Document {
@@ -155,6 +197,8 @@ impl Default for Document {
             bleed: 0.0,
             perspective: None,
             artboards: Vec::new(),
+            trap_width: 0.0,
+            paragraph_styles: default_paragraph_styles(),
         };
         doc.layers.push(Layer::new("Layer 1"));
         doc

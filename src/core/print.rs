@@ -467,10 +467,23 @@ pub fn preflight(doc: &Document) -> Vec<PreflightIssue> {
     // No trap engine: modern RIPs trap at output, and this file declares
     // /Trapped /False honestly. Surfaced here so "nothing traps" is a
     // visible statement, not an unknown.
-    out.push(PreflightIssue::pass(
-        "トラップ",
-        "アプリ側トラップなし（RIP任せ・/Trapped /False宣言）",
-    ));
+    let trap_count: usize = doc
+        .layers
+        .iter()
+        .filter(|l| l.name == crate::core::trap::TRAP_LAYER_NAME)
+        .map(|l| l.objects.len())
+        .sum();
+    if trap_count > 0 {
+        out.push(PreflightIssue::pass(
+            "トラップ",
+            format!("スプレッド{trap_count}件配置済み（特色境界は対象外）"),
+        ));
+    } else {
+        out.push(PreflightIssue::pass(
+            "トラップ",
+            "アプリ側トラップなし（RIP任せ・/Trapped /False宣言）",
+        ));
+    }
     out
 }
 
