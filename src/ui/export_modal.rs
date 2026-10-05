@@ -28,6 +28,7 @@ pub enum ExportSidebarTab {
 pub enum ExportFormatTab {
     Svg,
     Pdf,
+    Ai,
     Png,
     Jpeg,
     Webp,
@@ -232,6 +233,7 @@ impl ExportModal {
         let presets = [
             ("Web (SVG)", ExportFormatTab::Svg),
             ("印刷用 (PDF)", ExportFormatTab::Pdf),
+            ("Illustrator互換 (.ai)", ExportFormatTab::Ai),
             ("スクリーン用 (PNG)", ExportFormatTab::Png),
             ("ソーシャル投稿 (JPEG)", ExportFormatTab::Jpeg),
             ("Web 最適化 (WebP)", ExportFormatTab::Webp),
@@ -441,6 +443,7 @@ impl ExportModal {
             let fmt_name = match item.format {
                 ExportFormatTab::Svg => "SVG",
                 ExportFormatTab::Pdf => "PDF",
+                ExportFormatTab::Ai => "AI",
                 ExportFormatTab::Png => "PNG",
                 ExportFormatTab::Jpeg => "JPEG",
                 ExportFormatTab::Webp => "WebP",
@@ -510,6 +513,7 @@ impl ExportModal {
             let fmts = [
                 (ExportFormatTab::Svg, "SVG"),
                 (ExportFormatTab::Pdf, "PDF"),
+                (ExportFormatTab::Ai, "AI"),
                 (ExportFormatTab::Png, "PNG"),
                 (ExportFormatTab::Jpeg, "JPEG"),
                 (ExportFormatTab::Webp, "WebP"),
@@ -722,6 +726,25 @@ impl ExportModal {
                             path.file_name().and_then(|n| n.to_str()).unwrap_or("file")
                         )),
                         Err(e) => state.notify_error(format!("PDF書き出しに失敗しました: {e}")),
+                    }
+                }
+            }
+            ExportFormatTab::Ai => {
+                // PDF-compatible .ai: Illustrator opens the PDF portion.
+                // No Illustrator private edit data is written (honest
+                // subset — layers/structure do not round-trip).
+                if let Some(path) = rfd::FileDialog::new()
+                    .add_filter("Illustrator", &["ai"])
+                    .set_file_name(format!("{}.ai", self.file_name))
+                    .save_file()
+                {
+                    let ai_bytes = crate::io::pdf::export_pdf(doc_ref);
+                    match crate::io::atomic::atomic_write_bytes(&path, &ai_bytes) {
+                        Ok(_) => state.notify_info(format!(
+                            "Illustrator互換を書き出しました（PDF互換のみ・編集用データなし）: {}",
+                            path.file_name().and_then(|n| n.to_str()).unwrap_or("file")
+                        )),
+                        Err(e) => state.notify_error(format!("保存に失敗しました: {e}")),
                     }
                 }
             }

@@ -28,6 +28,27 @@ fn doc_with_rect() -> Document {
 }
 
 #[test]
+fn test_sync_push_pull_round_trip() {
+    let mut api = ApiState::new(doc_with_rect());
+    // Pull: whole document as project JSON.
+    let pulled = route(&mut api, "GET", "/api/sync/pull", &[]);
+    assert_eq!(pulled.status, 200);
+    let value = response_json(&pulled);
+    assert_eq!(value["amata_sync"]["version"], 1);
+    // Push it back under a new name: last-writer-wins replace.
+    let mut body = serde_json::to_vec(&value).unwrap();
+    let _ = &mut body;
+    let pushed = route(&mut api, "POST", "/api/sync/push", &body);
+    assert_eq!(pushed.status, 200);
+    assert_eq!(response_json(&pushed)["objects"], 1);
+    // Push garbage: 400, document untouched.
+    let before = api.document.all_objects().count();
+    let bad = route(&mut api, "POST", "/api/sync/push", b"not json");
+    assert_eq!(bad.status, 400);
+    assert_eq!(api.document.all_objects().count(), before);
+}
+
+#[test]
 fn test_health_and_index_routes() {
     let mut api = ApiState::new(doc_with_rect());
 

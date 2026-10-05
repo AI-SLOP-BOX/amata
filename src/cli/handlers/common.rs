@@ -97,6 +97,13 @@ pub fn save_any_document_scaled(
             crate::io::atomic::atomic_write_bytes(path, &pdf_bytes)?;
             Ok(())
         }
+        // PDF-compatible .ai (Illustrator opens the PDF portion; no
+        // private edit data — same honest subset as the export dialog).
+        "ai" => {
+            let pdf_bytes = crate::io::pdf::export_pdf(doc);
+            crate::io::atomic::atomic_write_bytes(path, &pdf_bytes)?;
+            Ok(())
+        }
         _ => crate::io::project::save_project(doc, path).map_err(|e| e.into()),
     }
 }

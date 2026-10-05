@@ -1049,6 +1049,8 @@ fn test_stress_save_reload_round_trip_fidelity() {
         bleed: 0.0,
         perspective: None,
         artboards: Vec::new(),
+        trap_width: 0.0,
+        paragraph_styles: Vec::new(),
     };
 
     let temp_dir = std::env::temp_dir();
@@ -1188,7 +1190,9 @@ fn test_stress_toast_notification_feedback() {
 fn test_flush_pending_edits_saves_undo_and_dirty() {
     use irasu_illustrator::core::document::Object;
     let mut state = irasu_illustrator::core::state::AppState::default();
-    state.document.add_object(Object::new_rect("R", 0.0, 0.0, 10.0, 10.0, 0.0));
+    state
+        .document
+        .add_object(Object::new_rect("R", 0.0, 0.0, 10.0, 10.0, 0.0));
     state.undo_manager.clear();
     assert!(!state.is_dirty());
     // Simulate a typed DragValue edit: snapshot + mutate, no drag_stopped.
@@ -1211,7 +1215,9 @@ fn test_flush_pending_edits_saves_undo_and_dirty() {
 fn test_undo_step_flushes_before_undoing() {
     use irasu_illustrator::core::document::Object;
     let mut state = irasu_illustrator::core::state::AppState::default();
-    state.document.add_object(Object::new_rect("R", 0.0, 0.0, 10.0, 10.0, 0.0));
+    state
+        .document
+        .add_object(Object::new_rect("R", 0.0, 0.0, 10.0, 10.0, 0.0));
     state.undo_manager.clear();
     let id = state.document.all_objects().next().unwrap().1.id.clone();
     state.ensure_object_snapshot(&id);

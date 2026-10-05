@@ -334,10 +334,41 @@ Amata local API
   POST /api/objects/path      { name?, points: [[x, y], ...], closed?, fill? }
   POST /api/script            { script: \"...\" }  (or a raw Rhai body)
   POST /api/export/svg        [ ?path=/tmp/out.svg ]  (no path = inline SVG )
+  GET  /api/sync/pull         full project JSON (sync download)
+  POST /api/sync/push         full project JSON body (sync upload, replaces document)
 ";
 
 /// Dispatch one request. `target` is the raw request target, so it may carry a
 /// query string.
+/// Sync download: the whole document as project JSON. Pair with
+/// `sync_push` and the `AMATA_API_TOKEN` bearer gate for a self-hosted
+/// sync mechanism (server holds the golden copy; no Amata-hosted cloud).
+fn sync_pull(api: &ApiState) -> ApiResponse {
+    match serde_json::to_value(&api.document) {
+        Ok(mut value) => {
+            if let Some(map) = value.as_object_mut() {
+                map.insert("amata_sync".to_string(), json!({ "version": 1 }));
+            }
+            ApiResponse::json(200, &value)
+        }
+        Err(e) => ApiResponse::error(500, format!("serialize failed: {e}")),
+    }
+}
+
+/// Sync upload: replaces the server document with project JSON.
+/// History is intentionally reset (like opening a file) — last-writer-wins,
+/// clients must pull-merge before pushing.
+fn sync_push(api: &mut ApiState, body: &[u8]) -> ApiResponse {
+    let mut doc: Document = match serde_json::from_slice(body) {
+        Ok(d) => d,
+        Err(e) => return ApiResponse::error(400, format!("invalid project JSON: {e}")),
+    };
+    doc.normalize();
+    let count = doc.all_objects().count();
+    api.document = doc;
+    ApiResponse::json(200, &json!({ "status": "ok", "objects": count }))
+}
+
 pub fn route(api: &mut ApiState, method: &str, target: &str, body: &[u8]) -> ApiResponse {
     api.request_count += 1;
     let (path, query) = match target.split_once('?') {
@@ -379,6 +410,8 @@ pub fn route(api: &mut ApiState, method: &str, target: &str, body: &[u8]) -> Api
         ("POST", "/api/objects/path") => create_path(api, body),
         ("POST", "/api/script") => run_script(api, body),
         ("POST", "/api/export/svg") => export_svg_route(api, query),
+        ("GET", "/api/sync/pull") => sync_pull(api),
+        ("POST", "/api/sync/push") => sync_push(api, body),
         _ => {
             let known = matches!(
                 path,
@@ -390,6 +423,8 @@ pub fn route(api: &mut ApiState, method: &str, target: &str, body: &[u8]) -> Api
                     | "/api/objects/path"
                     | "/api/script"
                     | "/api/export/svg"
+                    | "/api/sync/pull"
+                    | "/api/sync/push"
             );
             if known {
                 ApiResponse::error(405, format!("{path} does not accept {method}"))
