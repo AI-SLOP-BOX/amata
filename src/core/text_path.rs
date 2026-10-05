@@ -463,6 +463,69 @@ impl ttf_parser::OutlineBuilder for PathOutlineBuilder {
     }
 }
 
+/// One HarfBuzz-shaped glyph: final glyph id plus advances/offsets in
+/// font units (y-up, like the outline builder's glyph space).
+#[derive(Debug, Clone)]
+pub struct ShapedGlyph {
+    pub gid: u32,
+    pub x_advance: f32,
+    pub y_advance: f32,
+    pub x_offset: f32,
+    pub y_offset: f32,
+    /// Byte index of the source cluster (for space/.notdef decisions).
+    pub cluster: u32,
+}
+
+/// Shape a run with HarfBuzz: full GSUB/GPOS (ligatures, kerning, mark
+/// positioning, complex scripts) instead of the manual cmap + legacy
+/// `kern`-table walk below. Returns `None` when shaping is unavailable so
+/// callers fall back to the manual path.
+pub fn shape_run_hb(
+    data: &[u8],
+    index: u32,
+    text: &str,
+    ligatures: bool,
+) -> Option<Vec<ShapedGlyph>> {
+    let font = read_fonts::FontRef::from_index(data, index).ok()?;
+    let shaper_data = harfrust::ShaperData::new(&font);
+    let shaper = shaper_data.shaper(&font).build();
+    let mut buffer = harfrust::UnicodeBuffer::new();
+    buffer.push_str(text);
+    buffer.guess_segment_properties();
+    let no_liga;
+    let features: &[harfrust::Feature] = if ligatures {
+        &[]
+    } else {
+        no_liga = [
+            harfrust::Feature::new(read_fonts::types::Tag::new(b"liga"), 0, ..),
+            harfrust::Feature::new(read_fonts::types::Tag::new(b"dlig"), 0, ..),
+            harfrust::Feature::new(read_fonts::types::Tag::new(b"clig"), 0, ..),
+            harfrust::Feature::new(read_fonts::types::Tag::new(b"rlig"), 0, ..),
+        ];
+        &no_liga
+    };
+    let shaped = shaper.shape(buffer, harfrust::ShapeOptions::new().features(features));
+    let infos = shaped.glyph_infos();
+    let pos = shaped.glyph_positions();
+    if infos.len() != pos.len() {
+        return None;
+    }
+    Some(
+        infos
+            .iter()
+            .zip(pos.iter())
+            .map(|(i, p)| ShapedGlyph {
+                gid: i.glyph_id,
+                x_advance: p.x_advance as f32,
+                y_advance: p.y_advance as f32,
+                x_offset: p.x_offset as f32,
+                y_offset: p.y_offset as f32,
+                cluster: i.cluster,
+            })
+            .collect(),
+    )
+}
+
 /// Faux italic/oblique shear factor: tan(12°). Matches the SVG export
 /// `skewX(-12)` so outlined logos and exported text slant identically.
 pub const FAUX_ITALIC_SHEAR: f64 = 0.2126;
@@ -510,8 +573,47 @@ pub fn try_text_to_outline_path_with_style(
                 // apply (static faces ignore unknown tags harmlessly).
                 super::font::FontRegistry::apply_variations(&mut face, &style.variations);
                 let units_per_em = face.units_per_em() as f64;
-                    if units_per_em > 0.0 {
+                if units_per_em > 0.0 {
                     let scale = font_size / units_per_em;
+                    // HarfBuzz shaping first: full GSUB/GPOS (ligatures,
+                    // kerning incl. GPOS pairs, mark attachment, complex
+                    // scripts). HarfBuzz positions are y-up font units, so
+                    // y_offset is negated into the builder's y-down space.
+                    if let Some(shaped) = shape_run_hb(data, index, text, style.ligatures) {
+                        let mut usable = true;
+                        for g in &shaped {
+                            // .notdef for a real character: fall back to the
+                            // manual path (which returns None → mock blocks
+                            // coherently) instead of outlining tofu.
+                            let ch = text
+                                .get(g.cluster as usize..)
+                                .and_then(|s| s.chars().next());
+                            if g.gid == 0 && !matches!(ch, Some(' ') | Some('\t')) {
+                                usable = false;
+                                break;
+                            }
+                        }
+                        if usable {
+                            let mut combined = PathData::new();
+                            let mut current_x = 0.0;
+                            for g in &shaped {
+                                let gid = ttf_parser::GlyphId(g.gid.min(u16::MAX as u32) as u16);
+                                let mut builder = PathOutlineBuilder {
+                                    path: PathData::new(),
+                                    scale,
+                                    offset_x: current_x + g.x_offset as f64 * scale,
+                                    offset_y: -g.y_offset as f64 * scale,
+                                };
+                                let _ = face.outline_glyph(gid, &mut builder);
+                                combined.elements.extend(builder.path.elements);
+                                current_x += g.x_advance as f64 * scale + letter_spacing;
+                            }
+                            if faux_italic {
+                                combined.transform(&[1.0, 0.0, -FAUX_ITALIC_SHEAR, 1.0, 0.0, 0.0]);
+                            }
+                            return Some(combined);
+                        }
+                    }
                     let mut combined = PathData::new();
                     let mut current_x = 0.0;
                     // `kern` (old-style TrueType kerning) table, when present.
@@ -810,5 +912,40 @@ pub fn create_text_outlines(text_obj: &Object) -> Option<Object> {
         Some(outlined)
     } else {
         None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn harfbuzz_shapes_with_font_unit_advances() {
+        let data = include_bytes!("../../assets/fonts/Inter.ttf");
+        let shaped = shape_run_hb(data, 0, "fi", true).expect("shapes");
+        // Every glyph carries a positive advance in font units.
+        assert!(!shaped.is_empty());
+        for g in &shaped {
+            assert!(g.x_advance > 0.0, "{g:?}");
+        }
+        let width: f32 = shaped.iter().map(|g| g.x_advance).sum();
+        assert!(width > 1000.0, "two glyphs at ~1k upem: {width}");
+    }
+
+    #[test]
+    fn harfbuzz_gpos_kern_differs_from_flat_advances() {
+        // Inter kerns AV via GPOS (no legacy `kern` row for it): the shaped
+        // advance of A must be tighter than its nominal advance.
+        let data = include_bytes!("../../assets/fonts/Inter.ttf");
+        let face = ttf_parser::Face::parse(data, 0).unwrap();
+        let a = face.glyph_index('A').unwrap();
+        let nominal = face.glyph_hor_advance(a).unwrap() as f32;
+        let shaped = shape_run_hb(data, 0, "AV", true).expect("shapes");
+        assert_eq!(shaped.len(), 2);
+        assert!(
+            shaped[0].x_advance < nominal,
+            "GPOS kern tightens A: {} vs {nominal}",
+            shaped[0].x_advance
+        );
     }
 }

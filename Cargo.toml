@@ -37,6 +37,8 @@ resvg = { version = "0.48", default-features = false, features = ["raster-images
 fontdb = { version = "0.24", features = ["fs", "memmap"] }
 ttf-parser = "0.25"
 lopdf = "0.35"
+harfrust = "0.12"
+read-fonts = "0.41"
 flate2 = "1"
 lcms2 = { version = "6.2.0", features = ["static"] }
 lcms2-sys = "4.0.7"
