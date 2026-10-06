@@ -1110,6 +1110,154 @@ pub fn layout_text_wrapped(
     })
 }
 
+/// One table-of-contents entry: heading text + 1-based page (artboard).
+#[derive(Debug, Clone, PartialEq)]
+pub struct TocEntry {
+    pub text: String,
+    pub page: Option<usize>,
+    pub level: usize,
+}
+
+/// Collect headings for an auto table of contents: area/point text whose
+/// font size meets `min_size` (overseas docs use size, not named styles,
+/// since styles are copied on apply and carry no reference). Level comes
+/// from relative size (largest = level 0). Text inside groups is included;
+/// threaded tails are skipped (the head carries the story).
+pub fn collect_toc_entries(doc: &super::Document, min_size: f64) -> Vec<TocEntry> {
+    struct Raw {
+        text: String,
+        size: f64,
+        page: Option<usize>,
+    }
+    let boards = doc.effective_artboards();
+    let mut raw: Vec<Raw> = Vec::new();
+    // Tails to skip: any id referenced as someone's next_frame.
+    let mut tails: std::collections::HashSet<String> = std::collections::HashSet::new();
+    fn scan_tails(obj: &Object, out: &mut std::collections::HashSet<String>) {
+        match &obj.object_type {
+            ObjectType::Text {
+                next_frame: Some(n),
+                ..
+            } => {
+                out.insert(n.clone());
+            }
+            ObjectType::Text { .. } => {}
+            ObjectType::Group(children) | ObjectType::ClippingMask { children } => {
+                for c in children {
+                    scan_tails(c, out);
+                }
+            }
+            _ => {}
+        }
+    }
+    fn scan(
+        obj: &Object,
+        boards: &[super::Artboard],
+        min_size: f64,
+        tails: &std::collections::HashSet<String>,
+        raw: &mut Vec<Raw>,
+    ) {
+        match &obj.object_type {
+            ObjectType::Text {
+                text, style, area, ..
+            } => {
+                if tails.contains(&obj.id) {
+                    return;
+                }
+                if style.font_size < min_size {
+                    return;
+                }
+                // Headings are single-line: first non-empty line.
+                let head = text.lines().map(str::trim).find(|l| !l.is_empty());
+                let Some(head) = head else {
+                    return;
+                };
+                // Page = artboard containing the object's center.
+                let center = if let Some(a) = area {
+                    (
+                        a.x + a.width / 2.0 + obj.transform.x,
+                        a.y + a.height / 2.0 + obj.transform.y,
+                    )
+                } else {
+                    (obj.transform.x, obj.transform.y)
+                };
+                let mut page = None;
+                for (i, b) in boards.iter().enumerate() {
+                    if center.0 >= b.x
+                        && center.0 <= b.x + b.width
+                        && center.1 >= b.y
+                        && center.1 <= b.y + b.height
+                    {
+                        page = Some(i + 1);
+                        break;
+                    }
+                }
+                raw.push(Raw {
+                    text: head.to_string(),
+                    size: style.font_size,
+                    page,
+                });
+            }
+            ObjectType::Group(children) | ObjectType::ClippingMask { children } => {
+                for c in children {
+                    scan(c, boards, min_size, tails, raw);
+                }
+            }
+            _ => {}
+        }
+    }
+    for layer in &doc.layers {
+        for obj in &layer.objects {
+            scan_tails(obj, &mut tails);
+        }
+    }
+    for layer in &doc.layers {
+        for obj in &layer.objects {
+            scan(obj, &boards, min_size, &tails, &mut raw);
+        }
+    }
+    if raw.is_empty() {
+        return Vec::new();
+    }
+    // Level by size rank (largest = 0), stable document order otherwise.
+    let mut sizes: Vec<f64> = raw.iter().map(|r| r.size).collect();
+    sizes.sort_by(|a, b| b.total_cmp(a));
+    sizes.dedup_by(|a, b| (*a - *b).abs() < 0.5);
+    raw.into_iter()
+        .map(|r| TocEntry {
+            text: r.text,
+            page: r.page,
+            level: sizes
+                .iter()
+                .position(|s| (*s - r.size).abs() < 0.5)
+                .unwrap_or(0),
+        })
+        .collect()
+}
+
+/// Render TOC entries as text with dot leaders computed from estimated
+/// advances (real dot-leader tabs need tab stops, which do not exist yet).
+pub fn render_toc_text(entries: &[TocEntry], style: &TextStyle, width: f64) -> String {
+    let unit = |ch: char| char_advance_estimate(ch) * style.font_size + style.letter_spacing;
+    let dot_w: f64 = ".".chars().map(&unit).sum::<f64>() + unit(' ');
+    let mut out = Vec::new();
+    for e in entries {
+        let indent = "  ".repeat(e.level.min(3));
+        let pageno = e
+            .page
+            .map(|p| format!("p{p}"))
+            .unwrap_or_else(|| "–".to_string());
+        let head_w: f64 = format!("{indent}{}", e.text).chars().map(&unit).sum();
+        let tail_w: f64 = pageno.chars().map(&unit).sum();
+        let dots = ((width - head_w - tail_w) / dot_w.max(1.0))
+            .floor()
+            .max(2.0) as usize;
+        let leader: String = ". ".repeat(dots);
+        out.push(format!("{indent}{} {leader}{pageno}", e.text));
+    }
+    out.join("\n")
+}
+
 /// Resolve the threaded story containing `obj_id` and return THIS frame's
 /// layout (its slice of the head's text, positioned at its own area).
 /// Returns `None` when the object is not part of a thread — callers fall
@@ -2568,6 +2716,42 @@ mod tests {
             "left obstacle shifts: {:?}",
             shifted.line_xoff
         );
+    }
+
+    #[test]
+    fn toc_collects_headings_with_pages() {
+        use super::{collect_toc_entries, render_toc_text, TextStyle};
+        use crate::core::document::Document;
+        let mut doc = Document {
+            width: 400.0,
+            height: 600.0,
+            ..Default::default()
+        };
+        let big = TextStyle {
+            font_size: 24.0,
+            ..Default::default()
+        };
+        let small = TextStyle {
+            font_size: 12.0,
+            ..Default::default()
+        };
+        let mut h1 = Object::new_text_with_style("H1", "Title", 10.0, 10.0, big.clone());
+        let _ = &mut h1;
+        let mut b = Object::new_text_with_style("B", "body", 10.0, 100.0, small.clone());
+        let _ = &mut b;
+        let mut h2 = Object::new_text_with_style("H2", "Next", 10.0, 400.0, big.clone());
+        let _ = &mut h2;
+        doc.add_object(h1);
+        doc.add_object(b);
+        doc.add_object(h2);
+        let entries = collect_toc_entries(&doc, 18.0);
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].text, "Title");
+        assert_eq!(entries[1].text, "Next");
+        assert_eq!(entries[0].level, entries[1].level);
+        let body = render_toc_text(&entries, &small, 360.0);
+        assert!(body.contains("Title") && body.contains("Next"));
+        assert!(body.contains('p'), "page refs: {body}");
     }
 
     #[test]

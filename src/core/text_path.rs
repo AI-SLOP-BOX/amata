@@ -969,6 +969,31 @@ mod tests {
     }
 
     #[test]
+    fn variable_instance_outlines_differ_end_to_end() {
+        // wght=700 outlines must differ from the default master: proves
+        // instance coordinates reach shaping AND outline extraction
+        // (embed keeps the outlines fallback for varied text, which is
+        // the only correct output without a full gvar instancer).
+        use crate::core::document::{TextStyle, VariationSetting};
+        let plain = TextStyle {
+            font_family: "Inter".to_string(),
+            font_size: 40.0,
+            ..Default::default()
+        };
+        let mut bold = plain.clone();
+        bold.variations = vec![VariationSetting::new("wght", 700.0)];
+        let words = |style: &TextStyle| text_to_outline_path_with_style("AV", style);
+        let a = words(&plain);
+        let b = words(&bold);
+        let w = |p: &PathData| {
+            p.bounding_box()
+                .map(|(mn, mx)| mx.x - mn.x)
+                .unwrap_or(0.0)
+        };
+        assert!(w(&b) > w(&a), "bold wider: {} vs {}", w(&b), w(&a));
+    }
+
+    #[test]
     fn harfbuzz_gpos_kern_differs_from_flat_advances() {
         // Inter kerns AV via GPOS (no legacy `kern` row for it): the shaped
         // advance of A must be tighter than its nominal advance.

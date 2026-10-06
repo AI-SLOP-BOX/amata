@@ -1,8 +1,8 @@
 pub mod object;
 pub use object::{
+    char_advance_estimate, collect_toc_entries, layout_text, layout_text_full, render_toc_text,
     BlendMode, FontStyle, ListStyle, Object, ObjectType, TextAnchor, TextArea, TextLayout,
-    TextStyle, TextPathSide, Transform, VariationSetting, char_advance_estimate, layout_text,
-    layout_text_full,
+    TextStyle, TextPathSide, Transform, VariationSetting,
 };
 #[allow(unused_imports)]
 pub use object::compute_wrapped_lines;
@@ -112,6 +112,10 @@ pub struct ParagraphStyle {
     pub style: object::TextStyle,
 }
 
+fn default_toc_threshold() -> f64 {
+    18.0
+}
+
 fn default_paragraph_styles() -> Vec<ParagraphStyle> {
     vec![
         ParagraphStyle {
@@ -176,6 +180,9 @@ pub struct Document {
     /// generator in the print panel; persisted so regeneration matches.
     #[serde(default)]
     pub trap_width: f64,
+    /// TOC heading size threshold in points.
+    #[serde(default = "default_toc_threshold")]
+    pub toc_threshold: f64,
     /// Named paragraph styles (DTP): reusable TextStyle presets.
     #[serde(default)]
     pub paragraph_styles: Vec<ParagraphStyle>,
@@ -198,6 +205,7 @@ impl Default for Document {
             perspective: None,
             artboards: Vec::new(),
             trap_width: 0.0,
+            toc_threshold: default_toc_threshold(),
             paragraph_styles: default_paragraph_styles(),
         };
         doc.layers.push(Layer::new("Layer 1"));

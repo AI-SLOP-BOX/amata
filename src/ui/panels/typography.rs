@@ -7,6 +7,28 @@ use egui::{Color32, RichText, Stroke, Ui, Vec2};
 
 pub struct TextPanel;
 
+/// Build a TOC text object from headings and append it (undoable).
+fn generate_toc(state: &mut AppState) {
+    use crate::core::document::{collect_toc_entries, render_toc_text, Object, TextStyle};
+    let entries = collect_toc_entries(&state.document, state.document.toc_threshold);
+    if entries.is_empty() {
+        state.notify_info("見出しがありません（閾値サイズ以上のテキストが必要）".to_string());
+        return;
+    }
+    let style = TextStyle {
+        font_size: 12.0,
+        ..Default::default()
+    };
+    let body = render_toc_text(&entries, &style, state.document.width - 40.0);
+    let mut obj = Object::new_text("目次", &body, 20.0, 20.0, 12.0);
+    if let crate::core::document::ObjectType::Text { style: s, .. } = &mut obj.object_type {
+        *s = style;
+    }
+    let cmd = Box::new(crate::core::history::AddObjectCommand::new(obj));
+    state.undo_manager.execute(cmd, &mut state.document);
+    state.notify_success(format!("目次を生成しました（{}項目）", entries.len()));
+}
+
 impl TextPanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
         if state.selected_ids.is_empty() {
@@ -652,28 +674,28 @@ impl TextPanel {
                 .get(i)
                 .map(|ps| ps.style.clone())
             {
-            let sel = state.selected_ids.clone();
-            let mut applied = 0;
-            for sid in &sel {
-                state.ensure_object_snapshot(sid);
-                let mut hit = false;
-                for (_, obj) in state.document.all_objects_mut() {
-                    if &obj.id == sid {
-                        if let ObjectType::Text { style: s, .. } = &mut obj.object_type {
-                            *s = style.clone();
-                            hit = true;
+                let sel = state.selected_ids.clone();
+                let mut applied = 0;
+                for sid in &sel {
+                    state.ensure_object_snapshot(sid);
+                    let mut hit = false;
+                    for (_, obj) in state.document.all_objects_mut() {
+                        if &obj.id == sid {
+                            if let ObjectType::Text { style: s, .. } = &mut obj.object_type {
+                                *s = style.clone();
+                                hit = true;
+                            }
+                            break;
                         }
-                        break;
+                    }
+                    if hit {
+                        applied += 1;
                     }
                 }
-                if hit {
-                    applied += 1;
+                if applied > 0 {
+                    state.commit_object_edits("Apply Paragraph Style");
+                    state.notify_success(format!("段落スタイルを{applied}件に適用しました"));
                 }
-            }
-            if applied > 0 {
-                state.commit_object_edits("Apply Paragraph Style");
-                state.notify_success(format!("段落スタイルを{applied}件に適用しました"));
-            }
             }
         }
         ui.horizontal(|ui| {
@@ -687,6 +709,28 @@ impl TextPanel {
                         style: current_style.clone(),
                     });
                 state.notify_success("段落スタイルを登録しました".to_string());
+            }
+        });
+
+        // Table of contents (DTP): headings (>= threshold size) get
+        // dot leaders + artboard page numbers in a new text object.
+        ui.add_space(4.0);
+        ui.separator();
+        ui.label(RichText::new("目次").strong());
+        ui.horizontal(|ui| {
+            ui.label("見出し閾値:");
+            let mut thresh = state.document.toc_threshold;
+            let resp = ui.add(
+                egui::DragValue::new(&mut thresh)
+                    .speed(0.5)
+                    .range(6.0..=144.0)
+                    .suffix("pt"),
+            );
+            if resp.changed() {
+                state.document.toc_threshold = thresh.clamp(6.0, 144.0);
+            }
+            if ui.button("目次を生成").clicked() {
+                generate_toc(state);
             }
         });
 

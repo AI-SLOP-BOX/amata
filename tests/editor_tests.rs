@@ -1051,6 +1051,7 @@ fn test_stress_save_reload_round_trip_fidelity() {
         artboards: Vec::new(),
         trap_width: 0.0,
         paragraph_styles: Vec::new(),
+        toc_threshold: 18.0,
     };
 
     let temp_dir = std::env::temp_dir();

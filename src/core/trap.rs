@@ -214,15 +214,11 @@ pub fn find_trap_strokes(
                                 let lo = t1.min(t2).max(0.0);
                                 let hi = t1.max(t2).min(len);
                                 if hi - lo >= 1.0 {
-                                    let pt = |tt: f64| {
-                                        (a1.0 + ux * tt, a1.1 + uy * tt)
-                                    };
+                                    let pt = |tt: f64| (a1.0 + ux * tt, a1.1 + uy * tt);
                                     let (u, v) = (key(pt(lo)), key(pt(hi)));
                                     let kk = if u <= v { (u, v) } else { (v, u) };
                                     if matched.insert(kk) {
-                                        let darker = if luminance(ci.color)
-                                            <= luminance(cj.color)
-                                        {
+                                        let darker = if luminance(ci.color) <= luminance(cj.color) {
                                             ci.color
                                         } else {
                                             cj.color
@@ -356,7 +352,10 @@ pub fn find_trap_strokes(
                 if color_of(&edges[i]) != run_color {
                     let pts: Vec<Pt> = chain[run_start..=i].iter().map(|k| coord[k]).collect();
                     if pts.len() >= 2 {
-                        strokes.push(TrapStroke { points: pts, color: run_color });
+                        strokes.push(TrapStroke {
+                            points: pts,
+                            color: run_color,
+                        });
                     }
                     run_start = i;
                     run_color = color_of(&edges[i]);
@@ -364,7 +363,10 @@ pub fn find_trap_strokes(
             }
             let pts: Vec<Pt> = chain[run_start..].iter().map(|k| coord[k]).collect();
             if pts.len() >= 2 {
-                strokes.push(TrapStroke { points: pts, color: run_color });
+                strokes.push(TrapStroke {
+                    points: pts,
+                    color: run_color,
+                });
             }
         }
     }
