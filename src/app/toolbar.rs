@@ -278,23 +278,31 @@ impl IrasuApp {
             let pressing = response.hovered() && ui.input(|i| i.pointer.primary_down());
             if pressing {
                 let now = ui.input(|i| i.time);
-                let started = ui.memory(|m| m.data.get_temp::<f64>(hold_id).unwrap_or(0.0));
-                if started == 0.0 {
-                    ui.memory_mut(|m| {
-                        m.data.insert_temp(hold_id, now);
-                    });
-                } else if now - started >= HOLD_SECS {
-                    ui.ctx().memory_mut(|m| {
-                        m.open_popup(popup_id);
-                    });
-                    ui.memory_mut(|m| {
-                        m.data.insert_temp(hold_id, 0.0);
-                        m.data.insert_temp(fired_id, true);
-                    });
+                // Option (not a 0.0 sentinel): time 0.0 is a valid clock
+                // value, and conflating it with "not pressing" corrupts
+                // the very first press of a session.
+                let started: Option<f64> =
+                    ui.memory(|m| m.data.get_temp::<Option<f64>>(hold_id).unwrap_or(None));
+                match started {
+                    None => {
+                        ui.memory_mut(|m| {
+                            m.data.insert_temp(hold_id, Some(now));
+                        });
+                    }
+                    Some(t0) if now - t0 >= HOLD_SECS => {
+                        ui.ctx().memory_mut(|m| {
+                            m.open_popup(popup_id);
+                        });
+                        ui.memory_mut(|m| {
+                            m.data.insert_temp::<Option<f64>>(hold_id, None);
+                            m.data.insert_temp(fired_id, true);
+                        });
+                    }
+                    _ => {}
                 }
             } else {
                 ui.memory_mut(|m| {
-                    m.data.insert_temp(hold_id, 0.0);
+                    m.data.insert_temp::<Option<f64>>(hold_id, None);
                 });
             }
         }
@@ -309,16 +317,34 @@ impl IrasuApp {
                 self.select_tool(tool);
             }
         }
+        // The fired flag must also clear when the flyout closes WITHOUT a
+        // click (click-outside/Esc): otherwise it swallows the next real
+        // tool click. Popup state is authoritative here.
+        if group.len() > 1
+            && !ui.ctx().memory(|m| m.is_popup_open(popup_id))
+            && ui.memory(|m| m.data.get_temp::<bool>(fired_id).unwrap_or(false))
+        {
+            ui.memory_mut(|m| {
+                m.data.insert_temp(fired_id, false);
+            });
+        }
         // Sub-tool flyout (Illustrator triangle affordance): right-click
-        // opens the group popup anchored to this button.
+        // toggles the group popup anchored to this button. Explicit
+        // open/close (not toggle): toggle can open+close within the same
+        // frame that the popup also processes the click, flickering or
+        // refusing to open.
         if group.len() > 1 && response.secondary_clicked() {
             ui.ctx().memory_mut(|m| {
-                m.toggle_popup(egui::Id::new(("tool_flyout", group_idx)));
+                if m.is_popup_open(popup_id) {
+                    m.close_popup();
+                } else {
+                    m.open_popup(popup_id);
+                }
             });
         }
         egui::popup::popup_below_widget(
             ui,
-            egui::Id::new(("tool_flyout", group_idx)),
+            popup_id,
             &response,
             egui::PopupCloseBehavior::CloseOnClickOutside,
             |ui| {

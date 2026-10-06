@@ -197,6 +197,7 @@ pub struct AppState {
     pub cursor_world: Option<(f64, f64)>,
     // Floating toast notification feedback
     pub toast: Option<ToastNotification>,
+    pub toast_seq: u64,
     // Active visual diff overlay on canvas
     pub active_diff: Option<crate::core::diff::SemanticDiff>,
     pub is_comparing_diff: bool,
@@ -208,6 +209,8 @@ pub struct AppState {
     // step when playback stops (otherwise played values stick forever
     // with no undo and no dirty flag).
     pub timeline_was_playing: bool,
+    /// Scrub-pause memory: resuming playback after a slider drag.
+    pub timeline_was_scrubbing: bool,
     // Pathfinder simplify tolerance (squared px area) remembered by UI.
     pub simplify_tolerance: f64,
     // Pixel-art (dot絵) editing: selected palette index for the pencil /
@@ -257,6 +260,8 @@ pub struct ToastNotification {
     pub message: String,
     pub is_error: bool,
     pub created_at: std::time::Instant,
+    /// Monotonic id: identical repeat messages must still re-animate.
+    pub seq: u64,
 }
 
 pub use super::document::{Guide, GuideOrientation};
@@ -377,10 +382,12 @@ impl Default for AppState {
             canvas_center_y: 0.0,
             cursor_world: None,
             toast: None,
+            toast_seq: 0,
             active_diff: None,
             is_comparing_diff: false,
             isolated_group_id: None,
             timeline_was_playing: false,
+            timeline_was_scrubbing: false,
             simplify_tolerance: 5.0,
             pixel_palette_index: 0,
             pixel_show_grid: true,
@@ -828,28 +835,26 @@ impl AppState {
         }
     }
 
-    pub fn notify_info(&mut self, message: impl Into<String>) {
+    fn push_toast(&mut self, message: String, is_error: bool) {
+        self.toast_seq += 1;
         self.toast = Some(ToastNotification {
-            message: message.into(),
-            is_error: false,
+            message,
+            is_error,
             created_at: std::time::Instant::now(),
+            seq: self.toast_seq,
         });
+    }
+
+    pub fn notify_info(&mut self, message: impl Into<String>) {
+        self.push_toast(message.into(), false);
     }
 
     pub fn notify_success(&mut self, message: impl Into<String>) {
-        self.toast = Some(ToastNotification {
-            message: message.into(),
-            is_error: false,
-            created_at: std::time::Instant::now(),
-        });
+        self.push_toast(message.into(), false);
     }
 
     pub fn notify_error(&mut self, message: impl Into<String>) {
-        self.toast = Some(ToastNotification {
-            message: message.into(),
-            is_error: true,
-            created_at: std::time::Instant::now(),
-        });
+        self.push_toast(message.into(), true);
     }
 
     pub fn clear_toast_if_expired(&mut self) {

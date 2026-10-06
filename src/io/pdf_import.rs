@@ -660,14 +660,18 @@ impl<'a> Importer<'a> {
                     st.x_ts = 0.0;
                 }
                 "Td" if o.len() == 2 => {
-                    st.tm[4] += num(&o[0]);
-                    st.tm[5] += num(&o[1]);
+                    // Translation applies in text space (Tm = T*Tm), so the
+                    // offsets ride the current scale, not raw user units.
+                    let (tx, ty) = (num(&o[0]), num(&o[1]));
+                    st.tm[4] += tx * st.tm[0] + ty * st.tm[2];
+                    st.tm[5] += tx * st.tm[1] + ty * st.tm[3];
                     st.x_ts = 0.0;
                 }
                 "TD" if o.len() == 2 => {
                     st.leading = -num(&o[1]);
-                    st.tm[4] += num(&o[0]);
-                    st.tm[5] += num(&o[1]);
+                    let (tx, ty) = (num(&o[0]), num(&o[1]));
+                    st.tm[4] += tx * st.tm[0] + ty * st.tm[2];
+                    st.tm[5] += tx * st.tm[1] + ty * st.tm[3];
                     st.x_ts = 0.0;
                 }
                 "T*" => {
@@ -871,9 +875,11 @@ impl<'a> Importer<'a> {
                 }
             }
         }
-        // Strip subset prefixes ("ABCDEF+Helvetica").
+        // Strip subset prefixes ("ABCDEF+Helvetica"): exactly six
+        // uppercase ASCII letters, otherwise a real family name like
+        // "MyFont+Regular" would be mangled into "Regular".
         if let Some(plus) = family.find('+') {
-            if plus == 6 {
+            if plus == 6 && family[..6].chars().all(|c| c.is_ascii_uppercase()) {
                 family = family[plus + 1..].to_string();
             }
         }

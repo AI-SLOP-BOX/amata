@@ -11,7 +11,7 @@ use crate::ui::{
     OnboardingTour, PreferencesDialog, ShortcutsModal, TimelineWidget,
 };
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub(super) enum ActiveTab {
     Properties,
     Layers,
@@ -587,15 +587,18 @@ impl eframe::App for IrasuApp {
         // Floating Toast Notification
         self.state.clear_toast_if_expired();
         if let Some(toast) = &self.state.toast {
-            ctx.request_repaint();
             // Toasts fade/slide in on appearance so they read as
             // arrival, not flicker. The message text keys the animation:
-            // every new message restarts its own 0-1 ramp.
+            // every new message restarts its own 0-1 ramp. Repaint only
+            // while the ramp runs; a steady toast must not spin frames.
             let toast_anim = ctx.animate_bool_with_time(
-                egui::Id::new(("toast_arrival", toast.message.clone())),
+                egui::Id::new(("toast_arrival", toast.message.clone(), toast.seq)),
                 true,
                 0.22,
             );
+            if toast_anim < 1.0 {
+                ctx.request_repaint();
+            }
             let lift = (1.0 - toast_anim) * 10.0;
             let fade = toast_anim;
             egui::Area::new(egui::Id::new("toast_notification_area"))

@@ -776,7 +776,11 @@ fn authorized(api: &ApiState, req: &Request) -> bool {
         return true;
     };
     req.authorization.as_deref().is_some_and(|h| {
-        h.len() == token.len() + 7 && h.starts_with("Bearer ") && subtle_eq(&h[7..], token)
+        // Auth scheme is case-insensitive (RFC 9110 §11.2); the secret
+        // itself stays constant-time.
+        h.len() == token.len() + 7
+            && h[..7].eq_ignore_ascii_case("Bearer ")
+            && subtle_eq(&h[7..], token)
     })
 }
 fn subtle_eq(a: &str, b: &str) -> bool {
@@ -928,5 +932,6 @@ mod tests {
         assert!(!authorized(&api, &req(Some("Bearer wrong"))));
         assert!(!authorized(&api, &req(Some("Basic c2VjcmV0"))));
         assert!(authorized(&api, &req(Some("Bearer secret"))));
+        assert!(authorized(&api, &req(Some("bearer secret"))));
     }
 }

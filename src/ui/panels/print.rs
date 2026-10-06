@@ -219,6 +219,8 @@ impl PrintPanel {
         // Trapping: spread strokes along shared edges.
         ui.label(RichText::new("トラップ").strong());
         ui.horizontal(|ui| {
+            // Direct document-field edit (same convention as bleed/mode
+            // above): scalar doc settings are not undo-tracked anywhere.
             ui.label("幅:");
             ui.add(
                 egui::DragValue::new(&mut state.document.trap_width)
@@ -294,18 +296,20 @@ impl PrintPanel {
                         "PDF/X-1a違反のため書き出しを中止: {}",
                         warnings.join(" / ")
                     ));
-                    return;
-                }
-                match crate::io::atomic::atomic_write_bytes(&path, &bytes) {
-                    Ok(_) => {
-                        let mut msg =
-                            format!("印刷用PDFを書き出しました ({}KB)", bytes.len() / 1024);
-                        if !warnings.is_empty() {
-                            msg.push_str(&format!(" — {}", warnings.join(" / ")));
+                } else {
+                    match crate::io::atomic::atomic_write_bytes(&path, &bytes) {
+                        Ok(_) => {
+                            let mut msg =
+                                format!("印刷用PDFを書き出しました ({}KB)", bytes.len() / 1024);
+                            if !warnings.is_empty() {
+                                msg.push_str(&format!(" — {}", warnings.join(" / ")));
+                            }
+                            state.notify_success(msg);
                         }
-                        state.notify_success(msg);
+                        Err(e) => {
+                            state.notify_error(format!("書き出しに失敗しました: {e}"))
+                        }
                     }
-                    Err(e) => state.notify_error(format!("書き出しに失敗しました: {e}")),
                 }
             }
         }

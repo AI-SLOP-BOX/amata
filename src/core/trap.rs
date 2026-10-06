@@ -192,6 +192,47 @@ pub fn find_trap_strokes(
                     let rev = (a1.0 - b2.0).hypot(a1.1 - b2.1) <= TRAP_TOLERANCE_PT
                         && (a2.0 - b1.0).hypot(a2.1 - b1.1) <= TRAP_TOLERANCE_PT;
                     if !fwd && !rev {
+                        // Partial/T-junction overlap: project b onto a and
+                        // require small lateral distance plus real 1D
+                        // overlap (extra vertices / subdivisions on one
+                        // side must not lose the shared run).
+                        let dx = a2.0 - a1.0;
+                        let dy = a2.1 - a1.1;
+                        let len2 = dx * dx + dy * dy;
+                        if len2 > 1e-12 {
+                            let len = len2.sqrt();
+                            let ux = dx / len;
+                            let uy = dy / len;
+                            let proj = |p: Pt| -> (f64, f64) {
+                                let rx = p.0 - a1.0;
+                                let ry = p.1 - a1.1;
+                                (rx * ux + ry * uy, (rx * uy - ry * ux).abs())
+                            };
+                            let (t1, l1) = proj(b1);
+                            let (t2, l2) = proj(b2);
+                            if l1 <= TRAP_TOLERANCE_PT && l2 <= TRAP_TOLERANCE_PT {
+                                let lo = t1.min(t2).max(0.0);
+                                let hi = t1.max(t2).min(len);
+                                if hi - lo >= 1.0 {
+                                    let pt = |tt: f64| {
+                                        (a1.0 + ux * tt, a1.1 + uy * tt)
+                                    };
+                                    let (u, v) = (key(pt(lo)), key(pt(hi)));
+                                    let kk = if u <= v { (u, v) } else { (v, u) };
+                                    if matched.insert(kk) {
+                                        let darker = if luminance(ci.color)
+                                            <= luminance(cj.color)
+                                        {
+                                            ci.color
+                                        } else {
+                                            cj.color
+                                        };
+                                        trap_colors.insert(kk, darker);
+                                    }
+                                    continue;
+                                }
+                            }
+                        }
                         continue;
                     }
                     let (u, v) = (key(a1), key(a2));
@@ -242,8 +283,12 @@ pub fn find_trap_strokes(
             if !matched.contains(&kk) || !used.insert(kk) {
                 continue;
             }
-            // Walk both directions from this seed edge.
+            // Walk both directions from this seed edge, recording the
+            // edge key of every step so runs can split when the trap
+            // color changes at a junction (seed color must not leak
+            // across a T).
             let mut chain = vec![start, next];
+            let mut edges = vec![kk];
             // forward
             loop {
                 let cur = *chain.last().unwrap();
@@ -267,6 +312,7 @@ pub fn find_trap_strokes(
                     Some(n) => {
                         let k2 = if cur <= n { (cur, n) } else { (n, cur) };
                         used.insert(k2);
+                        edges.push(k2);
                         chain.push(n);
                     }
                     None => break,
@@ -295,16 +341,30 @@ pub fn find_trap_strokes(
                     Some(n) => {
                         let k2 = if cur <= n { (cur, n) } else { (n, cur) };
                         used.insert(k2);
+                        edges.insert(0, k2);
                         chain.insert(0, n);
                     }
                     None => break,
                 }
             }
-            let pts: Vec<Pt> = chain.iter().map(|k| coord[k]).collect();
-            // Trap color: darker side of the seed edge.
-            let color = trap_colors[&kk];
+            // Split into same-color runs: edges[0] sits between
+            // chain[0]-chain[1], edges[i] between chain[i]-chain[i+1].
+            let mut run_start = 0;
+            let color_of = |e: &SegKey| trap_colors[e];
+            let mut run_color = color_of(&edges[0]);
+            for i in 1..edges.len() {
+                if color_of(&edges[i]) != run_color {
+                    let pts: Vec<Pt> = chain[run_start..=i].iter().map(|k| coord[k]).collect();
+                    if pts.len() >= 2 {
+                        strokes.push(TrapStroke { points: pts, color: run_color });
+                    }
+                    run_start = i;
+                    run_color = color_of(&edges[i]);
+                }
+            }
+            let pts: Vec<Pt> = chain[run_start..].iter().map(|k| coord[k]).collect();
             if pts.len() >= 2 {
-                strokes.push(TrapStroke { points: pts, color });
+                strokes.push(TrapStroke { points: pts, color: run_color });
             }
         }
     }
@@ -369,6 +429,27 @@ mod tests {
         let st = obj.stroke.expect("trap is stroke-only");
         assert!(st.overprint);
         assert!((st.width - 0.25).abs() < 1e-9);
+    }
+
+    #[test]
+    fn subdivided_edge_still_traps() {
+        // T-junction: right rect spans two stacked left rects; the shared
+        // run must trap despite the extra vertex.
+        let mut doc = Document::default();
+        let mut a = Object::new_rect("A", 0.0, 0.0, 100.0, 50.0, 0.0);
+        a.fill = Some(FillStyle::solid([1.0, 1.0, 1.0, 1.0]));
+        let mut b = Object::new_rect("B", 0.0, 50.0, 100.0, 50.0, 0.0);
+        b.fill = Some(FillStyle::solid([1.0, 1.0, 1.0, 1.0]));
+        let mut c = Object::new_rect("C", 100.0, 0.0, 100.0, 100.0, 0.0);
+        c.fill = Some(FillStyle::solid([0.0, 0.0, 0.0, 1.0]));
+        doc.add_object(a);
+        doc.add_object(b);
+        doc.add_object(c);
+        let (strokes, _) = find_trap_strokes(&doc, 0.25);
+        assert!(!strokes.is_empty(), "subdivided shared edge traps");
+        for s in &strokes {
+            assert_eq!(s.color, [0.0, 0.0, 0.0, 1.0]);
+        }
     }
 
     #[test]

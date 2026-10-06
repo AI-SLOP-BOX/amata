@@ -1504,8 +1504,10 @@ pub fn tool_icon_button(
 
     // Hover fades in instead of snapping (0.12s): cheap motion that reads
     // as polish, not as latency.
+    // Keyed by widget id, not by tool: the toolbar button and its
+    // flyout-popup twin share the tool but must animate independently.
     let hover = ui.ctx().animate_bool_with_time(
-        egui::Id::new(("tool_btn_hover", tool as u8)),
+        egui::Id::new(("tool_btn_hover", response.id)),
         response.hovered(),
         0.12,
     );

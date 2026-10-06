@@ -842,8 +842,11 @@ pub fn validate_pdfx(pdf: &[u8], cmyk: bool) -> Vec<String> {
                     rgb_images += 1;
                 }
             }
-            if dict.get(b"SMask").is_ok() {
-                smask += 1;
+            if let Ok(sm) = dict.get(b"SMask") {
+                // `/SMask None` explicitly means no mask.
+                if !name_is(sm, b"None") {
+                    smask += 1;
+                }
             }
         }
         if dict.get(b"ShadingType").is_ok() {
@@ -1118,10 +1121,17 @@ fn flatten_regions(doc: &Document, ctx: &mut Ctx) -> Vec<FlatRegion> {
     let mut out = Vec::new();
     let mut flat_count = 0usize;
     for (x0, y0, x1, y1) in regions {
-        let cx0 = (x0.max(0.0) * sx).round().clamp(0.0, iw - 1.0) as u32;
-        let cy0 = (y0.max(0.0) * sy).round().clamp(0.0, ih - 1.0) as u32;
-        let cx1 = (x1.max(0.0) * sx).round().clamp(1.0, iw) as u32;
-        let cy1 = (y1.max(0.0) * sy).round().clamp(1.0, ih) as u32;
+        // Placement derives from the CLAMPED pixels (regions carry a pad
+        // that routinely sticks out past the page): deriving it from the
+        // raw box stretched the image over the full box.
+        let px0 = x0.max(0.0);
+        let py0 = y0.max(0.0);
+        let px1 = x1.min(doc.width.max(1.0));
+        let py1 = y1.min(doc.height.max(1.0));
+        let cx0 = (px0 * sx).round().clamp(0.0, iw - 1.0) as u32;
+        let cy0 = (py0 * sy).round().clamp(0.0, ih - 1.0) as u32;
+        let cx1 = (px1 * sx).round().clamp(1.0, iw) as u32;
+        let cy1 = (py1 * sy).round().clamp(1.0, ih) as u32;
         if cx1 <= cx0 || cy1 <= cy0 {
             continue;
         }
@@ -1154,10 +1164,10 @@ fn flatten_regions(doc: &Document, ctx: &mut Ctx) -> Vec<FlatRegion> {
         }
         flat_count += 1;
         out.push(FlatRegion {
-            x: x0.max(0.0),
-            y: y0.max(0.0),
-            w: (x1.max(0.0) - x0.max(0.0)).max(1.0),
-            h: (y1.max(0.0) - y0.max(0.0)).max(1.0),
+            x: px0,
+            y: py0,
+            w: (px1 - px0).max(1.0),
+            h: (py1 - py0).max(1.0),
             data: flate_compress(&raw),
             pw,
             ph,
@@ -1312,6 +1322,11 @@ mod embed {
             if g.y_offset != 0.0 {
                 return None;
             }
+            // CIDToGIDMap Identity cannot address past U+FFFF: fall back
+            // to outlines rather than aliasing onto the wrong glyph.
+            if g.gid > 0xFFFF {
+                return None;
+            }
             let ch = line.get(g.cluster as usize..)?.chars().next()?;
             if g.gid == 0 && ch != ' ' && ch != '\t' {
                 return None;
@@ -1391,12 +1406,15 @@ mod embed {
     }
 
     pub fn gid_width_1000(face: &EmbedFace, gid: u32) -> u32 {
+        if gid > 0xFFFF {
+            return 1000;
+        }
         let ttf = match ttf_parser::Face::parse(&face.data, face.index) {
             Ok(f) => f,
             Err(_) => return 1000,
         };
         let adv = ttf
-            .glyph_hor_advance(ttf_parser::GlyphId(gid.min(0xFFFF) as u16))
+            .glyph_hor_advance(ttf_parser::GlyphId(gid as u16))
             .unwrap_or(face.upem as u16);
         (adv as f32 * 1000.0 / face.upem as f32).round().max(0.0) as u32
     }

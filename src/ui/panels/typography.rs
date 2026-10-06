@@ -621,24 +621,37 @@ impl TextPanel {
         ui.add_space(4.0);
         ui.separator();
         ui.label(RichText::new("段落スタイル").strong());
-        let mut apply_style: Option<TextStyle> = None;
-        let mut delete_style: Option<String> = None;
-        for ps in state.document.paragraph_styles.clone() {
+        let mut apply_idx: Option<usize> = None;
+        let mut delete_idx: Option<usize> = None;
+        // Display borrows the live list (no per-frame clone); values are
+        // cloned only on the click paths below.
+        let style_count = state.document.paragraph_styles.len();
+        for i in 0..style_count {
+            let ps = &state.document.paragraph_styles[i];
             ui.horizontal(|ui| {
                 ui.label(format!("{} ({:.0}pt)", ps.name, ps.style.font_size));
                 if ui.small_button("適用").clicked() {
-                    apply_style = Some(ps.style.clone());
+                    apply_idx = Some(i);
                 }
                 if ui.small_button("×").on_hover_text("スタイル削除").clicked() {
-                    delete_style = Some(ps.name.clone());
+                    delete_idx = Some(i);
                 }
             });
         }
-        if let Some(name) = delete_style {
-            state.document.paragraph_styles.retain(|s| s.name != name);
-            state.notify_info(format!("段落スタイル「{name}」を削除しました"));
+        if let Some(i) = delete_idx {
+            if let Some(ps) = state.document.paragraph_styles.get(i) {
+                let name = ps.name.clone();
+                state.document.paragraph_styles.remove(i);
+                state.notify_info(format!("段落スタイル「{name}」を削除しました"));
+            }
         }
-        if let Some(style) = apply_style {
+        if let Some(i) = apply_idx {
+            if let Some(style) = state
+                .document
+                .paragraph_styles
+                .get(i)
+                .map(|ps| ps.style.clone())
+            {
             let sel = state.selected_ids.clone();
             let mut applied = 0;
             for sid in &sel {
@@ -660,6 +673,7 @@ impl TextPanel {
             if applied > 0 {
                 state.commit_object_edits("Apply Paragraph Style");
                 state.notify_success(format!("段落スタイルを{applied}件に適用しました"));
+            }
             }
         }
         ui.horizontal(|ui| {

@@ -46,10 +46,28 @@ impl TimelineWidget {
                     .color(Color32::from_rgb(0, 180, 255)),
             );
 
-            ui.add(
-                egui::Slider::new(&mut state.timeline.current_frame, 0..=tf.saturating_sub(1))
-                    .show_value(false),
-            );
+            if tf > 1 {
+                // Scrubbing fights the playback tick (advance_frame +
+                // apply_to_document): pause while dragged, resume after.
+                let was_playing = state.timeline.is_playing;
+                let resp = ui.add_enabled(
+                    true,
+                    egui::Slider::new(&mut state.timeline.current_frame, 0..=tf - 1)
+                        .show_value(false),
+                );
+                if resp.drag_started() {
+                    state.timeline.is_playing = false;
+                    state.timeline_was_scrubbing = was_playing;
+                }
+                if resp.drag_stopped() && state.timeline_was_scrubbing {
+                    state.timeline.is_playing = true;
+                    state.timeline_was_scrubbing = false;
+                }
+            } else {
+                // Degenerate range (0/1 frames): a slider here divides by
+                // zero internally and the thumb sticks.
+                ui.label(RichText::new("—").weak());
+            }
 
             ui.separator();
             ui.checkbox(&mut state.timeline.loop_playback, "ループ");

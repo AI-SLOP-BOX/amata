@@ -37,16 +37,28 @@ fn f32_to_c32(c: [f32; 4]) -> Color32 {
     )
 }
 
+// 1px white texture for the SV mesh, cached per egui Context.
+// `TextureHandle` is not `SerializableAny`, so it cannot live in egui's
+// persisted typemap; a process-wide cache keyed by context pointer is the
+// standard workaround. Entries outlive their context (one 1px texture),
+// which is negligible and documented here instead of hidden.
+static WHITE_TEX: std::sync::OnceLock<
+    std::sync::Mutex<std::collections::HashMap<usize, egui::TextureHandle>>,
+> = std::sync::OnceLock::new();
+
+fn white_tex_map(
+) -> &'static std::sync::Mutex<std::collections::HashMap<usize, egui::TextureHandle>> {
+    WHITE_TEX.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
+}
+
 fn white_texture(ctx: &egui::Context) -> egui::TextureHandle {
-    let id = egui::Id::new("amata_white_tex");
-    if let Some(handle) = ctx.memory(|m| m.data.get_temp::<egui::TextureHandle>(id)) {
+    let key = ctx as *const egui::Context as usize;
+    if let Some(handle) = white_tex_map().lock().unwrap().get(&key).cloned() {
         return handle;
     }
     let img = egui::ColorImage::new([1, 1], Color32::WHITE);
     let handle = ctx.load_texture("amata_white_tex", img, egui::TextureOptions::NEAREST);
-    ctx.memory_mut(|m| {
-        m.data.insert_temp(id, handle.clone());
-    });
+    white_tex_map().lock().unwrap().insert(key, handle.clone());
     handle
 }
 
@@ -106,7 +118,7 @@ pub fn adobe_color_button(ui: &mut Ui, color: &mut [f32; 4]) -> Response {
         &resp,
         egui::PopupCloseBehavior::CloseOnClickOutside,
         |ui| {
-            adobe_color_popup_body(ui, color);
+            adobe_color_popup_body(ui, color, egui::Id::new(("adobe_hex", resp.id)));
         },
     );
     if *color != before {
@@ -116,7 +128,7 @@ pub fn adobe_color_button(ui: &mut Ui, color: &mut [f32; 4]) -> Response {
 }
 
 /// Popup content: SV square, hue strip, hex field, alpha slider.
-fn adobe_color_popup_body(ui: &mut Ui, color: &mut [f32; 4]) {
+fn adobe_color_popup_body(ui: &mut Ui, color: &mut [f32; 4], hex_id: egui::Id) {
     let (mut h, mut s, mut v) = rgb_to_hsv(color[0], color[1], color[2]);
     if v == 0.0 {
         // Black has no hue/saturation signal; keep the previous hue corner
@@ -125,29 +137,48 @@ fn adobe_color_popup_body(ui: &mut Ui, color: &mut [f32; 4]) {
         s = 0.0;
     }
     ui.set_min_width(220.0);
+    // Shared pointer-to-HSV helper for both click and drag.
+    let set_sv = |pos: egui::Pos2, sq_rect: egui::Rect, s: &mut f32, v: &mut f32| {
+        *s = ((pos.x - sq_rect.min.x) / sq_rect.width().max(1.0)).clamp(0.0, 1.0);
+        *v = (1.0 - (pos.y - sq_rect.min.y) / sq_rect.height().max(1.0)).clamp(0.0, 1.0);
+    };
     ui.horizontal(|ui| {
-        // Saturation (x) × Value (y) square, one bilinear mesh quad.
+        // Saturation (x) x Value (y) square: 16x16 subdivided mesh so the
+        // bilinear ramp is exact, not a 4-vertex diagonal blend.
         let sq = Vec2::splat(150.0);
         let (sq_rect, sq_resp) = ui.allocate_exact_size(sq, Sense::click_and_drag());
-        let corner = |ss: f32, vv: f32| {
+        let cell = |ss: f32, vv: f32| {
             let (r, g, b) = hsv_to_rgb(h, ss.clamp(0.0, 1.0), vv.clamp(0.0, 1.0));
             f32_to_c32([r, g, b, 1.0])
         };
         if ui.is_rect_visible(sq_rect) {
+            const N: usize = 16;
             let tex = white_texture(ui.ctx());
             let mut mesh = egui::epaint::Mesh::with_texture(tex.id());
-            let p = |x: f32, y: f32| {
+            let p = |ix: usize, iy: usize| {
                 egui::Pos2::new(
-                    sq_rect.min.x + x * sq_rect.width(),
-                    sq_rect.min.y + y * sq_rect.height(),
+                    sq_rect.min.x + ix as f32 / N as f32 * sq_rect.width(),
+                    sq_rect.min.y + iy as f32 / N as f32 * sq_rect.height(),
                 )
             };
-            mesh.colored_vertex(p(0.0, 0.0), corner(0.0, 1.0));
-            mesh.colored_vertex(p(1.0, 0.0), corner(1.0, 1.0));
-            mesh.colored_vertex(p(0.0, 1.0), corner(0.0, 0.0));
-            mesh.colored_vertex(p(1.0, 1.0), corner(1.0, 0.0));
-            mesh.add_triangle(0, 2, 1);
-            mesh.add_triangle(1, 2, 3);
+            // Grid vertices row by row; two triangles per cell.
+            for iy in 0..=N {
+                for ix in 0..=N {
+                    let vv = egui::epaint::Vertex {
+                        pos: p(ix, iy),
+                        uv: egui::epaint::WHITE_UV,
+                        color: cell(ix as f32 / N as f32, 1.0 - iy as f32 / N as f32),
+                    };
+                    mesh.vertices.push(vv);
+                }
+            }
+            let at = |ix: usize, iy: usize| (iy * (N + 1) + ix) as u32;
+            for iy in 0..N {
+                for ix in 0..N {
+                    mesh.add_triangle(at(ix, iy), at(ix, iy + 1), at(ix + 1, iy));
+                    mesh.add_triangle(at(ix + 1, iy), at(ix, iy + 1), at(ix + 1, iy + 1));
+                }
+            }
             ui.painter().add(mesh);
             ui.painter().rect_stroke(
                 sq_rect,
@@ -165,10 +196,15 @@ fn adobe_color_popup_body(ui: &mut Ui, color: &mut [f32; 4]) {
             ui.painter()
                 .circle_stroke(dot, 4.0, egui::Stroke::new(0.75_f32, Color32::BLACK));
         }
+        // Click jumps, drag slides (click_and_drag reports both).
+        if sq_resp.clicked() {
+            if let Some(pos) = sq_resp.interact_pointer_pos() {
+                set_sv(pos, sq_rect, &mut s, &mut v);
+            }
+        }
         if sq_resp.dragged() {
             if let Some(pos) = sq_resp.interact_pointer_pos() {
-                s = ((pos.x - sq_rect.min.x) / sq_rect.width().max(1.0)).clamp(0.0, 1.0);
-                v = (1.0 - (pos.y - sq_rect.min.y) / sq_rect.height().max(1.0)).clamp(0.0, 1.0);
+                set_sv(pos, sq_rect, &mut s, &mut v);
             }
         }
         // Hue strip.
@@ -199,9 +235,17 @@ fn adobe_color_popup_body(ui: &mut Ui, color: &mut [f32; 4]) {
                 egui::Stroke::new(2.0_f32, Color32::WHITE),
             );
         }
+        let set_hue = |pos: egui::Pos2| {
+            ((pos.y - hue_rect.min.y) / hue_rect.height().max(1.0)).clamp(0.0, 1.0) * 360.0
+        };
+        if hue_resp.clicked() {
+            if let Some(pos) = hue_resp.interact_pointer_pos() {
+                h = set_hue(pos);
+            }
+        }
         if hue_resp.dragged() {
             if let Some(pos) = hue_resp.interact_pointer_pos() {
-                h = ((pos.y - hue_rect.min.y) / hue_rect.height().max(1.0)).clamp(0.0, 1.0) * 360.0;
+                h = set_hue(pos);
             }
         }
     });
@@ -211,17 +255,36 @@ fn adobe_color_popup_body(ui: &mut Ui, color: &mut [f32; 4]) {
     color[2] = b;
     ui.horizontal(|ui| {
         ui.label("Hex:");
-        let mut hex = format!(
-            "#{:02X}{:02X}{:02X}",
-            (color[0].clamp(0.0, 1.0) * 255.0) as u8,
-            (color[1].clamp(0.0, 1.0) * 255.0) as u8,
-            (color[2].clamp(0.0, 1.0) * 255.0) as u8,
-        );
-        if ui
-            .add(egui::TextEdit::singleline(&mut hex).desired_width(70.0))
-            .lost_focus()
-        {
-            let digits = hex.trim().trim_start_matches('#');
+        // Per-popup edit buffer: rebuilding the string from `color` every
+        // frame would eat keystrokes mid-typing. Resync only when the
+        // color moved while the field was unfocused.
+        #[derive(Clone, Default)]
+        struct HexBuf {
+            text: String,
+            synced: [f32; 4],
+            was_focused: bool,
+        }
+        let hex_of = |c: &[f32; 4]| {
+            format!(
+                "#{:02X}{:02X}{:02X}",
+                (c[0].clamp(0.0, 1.0) * 255.0) as u8,
+                (c[1].clamp(0.0, 1.0) * 255.0) as u8,
+                (c[2].clamp(0.0, 1.0) * 255.0) as u8,
+            )
+        };
+        let mut hb: HexBuf = ui.memory(|m| m.data.get_temp(hex_id)).unwrap_or_default();
+        if hb.synced != *color && !hb.was_focused {
+            hb.text = hex_of(color);
+            hb.synced = *color;
+        }
+        if hb.text.is_empty() {
+            hb.text = hex_of(color);
+            hb.synced = *color;
+        }
+        let hex_resp = ui.add(egui::TextEdit::singleline(&mut hb.text).desired_width(70.0));
+        hb.was_focused = hex_resp.has_focus();
+        if hex_resp.lost_focus() {
+            let digits = hb.text.trim().trim_start_matches('#');
             if digits.len() == 6 {
                 if let (Ok(rr), Ok(gg), Ok(bb)) = (
                     u8::from_str_radix(&digits[0..2], 16),
@@ -231,10 +294,16 @@ fn adobe_color_popup_body(ui: &mut Ui, color: &mut [f32; 4]) {
                     color[0] = rr as f32 / 255.0;
                     color[1] = gg as f32 / 255.0;
                     color[2] = bb as f32 / 255.0;
+                    hb.synced = *color;
                 }
             }
+            hb.text = hex_of(color);
+            hb.synced = *color;
         }
-        ui.label("α:");
+        ui.memory_mut(|m| {
+            m.data.insert_temp(hex_id, hb);
+        });
+        ui.label("\u{3b1}:");
         ui.add(egui::Slider::new(&mut color[3], 0.0..=1.0).show_value(false));
     });
 }

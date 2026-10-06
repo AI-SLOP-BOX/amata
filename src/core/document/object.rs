@@ -874,8 +874,19 @@ pub fn layout_text_thread(
     if frames.is_empty() {
         return vec![layout_text(text, style, None)];
     }
-    // Lay out once as if the first frame owns everything, then slice lines.
-    let full = layout_text(text, style, Some(frames[0]));
+    // Lay out once at the NARROWEST frame width, then slice lines per
+    // frame. Narrow-wrapped lines always fit wider frames (ragged but
+    // never overflowing); per-frame rewrapping would need char-level
+    // resume across widths. Same-width stories (the common case) are
+    // byte-identical to wrapping at their own width.
+    let min_width = frames
+        .iter()
+        .map(|f| f.width)
+        .fold(f64::MAX, f64::min)
+        .max(1.0);
+    let mut first = frames[0];
+    first.width = min_width;
+    let full = layout_text(text, style, Some(first));
     let mut out = Vec::with_capacity(frames.len());
     let mut consumed = 0usize;
     for (i, frame) in frames.iter().enumerate() {
@@ -1051,7 +1062,9 @@ pub fn layout_text_wrapped(
         let obs_ref = &obstacles;
         let lh = line_h;
         let mut g = |idx: usize, _first: bool| -> (f64, f64) {
-            let y0 = a_ref.y + idx as f64 * lh;
+            // Band containing the baseline: baselines sit at
+            // a.y + font_size + idx*lh, glyphs extend ~line_h above.
+            let y0 = a_ref.y + idx as f64 * lh + style.font_size - lh;
             let y1 = y0 + lh;
             let mut x0 = a_ref.x;
             let mut x1 = a_ref.x + a_ref.width;

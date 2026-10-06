@@ -43,6 +43,13 @@ impl IrasuApp {
                     .to_string();
                 self.state.clear_history();
                 self.state.selected_ids.clear();
+                // Rebind save destination + history like the SVG/project
+                // paths, so Cmd+S after an import does not overwrite an
+                // unrelated previous file.
+                let mut watcher = crate::core::watcher::FileWatcher::new(path.to_path_buf());
+                watcher.mark_saved(&String::from_utf8_lossy(bytes));
+                self.file_watcher = Some(watcher);
+                self.version_history_panel.refresh_history(path);
                 crate::io::recent::push_recent(path, w, h);
                 let mut msg = format!(
                     "{label}をインポートしました ({} 個のオブジェクト)",

@@ -31,7 +31,7 @@ impl IrasuApp {
                                 .selectable_label(self.active_tab == *variant, *label)
                                 .clicked()
                             {
-                                self.active_tab = variant.clone();
+                                self.active_tab = *variant;
                                 ui.close_menu();
                             }
                         }
@@ -292,8 +292,10 @@ impl IrasuApp {
 
             // Active underline bar, animated: each tab lerps its own
             // activeness so switching tabs grows/shrinks the bar smoothly.
+            // Keyed by tab discriminant, not label: truncated
+            // (hidden) tabs must still animate back on return.
             let glow = ui.ctx().animate_bool_with_time(
-                egui::Id::new(("dock_tab_active", *label)),
+                egui::Id::new(("dock_tab_active", *variant as u8)),
                 is_active,
                 0.18,
             );
@@ -308,7 +310,7 @@ impl IrasuApp {
             }
 
             if resp.clicked() {
-                self.active_tab = variant.clone();
+                self.active_tab = *variant;
             }
         }
 

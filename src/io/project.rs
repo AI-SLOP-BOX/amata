@@ -29,21 +29,29 @@ fn recovery_paths() -> [std::path::PathBuf; 2] {
     ]
 }
 
-/// Newest valid slot (by `saved_at_secs`), falling back to the legacy
-/// single-slot file from older builds.
-fn newest_recovery() -> Option<(std::path::PathBuf, RecoveryFile)> {
-    let mut best: Option<(std::path::PathBuf, RecoveryFile)> = None;
+fn all_recovery_paths() -> Vec<std::path::PathBuf> {
     let mut paths = recovery_paths().to_vec();
     // Legacy single-slot file (pre A/B rotation).
     paths.push(std::env::temp_dir().join("amata_autosave_recovery.json"));
-    for path in paths {
+    paths
+}
+
+/// Move a corrupt snapshot aside so it can still be inspected by hand.
+/// Explicit (never inside a read path): quarantine is a mutation.
+pub fn quarantine_recovery(path: &std::path::Path) {
+    let _ = fs::rename(path, path.with_extension("json.corrupt"));
+}
+
+/// Newest valid slot (by `saved_at_secs`), falling back to the legacy
+/// single-slot file from older builds. Pure read: corrupt slots are
+/// skipped here and quarantined by `load_recovery`.
+fn newest_recovery() -> Option<(std::path::PathBuf, RecoveryFile)> {
+    let mut best: Option<(std::path::PathBuf, RecoveryFile)> = None;
+    for path in all_recovery_paths() {
         let Ok(data) = fs::read_to_string(&path) else {
             continue;
         };
         let Ok(rec) = serde_json::from_str::<RecoveryFile>(&data) else {
-            // Corrupt snapshot: quarantine it instead of silently dropping
-            // the user's only copy, so it can still be inspected by hand.
-            let _ = fs::rename(&path, path.with_extension("json.corrupt"));
             continue;
         };
         let newer = best
@@ -88,6 +96,15 @@ pub fn save_recovery(doc: &Document, original: Option<&Path>) -> Result<(), Stri
 }
 
 pub fn load_recovery() -> Option<(Option<std::path::PathBuf>, Document)> {
+    // Quarantine corrupt slots on the explicit load path (not inside the
+    // pure newest-slot scan), so a half-written snapshot never loads.
+    for path in all_recovery_paths() {
+        if let Ok(data) = fs::read_to_string(&path) {
+            if serde_json::from_str::<RecoveryFile>(&data).is_err() {
+                quarantine_recovery(&path);
+            }
+        }
+    }
     let (_path, rec) = newest_recovery()?;
     let mut doc = rec.document;
     doc.normalize();
@@ -95,13 +112,12 @@ pub fn load_recovery() -> Option<(Option<std::path::PathBuf>, Document)> {
 }
 
 pub fn clear_recovery() {
-    for path in recovery_paths() {
-        let _ = fs::remove_file(path);
+    for path in all_recovery_paths() {
+        let _ = fs::remove_file(&path);
+        let _ = fs::remove_file(path.with_extension("json.corrupt"));
     }
-    // Legacy single-slot file.
-    let _ = fs::remove_file(std::env::temp_dir().join("amata_autosave_recovery.json"));
 }
 
 pub fn has_recovery() -> bool {
-    load_recovery().is_some()
+    newest_recovery().is_some()
 }
