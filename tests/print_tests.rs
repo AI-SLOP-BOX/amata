@@ -206,8 +206,8 @@ fn test_press_pdf_separations_overprint_images_shadings() {
     assert!(text.contains("PANTONE"), "spot name survives: {warnings:?}");
     assert!(text.contains("/OP true"), "overprint ExtGState");
     assert!(text.contains("/ShadingType 2"), "axial shading for gradients");
-    assert!(text.contains("/SMask"), "alpha mask for translucent PNG");
-    assert!(text.contains("/DCTDecode"), "JPEG image XObject");
+    assert!(!text.contains("/SMask"), "alpha composited onto paper, no masks");
+    assert!(text.contains("/DCTDecode") || text.contains("/FlateDecode"), "image XObject");
     assert!(text.contains("DeviceCMYK"), "CMYK mode output");
     // And it all still parses.
     parse(&pdf);
@@ -215,32 +215,38 @@ fn test_press_pdf_separations_overprint_images_shadings() {
 
 #[test]
 fn test_pdfx_validator_flags_live_transparency() {
-    // press_doc() carries an alpha PNG (SMask) and a DeviceRGB JPEG in a
-    // CMYK doc: both are X-1a violations and must surface as warnings, so
-    // the file can never leave tagged clean.
-    let (_, warnings) = export_pdf_print(&press_doc(), &PrintPdfOptions::default());
-    assert!(
-        warnings.iter().any(|w| w.contains("ソフトマスク")),
-        "SMask flagged: {warnings:?}"
-    );
-    assert!(
-        warnings.iter().any(|w| w.contains("RGB画像")),
-        "RGB image flagged: {warnings:?}"
-    );
-    // A clean opaque doc exports violation-free.
+    // A translucent vector object under PDF/X-1a must come out flattened
+    // (opaque raster), not live transparency: no violations, parseable.
     let mut doc = Document::default();
     doc.color_mode = ColorMode::Cmyk;
-    doc.width = 100.0;
-    doc.height = 100.0;
+    doc.width = 200.0;
+    doc.height = 200.0;
     doc.bleed = irasu_illustrator::core::print::mm_to_pt(3.0);
-    let mut rect = Object::new_rect("R", 5.0, 5.0, 20.0, 20.0, 0.0);
-    rect.fill = Some(FillStyle::solid([1.0, 0.0, 0.0, 1.0]));
-    doc.add_object(rect);
-    let (_, warnings) = export_pdf_print(&doc, &PrintPdfOptions::default());
+    let mut ghost = Object::new_rect("G", 20.0, 20.0, 60.0, 60.0, 0.0);
+    ghost.fill = Some(FillStyle::solid([1.0, 0.0, 0.0, 1.0]));
+    ghost.opacity = 0.5;
+    doc.add_object(ghost);
+    let (pdf, warnings) = export_pdf_print(&doc, &PrintPdfOptions::default());
     assert!(
         !warnings.iter().any(|w| w.contains("PDF/X-1a違反")),
-        "clean doc has no violations: {warnings:?}"
+        "flattened file is X-1a clean: {warnings:?}"
     );
+    assert!(
+        warnings.iter().any(|w| w.contains("フラット化")),
+        "flattening reported: {warnings:?}"
+    );
+    let text = String::from_utf8_lossy(&pdf);
+    assert!(!text.contains("/SMask"), "no soft masks");
+    // Placed RGB images convert to opaque CMYK (no SMask, no RGB plates).
+    let (pdf, warnings) = export_pdf_print(&press_doc(), &PrintPdfOptions::default());
+    assert!(
+        !warnings.iter().any(|w| w.contains("PDF/X-1a違反")),
+        "press doc converts clean: {warnings:?}"
+    );
+    let text = String::from_utf8_lossy(&pdf);
+    assert!(text.contains("/DeviceCMYK"), "CMYK plates");
+    assert!(!text.contains("/SMask"), "alpha composited, no masks");
+    parse(&pdf);
 }
 
 #[test]
