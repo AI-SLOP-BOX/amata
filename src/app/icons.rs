@@ -721,7 +721,7 @@ pub fn toggle_icon_button(
         painter_fn(ui.painter(), rect, color);
         paint_focus_ring(ui, &response, rect);
     }
-    response
+    response.on_hover_cursor(egui::CursorIcon::PointingHand)
 }
 
 /// Grid: framed square crossed by one vertical and one horizontal rule.
@@ -988,7 +988,7 @@ pub fn icon_text_button(
         );
         paint_focus_ring(ui, &response, rect);
     }
-    response
+    response.on_hover_cursor(egui::CursorIcon::PointingHand)
 }
 
 /// Heart: two lobes over a V.
@@ -1502,12 +1502,17 @@ pub fn tool_icon_button(
 ) -> egui::Response {
     let (rect, response) = ui.allocate_exact_size(size, egui::Sense::click());
 
+    // Hover fades in instead of snapping (0.12s): cheap motion that reads
+    // as polish, not as latency.
+    let hover = ui.ctx().animate_bool_with_time(
+        egui::Id::new(("tool_btn_hover", tool as u8)),
+        response.hovered(),
+        0.12,
+    );
     let bg_color = if is_active {
         Color32::from_rgb(20, 115, 230)
-    } else if response.hovered() {
-        Color32::from_rgb(60, 60, 60)
     } else {
-        Color32::TRANSPARENT
+        Color32::TRANSPARENT.lerp_to_gamma(Color32::from_rgb(60, 60, 60), hover)
     };
 
     if ui.is_rect_visible(rect) {
@@ -1539,7 +1544,7 @@ pub fn tool_icon_button(
         paint_focus_ring(ui, &response, rect);
     }
 
-    response
+    response.on_hover_cursor(egui::CursorIcon::PointingHand)
 }
 
 /// Small icon-only button (non-tool) with hover highlight.
@@ -1565,7 +1570,7 @@ pub fn icon_button(
         painter_fn(ui.painter(), rect, color);
         paint_focus_ring(ui, &response, rect);
     }
-    response
+    response.on_hover_cursor(egui::CursorIcon::PointingHand)
 }
 
 /// Official Amata 3-Node Vector Emblem Painter

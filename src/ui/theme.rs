@@ -343,6 +343,11 @@ pub fn apply_adobe_theme(ctx: &egui::Context, theme: &str) {
         style.spacing.interact_size = Vec2::new(16.0, 18.0);
         style.spacing.indent = 14.0;
         style.spacing.scroll.bar_width = 6.0;
+        style.spacing.scroll.bar_inner_margin = 2.0;
+        style.spacing.scroll.bar_outer_margin = 2.0;
+        style.spacing.scroll.floating = true;
+        style.spacing.scroll.floating_width = 8.0;
+        style.spacing.scroll.foreground_color = true;
         style.spacing.combo_height = 220.0;
 
         use egui::{FontId, TextStyle};

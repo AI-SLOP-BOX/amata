@@ -43,7 +43,7 @@ fn press_doc() -> Document {
         fill_type: FillType::Solid([0.0, 0.0, 0.0, 1.0]),
         rule: FillRule::NonZero,
         overprint: false,
-        spot: Some("PANTONE Reflex Blue C".to_string()),
+        spot: Some("Spot Reflex Blue".to_string()),
     });
     doc.add_object(circ);
     // Gradient bar.
@@ -203,7 +203,7 @@ fn test_press_pdf_separations_overprint_images_shadings() {
     let (pdf, warnings) = export_pdf_print(&press_doc(), &PrintPdfOptions::default());
     let text = String::from_utf8_lossy(&pdf);
     assert!(text.contains("/Separation"), "spot color space");
-    assert!(text.contains("PANTONE"), "spot name survives: {warnings:?}");
+    assert!(text.contains("Reflex"), "spot name survives: {warnings:?}");
     assert!(text.contains("/OP true"), "overprint ExtGState");
     assert!(text.contains("/ShadingType 2"), "axial shading for gradients");
     assert!(!text.contains("/SMask"), "alpha composited onto paper, no masks");

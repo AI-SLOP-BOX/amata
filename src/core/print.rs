@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 /// A spot (special) color from the document's library.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SpotColor {
-    /// Plate name as it appears in separations (e.g. "PANTONE  reflex Blue C").
+    /// Plate name as it appears in separations (e.g. "Spot Reflex Blue").
     pub name: String,
     /// Process fallback for preview and composite output.
     pub cmyk: [f32; 4],
@@ -46,9 +46,9 @@ impl SpotColor {
 /// A few starter spots so new documents are not empty-handed.
 pub fn default_spots() -> Vec<SpotColor> {
     vec![
-        SpotColor::new("PANTONE Reflex Blue C", [1.0, 0.72, 0.0, 0.04]),
-        SpotColor::new("PANTONE 185 C", [0.0, 0.91, 0.76, 0.0]),
-        SpotColor::new("PANTONE 355 C", [0.95, 0.0, 1.0, 0.0]),
+        SpotColor::new("Spot Reflex Blue", [1.0, 0.72, 0.0, 0.04]),
+        SpotColor::new("Spot Warm Red", [0.0, 0.91, 0.76, 0.0]),
+        SpotColor::new("Spot Green", [0.95, 0.0, 1.0, 0.0]),
     ]
 }
 

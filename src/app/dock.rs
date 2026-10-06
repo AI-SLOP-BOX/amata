@@ -262,7 +262,9 @@ impl IrasuApp {
             let is_active = self.active_tab == *variant;
 
             // Hit test & hover
-            let resp = ui.allocate_rect(tab_rect, egui::Sense::click());
+            let resp = ui
+                .allocate_rect(tab_rect, egui::Sense::click())
+                .on_hover_cursor(egui::CursorIcon::PointingHand);
             paint_focus_ring(ui, &resp, tab_rect);
 
             let text_color = if is_active {
@@ -288,15 +290,20 @@ impl IrasuApp {
                 text_color,
             );
 
-            // Active underline bar
-            if is_active {
+            // Active underline bar, animated: each tab lerps its own
+            // activeness so switching tabs grows/shrinks the bar smoothly.
+            let glow = ui.ctx().animate_bool_with_time(
+                egui::Id::new(("dock_tab_active", *label)),
+                is_active,
+                0.18,
+            );
+            if glow > 0.01 {
+                let w = (tab_rect.width() - 8.0) * glow;
+                let x = tab_rect.center().x - w / 2.0;
                 ui.painter().rect_filled(
-                    Rect::from_min_size(
-                        Pos2::new(tab_rect.min.x + 4.0, tab_rect.max.y - 2.0),
-                        Vec2::new(tab_rect.width() - 8.0, 2.0),
-                    ),
+                    Rect::from_min_size(Pos2::new(x, tab_rect.max.y - 2.0), Vec2::new(w, 2.0)),
                     1.0,
-                    accent,
+                    accent.lerp_to_gamma(Color32::TRANSPARENT, 1.0 - glow),
                 );
             }
 

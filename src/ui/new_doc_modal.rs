@@ -401,7 +401,7 @@ impl NewDocModal {
             );
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.label(
-                    RichText::new("Adobe Stock でテンプレートを探す ➔")
+                    RichText::new("ストック素材を探す ➔")
                         .size(11.0)
                         .color(Color32::from_rgb(20, 115, 230)),
                 );

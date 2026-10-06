@@ -588,8 +588,18 @@ impl eframe::App for IrasuApp {
         self.state.clear_toast_if_expired();
         if let Some(toast) = &self.state.toast {
             ctx.request_repaint();
+            // Toasts fade/slide in on appearance so they read as
+            // arrival, not flicker. The message text keys the animation:
+            // every new message restarts its own 0-1 ramp.
+            let toast_anim = ctx.animate_bool_with_time(
+                egui::Id::new(("toast_arrival", toast.message.clone())),
+                true,
+                0.22,
+            );
+            let lift = (1.0 - toast_anim) * 10.0;
+            let fade = toast_anim;
             egui::Area::new(egui::Id::new("toast_notification_area"))
-                .anchor(egui::Align2::CENTER_BOTTOM, egui::vec2(0.0, -42.0))
+                .anchor(egui::Align2::CENTER_BOTTOM, egui::vec2(0.0, -42.0 + lift))
                 .order(egui::Order::Tooltip)
                 .show(ctx, |ui| {
                     let (bg_col, border_col, _icon, icon_col) = if toast.is_error {
@@ -609,7 +619,7 @@ impl eframe::App for IrasuApp {
                     };
 
                     egui::Frame::popup(ui.style())
-                        .fill(bg_col)
+                        .fill(bg_col.lerp_to_gamma(egui::Color32::TRANSPARENT, 1.0 - fade))
                         .stroke(egui::Stroke::new(1.2_f32, border_col))
                         .corner_radius(8.0)
                         .inner_margin(egui::Margin::symmetric(16, 10))
