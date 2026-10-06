@@ -280,11 +280,13 @@ impl CanvasWidget {
                         continue;
                     }
                     // Thread-aware: linked frames flow the head story.
-                    let layout =
-                        crate::core::document::thread_frame_layout(&state.document, &obj.id)
-                            .unwrap_or_else(|| {
-                                crate::core::document::layout_text(text, style, *area)
-                            });
+                    let layout = crate::core::document::layout_text_full(
+                        &state.document,
+                        &obj.id,
+                        text,
+                        style,
+                        *area,
+                    );
                     let mut real = true;
                     let mut lines = Vec::new();
                     for (li, line) in layout.lines.iter().take(layout.visible).enumerate() {
@@ -325,7 +327,8 @@ impl CanvasWidget {
                                     }
                                 };
                                 let indent = layout.line_indent.get(li).copied().unwrap_or(0.0);
-                                let x_off = (col_x - ox) + anchor + indent;
+                                let xoff = layout.line_xoff.get(li).copied().unwrap_or(0.0);
+                                let x_off = (col_x - ox) + anchor + indent + xoff;
                                 lines.push(rendering::CachedTextLine {
                                     tris: ol.to_triangles(12),
                                     width,

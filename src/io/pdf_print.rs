@@ -80,6 +80,8 @@ struct Ctx<'a> {
 struct ImageObj {
     jpeg: Vec<u8>,
     mask: Option<Vec<u8>>,
+    /// Opaque Flate CMYK (CMYK documents only; `jpeg`/`mask` stay empty).
+    cmyk_flate: Option<Vec<u8>>,
     w: u32,
     h: u32,
 }
@@ -281,8 +283,7 @@ pub fn export_pdf_print(doc: &Document, opts: &PrintPdfOptions) -> (Vec<u8>, Vec
         };
         // Thread-aware: linked frames flow the head story instead of
         // laying out their own (possibly stale) text.
-        let layout = crate::core::document::thread_frame_layout(doc, &obj.id)
-            .unwrap_or_else(|| crate::core::document::layout_text(text, style, area));
+        let layout = crate::core::document::layout_text_full(doc, &obj.id, text, style, area);
         let face = &mut faces[idx];
         let mut lines = Vec::new();
         for (li, line) in layout.lines.iter().take(layout.visible).enumerate() {
@@ -591,6 +592,19 @@ pub fn export_pdf_print(doc: &Document, opts: &PrintPdfOptions) -> (Vec<u8>, Vec
     for (i, img) in ctx.images.iter().enumerate() {
         offsets.push(pdf.len());
         debug_assert_eq!(offsets.len(), img_base + i);
+        if let Some(data) = img.cmyk_flate.as_ref() {
+            // Opaque Flate CMYK: X-1a clean by construction.
+            pdf.extend_from_slice(
+                format!(
+                    "{} 0 obj\n<< /Type /XObject /Subtype /Image /Width {} /Height {} /ColorSpace /DeviceCMYK /BitsPerComponent 8 /Filter /FlateDecode /Length {} >>\nstream\n",
+                    img_base + i, img.w, img.h, data.len()
+                )
+                .as_bytes(),
+            );
+            pdf.extend_from_slice(data);
+            pdf.extend_from_slice(b"\nendstream\nendobj\n");
+            continue;
+        }
         let smask = match mask_no_of[i] {
             Some(mn) => format!(" /SMask {mn} 0 R"),
             None => String::new(),
@@ -1463,18 +1477,20 @@ fn emit_embedded_text(
         let col_w = layout.col_w.get(col).copied().unwrap_or(f64::MAX);
         let col_finite = col_w.is_finite() && col_w < f64::MAX / 2.0;
         let indent = layout.line_indent.get(eline.li).copied().unwrap_or(0.0);
+        let xoff = layout.line_xoff.get(eline.li).copied().unwrap_or(0.0);
         let ax = match style.text_anchor {
-            TextAnchor::Start => col_x + indent,
+            TextAnchor::Start => col_x + indent + xoff,
             TextAnchor::Middle => {
                 col_x
                     + indent
+                    + xoff
                     + if col_finite {
                         (col_w - lw) / 2.0
                     } else {
                         -lw / 2.0
                     }
             }
-            TextAnchor::End => col_x + indent + if col_finite { col_w - lw } else { -lw },
+            TextAnchor::End => col_x + indent + xoff + if col_finite { col_w - lw } else { -lw },
         };
         let ay = layout.origin.1 + eline.li as f64 * line_h;
         // Tm = world * T(ax,ay) * S(s,-s): content stream is y-flipped,
@@ -1567,10 +1583,9 @@ fn render_obj_embed(
             // otherwise (fonts never missing).
             if let Some(lines) = embed_lines.get(&obj.id) {
                 let layout = match &obj.object_type {
-                    ObjectType::Text { text, .. } => crate::core::document::thread_frame_layout(
-                        ctx.doc, &obj.id,
-                    )
-                    .unwrap_or_else(|| crate::core::document::layout_text(text, style, *area)),
+                    ObjectType::Text { text, .. } => crate::core::document::layout_text_full(
+                        ctx.doc, &obj.id, text, style, *area,
+                    ),
                     _ => return,
                 };
                 emit_embedded_text(ctx, obj, style, *area, &world, faces, lines, &layout, out);
@@ -1580,8 +1595,7 @@ fn render_obj_embed(
             // Thread-aware like every other text consumer.
             let layout = match &obj.object_type {
                 ObjectType::Text { text, .. } => {
-                    crate::core::document::thread_frame_layout(ctx.doc, &obj.id)
-                        .unwrap_or_else(|| crate::core::document::layout_text(text, style, *area))
+                    crate::core::document::layout_text_full(ctx.doc, &obj.id, text, style, *area)
                 }
                 _ => return,
             };
@@ -1596,11 +1610,13 @@ fn render_obj_embed(
                 let col_w = layout.col_w.get(col).copied().unwrap_or(f64::MAX);
                 let col_finite = col_w.is_finite() && col_w < f64::MAX / 2.0;
                 let indent = layout.line_indent.get(li).copied().unwrap_or(0.0);
+                let xoff = layout.line_xoff.get(li).copied().unwrap_or(0.0);
                 let ax = match style.text_anchor {
-                    crate::core::document::TextAnchor::Start => col_x + indent,
+                    crate::core::document::TextAnchor::Start => col_x + indent + xoff,
                     crate::core::document::TextAnchor::Middle => {
                         col_x
                             + indent
+                            + xoff
                             + if col_finite {
                                 (col_w - lw) / 2.0
                             } else {
@@ -1608,7 +1624,7 @@ fn render_obj_embed(
                             }
                     }
                     crate::core::document::TextAnchor::End => {
-                        col_x + indent + if col_finite { col_w - lw } else { -lw }
+                        col_x + indent + xoff + if col_finite { col_w - lw } else { -lw }
                     }
                 };
                 let mut moved = ol;
@@ -2006,7 +2022,10 @@ fn emit_image(
         ctx.warn("image-size", "異常なサイズの画像をスキップしました");
         return;
     }
-    // RGB JPEG + gray SMask when alpha is used.
+    // RGB JPEG + gray SMask when alpha is used. CMYK documents get opaque
+    // Flate CMYK instead (DCT has no CMYK path here, and SMask would break
+    // PDF/X): alpha is composited over paper white, matching the flatten
+    // regions' convention.
     let mut rgb = Vec::with_capacity((iw * ih) as usize * 3);
     let mut alpha: Vec<u8> = Vec::with_capacity((iw * ih) as usize);
     let mut has_alpha = false;
@@ -2017,27 +2036,49 @@ fn emit_image(
             has_alpha = true;
         }
     }
-    let mut jpeg = Vec::new();
-    {
-        use image::codecs::jpeg::JpegEncoder;
-        use image::ImageEncoder;
-        let enc = JpegEncoder::new_with_quality(&mut jpeg, 90);
-        if enc
-            .write_image(&rgb, iw, ih, image::ExtendedColorType::Rgb8)
-            .is_err()
-        {
-            ctx.warn("image-encode", "JPEG変換に失敗しスキップしました");
-            return;
+    let (jpeg, mask, cmyk_flate) = if ctx.cmyk {
+        let mut cmyk = Vec::with_capacity((iw * ih) as usize * 4);
+        for p in img.pixels() {
+            // Opaque-paper composite, then naive-UCR ink (same model as
+            // preflight/flatten, so plates agree with the report).
+            let a = p[3] as f32 / 255.0;
+            let r = (p[0] as f32 / 255.0) * a + (1.0 - a);
+            let g = (p[1] as f32 / 255.0) * a + (1.0 - a);
+            let b = (p[2] as f32 / 255.0) * a + (1.0 - a);
+            let c = crate::core::print::rgb_to_cmyk_ink(r, g, b);
+            cmyk.extend_from_slice(&[
+                (c[0] * 255.0) as u8,
+                (c[1] * 255.0) as u8,
+                (c[2] * 255.0) as u8,
+                (c[3] * 255.0) as u8,
+            ]);
         }
-    }
-    let mask = if has_alpha {
-        Some(flate_compress(&alpha))
+        (Vec::new(), None, Some(flate_compress(&cmyk)))
     } else {
-        None
+        let mut jpeg = Vec::new();
+        {
+            use image::codecs::jpeg::JpegEncoder;
+            use image::ImageEncoder;
+            let enc = JpegEncoder::new_with_quality(&mut jpeg, 90);
+            if enc
+                .write_image(&rgb, iw, ih, image::ExtendedColorType::Rgb8)
+                .is_err()
+            {
+                ctx.warn("image-encode", "JPEG変換に失敗しスキップしました");
+                return;
+            }
+        }
+        let mask = if has_alpha {
+            Some(flate_compress(&alpha))
+        } else {
+            None
+        };
+        (jpeg, mask, None)
     };
     ctx.images.push(ImageObj {
         jpeg,
         mask,
+        cmyk_flate,
         w: iw,
         h: ih,
     });

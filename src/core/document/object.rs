@@ -694,6 +694,8 @@ pub struct TextLayout {
     pub col_w: Vec<f64>,
     /// Hanging indent per line (DTP lists), in local units.
     pub line_indent: Vec<f64>,
+    /// Runaround x shift per line (DTP text wrap), in local units.
+    pub line_xoff: Vec<f64>,
 }
 
 impl TextLayout {
@@ -723,9 +725,11 @@ pub fn layout_text(text: &str, style: &TextStyle, area: Option<TextArea>) -> Tex
             let visible = runs.len();
             let mut lines = Vec::with_capacity(visible);
             let mut line_indent = Vec::with_capacity(visible);
+            let mut line_xoff = Vec::with_capacity(visible);
             for (line, indent) in runs {
                 lines.push(line);
                 line_indent.push(indent);
+                line_xoff.push(0.0);
             }
             TextLayout {
                 lines,
@@ -735,6 +739,7 @@ pub fn layout_text(text: &str, style: &TextStyle, area: Option<TextArea>) -> Tex
                 col_x: vec![0.0],
                 col_w: vec![f64::MAX],
                 line_indent,
+                line_xoff,
             }
         }
         Some(a) => {
@@ -744,9 +749,11 @@ pub fn layout_text(text: &str, style: &TextStyle, area: Option<TextArea>) -> Tex
             let runs = compute_wrapped_runs(text, style, widths[0]);
             let mut lines = Vec::with_capacity(runs.len());
             let mut line_indent = Vec::with_capacity(runs.len());
+            let mut line_xoff = Vec::with_capacity(runs.len());
             for (line, indent) in runs {
                 lines.push(line);
                 line_indent.push(indent);
+                line_xoff.push(0.0);
             }
             let line_h = style.effective_line_height().max(1e-6);
             // First baseline at the em-box top + font_size; a line fits
@@ -766,6 +773,7 @@ pub fn layout_text(text: &str, style: &TextStyle, area: Option<TextArea>) -> Tex
                 col_x: origins,
                 col_w: widths,
                 line_indent,
+                line_xoff,
             }
         }
     }
@@ -848,6 +856,7 @@ fn layout_text_vertical(text: &str, style: &TextStyle, area: Option<TextArea>) -
         col_x: vec![origin.0],
         col_w: vec![f64::MAX],
         line_indent: vec![0.0; n],
+        line_xoff: vec![0.0; n],
     }
 }
 
@@ -912,18 +921,180 @@ pub fn layout_text_thread(
                 .collect();
             (assign, xs, ws)
         };
+        let n_lines = slice.len();
         out.push(TextLayout {
-            visible: slice.len(),
+            visible: n_lines,
             lines: slice,
             origin,
             col_of_line,
             col_x,
             col_w,
             line_indent: slice_indent,
+            line_xoff: vec![0.0; n_lines],
         });
         consumed = end;
     }
     out
+}
+
+fn affine_inverse(m: &[f64; 6]) -> Option<[f64; 6]> {
+    let det = m[0] * m[3] - m[1] * m[2];
+    if det.abs() < 1e-12 {
+        return None;
+    }
+    Some([
+        m[3] / det,
+        -m[1] / det,
+        -m[2] / det,
+        m[0] / det,
+        (m[2] * m[5] - m[3] * m[4]) / det,
+        (m[1] * m[4] - m[0] * m[5]) / det,
+    ])
+}
+
+/// Full layout entry point: thread flow, then runaround, then plain layout.
+/// Renderers should call this instead of `layout_text`/`thread_frame_layout`
+/// directly so every consumer agrees.
+pub fn layout_text_full(
+    doc: &super::Document,
+    obj_id: &str,
+    text: &str,
+    style: &TextStyle,
+    area: Option<TextArea>,
+) -> TextLayout {
+    if let Some(tl) = thread_frame_layout(doc, obj_id) {
+        return tl;
+    }
+    if let Some(tl) = layout_text_wrapped(doc, obj_id, text, style, area) {
+        return tl;
+    }
+    layout_text(text, style, area)
+}
+
+/// DTP runaround: single unthreaded single-column unlisted area frames
+/// rewrap around `text_wrap` obstacles. Returns `None` when inapplicable
+/// (threaded frames, columns, lists, vertical, point text, no obstacles),
+/// so the common path is byte-identical to plain layout.
+pub fn layout_text_wrapped(
+    doc: &super::Document,
+    obj_id: &str,
+    text: &str,
+    style: &TextStyle,
+    area: Option<TextArea>,
+) -> Option<TextLayout> {
+    let a = area?;
+    if style.vertical || a.cols > 1 || style.list != ListStyle::None {
+        return None;
+    }
+    // Top-level frame only (nested frames inherit parent transforms that
+    // layout cannot see without a full scene walk).
+    let obj = doc
+        .layers
+        .iter()
+        .flat_map(|l| l.objects.iter())
+        .find(|o| o.id == obj_id)?;
+    let to_doc = obj.transform.matrix();
+    let to_local = affine_inverse(&to_doc)?;
+    // Obstacles in frame-local space.
+    let mut obstacles: Vec<(f64, f64, f64, f64)> = Vec::new();
+    for layer in &doc.layers {
+        if !layer.visible {
+            continue;
+        }
+        for other in &layer.objects {
+            if other.id == obj_id || !other.visible || !other.text_wrap {
+                continue;
+            }
+            let Some((mn, mx)) = other.bounding_box() else {
+                continue;
+            };
+            // `bounding_box` is already in world space for top-level
+            // objects (do NOT re-apply the transform — that double-counts
+            // the offset, as a past bug demonstrated).
+            let corners = [(mn.x, mn.y), (mx.x, mn.y), (mx.x, mx.y), (mn.x, mx.y)];
+            let wx: Vec<(f64, f64)> = corners.to_vec();
+            let (mut x0, mut y0, mut x1, mut y1) = (f64::MAX, f64::MAX, f64::MIN, f64::MIN);
+            for &(x, y) in &wx {
+                // Into frame-local space.
+                let lx = to_local[0] * x + to_local[2] * y + to_local[4];
+                let ly = to_local[1] * x + to_local[3] * y + to_local[5];
+                x0 = x0.min(lx);
+                y0 = y0.min(ly);
+                x1 = x1.max(lx);
+                y1 = y1.max(ly);
+            }
+            let mg = other.wrap_margin.max(0.0);
+            obstacles.push((x0 - mg, y0 - mg, x1 + mg, y1 + mg));
+        }
+    }
+    if obstacles.is_empty() {
+        return None;
+    }
+    let line_h = style.effective_line_height().max(1e-6);
+    let unit = |ch: char| char_advance_estimate(ch) * style.font_size + style.letter_spacing;
+    // Wrap paragraph by paragraph with live geometry.
+    let mut lines: Vec<String> = Vec::new();
+    let mut xoffs: Vec<f64> = Vec::new();
+    let mut count = 0usize;
+    for paragraph in text.split('\n') {
+        let chars: Vec<char> = paragraph.chars().collect();
+        if chars.is_empty() {
+            lines.push(String::new());
+            xoffs.push(0.0);
+            count += 1;
+            continue;
+        }
+        // Geometry closure borrows obstacles + area; wrap one paragraph at
+        // a time starting at the current visual index.
+        let base = count;
+        let a_ref = &a;
+        let obs_ref = &obstacles;
+        let lh = line_h;
+        let mut g = |idx: usize, _first: bool| -> (f64, f64) {
+            let y0 = a_ref.y + idx as f64 * lh;
+            let y1 = y0 + lh;
+            let mut x0 = a_ref.x;
+            let mut x1 = a_ref.x + a_ref.width;
+            for e in obs_ref.iter() {
+                // Skip obstacles fully above or below this line band.
+                if e.3 <= y0 || e.1 >= y1 {
+                    continue;
+                }
+                // Overlap in Y: shrink from the overlapped side. If the
+                // obstacle covers the line start, push right; if it covers
+                // the end, pull left; if it swallows the line, keep a
+                // 1pt sliver so wrapping still terminates.
+                if e.0 <= x0 + 1e-9 {
+                    x0 = x0.max(e.2);
+                } else if e.2 >= x1 - 1e-9 {
+                    x1 = x1.min(e.0);
+                } else {
+                    // Middle obstacle: flow around the left part only
+                    // (single-sided wrap; full contour wrap is out of scope).
+                    x1 = x1.min(e.0);
+                }
+            }
+            ((x0 - a_ref.x).max(0.0), (x1 - x0).max(1.0))
+        };
+        for (s, x) in wrap_chars_g(&chars, &unit, base, &mut g) {
+            lines.push(s);
+            xoffs.push(x);
+            count += 1;
+        }
+    }
+    let capacity = ((((a.height - style.font_size) / line_h).floor() as isize) + 1).max(0) as usize;
+    let visible = lines.len().min(capacity);
+    let n = lines.len();
+    Some(TextLayout {
+        lines,
+        visible,
+        origin: (a.x, a.y + style.font_size),
+        col_of_line: vec![0; n],
+        col_x: vec![a.x],
+        col_w: vec![a.width],
+        line_indent: vec![0.0; n],
+        line_xoff: xoffs,
+    })
 }
 
 /// Resolve the threaded story containing `obj_id` and return THIS frame's
@@ -1153,10 +1324,29 @@ fn wrap_chars(
     first_max: f64,
     rest_max: f64,
 ) -> Vec<String> {
+    wrap_chars_g(chars, unit, 0, &mut |_, first| {
+        (0.0, if first { first_max } else { rest_max })
+    })
+    .into_iter()
+    .map(|(s, _)| s)
+    .collect()
+}
+
+/// Greedy wrap with per-visual-line geometry: `geom(line_idx, is_first)`
+/// returns the line's x offset and available width (DTP runaround narrows
+/// and shifts lines around obstacles). Returns `(line, xoff)` pairs.
+fn wrap_chars_g(
+    chars: &[char],
+    unit: &impl Fn(char) -> f64,
+    base_idx: usize,
+    geom: &mut dyn FnMut(usize, bool) -> (f64, f64),
+) -> Vec<(String, f64)> {
     let mut result = Vec::new();
     let mut line_start = 0usize;
     let mut i = 0usize;
     let mut first = true;
+    // Visual-line counter (paragraph-continuation aware via `base_idx`).
+    let mut vidx = base_idx;
     // Byte/char width of the current line for quick slicing.
     let mut line_w = 0.0f64;
     // Last index (exclusive end of line) where a break is allowed.
@@ -1164,7 +1354,7 @@ fn wrap_chars(
     while i < chars.len() {
         let ch = chars[i];
         let w = unit(ch);
-        let max_width = if first { first_max } else { rest_max };
+        let (_, max_width) = geom(vidx, first);
         // Would this char overflow the line?
         if line_w + w > max_width && i > line_start {
             // Prefer the last allowed break; otherwise force-break
@@ -1186,7 +1376,8 @@ fn wrap_chars(
             if end <= line_start {
                 end = (line_start + 1).min(chars.len());
             }
-            result.push(chars[line_start..end].iter().collect());
+            let (ex, _) = geom(vidx, first);
+            result.push((chars[line_start..end].iter().collect(), ex));
             // Skip a single leading space on the new line (Western
             // word-wrap convention); CJK needs no such trimming.
             line_start = end;
@@ -1197,6 +1388,7 @@ fn wrap_chars(
             line_w = 0.0;
             last_break = None;
             first = false;
+            vidx += 1;
             continue;
         }
         line_w += w;
@@ -1208,7 +1400,8 @@ fn wrap_chars(
         }
         i += 1;
     }
-    result.push(chars[line_start..].iter().collect());
+    let (ex, _) = geom(vidx, first);
+    result.push((chars[line_start..].iter().collect(), ex));
     result
 }
 
@@ -1236,6 +1429,16 @@ pub struct Object {
     pub auto_layout: Option<crate::core::auto_layout::AutoLayout>,
     pub visible: bool,
     pub locked: bool,
+    /// DTP runaround: text in other frames flows around this object's box.
+    #[serde(default)]
+    pub text_wrap: bool,
+    /// Runaround margin in document units.
+    #[serde(default = "default_wrap_margin")]
+    pub wrap_margin: f64,
+}
+
+fn default_wrap_margin() -> f64 {
+    6.0
 }
 
 impl Object {
@@ -1257,6 +1460,8 @@ impl Object {
             auto_layout: None,
             blend_mode: BlendMode::Normal,
             visible: true,
+            text_wrap: false,
+            wrap_margin: 6.0,
             locked: false,
         }
     }
@@ -1285,6 +1490,8 @@ impl Object {
             auto_layout: None,
             blend_mode: BlendMode::Normal,
             visible: true,
+            text_wrap: false,
+            wrap_margin: 6.0,
             locked: false,
         }
     }
@@ -1309,6 +1516,8 @@ impl Object {
             auto_layout: None,
             blend_mode: BlendMode::Normal,
             visible: true,
+            text_wrap: false,
+            wrap_margin: 6.0,
             locked: false,
         }
     }
@@ -1344,6 +1553,8 @@ impl Object {
             auto_layout: None,
             blend_mode: BlendMode::Normal,
             visible: true,
+            text_wrap: false,
+            wrap_margin: 6.0,
             locked: false,
         }
     }
@@ -1368,6 +1579,8 @@ impl Object {
             auto_layout: None,
             blend_mode: BlendMode::Normal,
             visible: true,
+            text_wrap: false,
+            wrap_margin: 6.0,
             locked: false,
         }
     }
@@ -1395,6 +1608,8 @@ impl Object {
             auto_layout: None,
             blend_mode: BlendMode::Normal,
             visible: true,
+            text_wrap: false,
+            wrap_margin: 6.0,
             locked: false,
         }
     }
@@ -1436,6 +1651,8 @@ impl Object {
             auto_layout: None,
             blend_mode: BlendMode::Normal,
             visible: true,
+            text_wrap: false,
+            wrap_margin: 6.0,
             locked: false,
         }
     }
@@ -1463,6 +1680,8 @@ impl Object {
             auto_layout: None,
             blend_mode: BlendMode::Normal,
             visible: true,
+            text_wrap: false,
+            wrap_margin: 6.0,
             locked: false,
         }
     }
@@ -1483,6 +1702,8 @@ impl Object {
             auto_layout: None,
             blend_mode: BlendMode::Normal,
             visible: true,
+            text_wrap: false,
+            wrap_margin: 6.0,
             locked: false,
         }
     }
@@ -1518,6 +1739,8 @@ impl Object {
             auto_layout: None,
             blend_mode: BlendMode::Normal,
             visible: true,
+            text_wrap: false,
+            wrap_margin: 6.0,
             locked: false,
         }
     }
@@ -1552,6 +1775,8 @@ impl Object {
             auto_layout: None,
             blend_mode: BlendMode::Normal,
             visible: true,
+            text_wrap: false,
+            wrap_margin: 6.0,
             locked: false,
         }
     }
@@ -1581,6 +1806,8 @@ impl Object {
             auto_layout: None,
             blend_mode: BlendMode::Normal,
             visible: true,
+            text_wrap: false,
+            wrap_margin: 6.0,
             locked: false,
         }
     }
@@ -1605,6 +1832,8 @@ impl Object {
             auto_layout: None,
             blend_mode: BlendMode::Normal,
             visible: true,
+            text_wrap: false,
+            wrap_margin: 6.0,
             locked: false,
         }
     }
@@ -1658,6 +1887,8 @@ impl Object {
             auto_layout: None,
             blend_mode: source.blend_mode,
             visible: true,
+            text_wrap: false,
+            wrap_margin: 6.0,
             locked: false,
         })
     }
@@ -2258,6 +2489,72 @@ mod tests {
         let runs = compute_wrapped_runs("aaa bbb ccc ddd", &style, 40.0);
         assert!(runs.len() >= 2);
         assert!(runs[1].1 > 0.0, "hanging indent: {runs:?}");
+    }
+
+    #[test]
+    fn runaround_narrows_lines_around_obstacles() {
+        use super::{layout_text_full, TextArea, TextStyle};
+        use crate::core::document::Document;
+        let style = TextStyle {
+            font_size: 12.0,
+            ..Default::default()
+        };
+        let text = "aaa bbb ccc ddd eee fff ggg hhh iii jjj kkk lll";
+        let area = TextArea::new(0.0, 0.0, 400.0, 400.0);
+        // Obstacle covering the right half of the top ~3 lines.
+        let mut rock = Object::new_rect("R", 250.0, 0.0, 150.0, 60.0, 0.0);
+        rock.text_wrap = true;
+        let mut frame = Object::new_text("F", text, 0.0, 0.0, 12.0);
+        let frame_id = frame.id.clone();
+        if let ObjectType::Text {
+            style: s, area: a, ..
+        } = &mut frame.object_type
+        {
+            *s = style.clone();
+            *a = Some(area);
+        }
+        let mut doc = Document::default();
+        doc.add_object(frame);
+        doc.add_object(rock);
+        // Without the flag there is no shift.
+
+        let plain = layout_text_full(&doc, &frame_id, text, &style, Some(area));
+        assert!(plain.line_xoff.iter().all(|&x| x == 0.0));
+        // Full width: first line holds several words.
+        let first_len = plain.lines[0].len();
+        assert!(first_len > 10, "{}", plain.lines[0]);
+        // The obstacle narrows the top lines: one full-width line
+        // becomes two, with all characters preserved and no x-shift
+        // (right-side obstacle only shrinks width).
+        assert!(plain.lines.len() >= 2, "wraps around: {:?}", plain.lines);
+        let chars: usize = plain.lines.iter().map(|l| l.len()).sum();
+        assert!(chars >= 40, "no text lost: {chars}");
+        assert!(
+            plain.line_xoff.iter().all(|&x| x == 0.0),
+            "right-side obstacle needs no shift"
+        );
+        // Left-side obstacle pushes lines right (positive x-shift).
+        let mut left_rock = Object::new_rect("L", 0.0, 0.0, 150.0, 60.0, 0.0);
+        left_rock.text_wrap = true;
+        let mut doc2 = Document::default();
+        // Rebuild frame (ids must be fresh for the new doc).
+        let mut frame2 = Object::new_text("F2", text, 0.0, 0.0, 12.0);
+        let fid2 = frame2.id.clone();
+        if let ObjectType::Text {
+            style: s, area: a, ..
+        } = &mut frame2.object_type
+        {
+            *s = style.clone();
+            *a = Some(area);
+        }
+        doc2.add_object(frame2);
+        doc2.add_object(left_rock);
+        let shifted = super::layout_text_full(&doc2, &fid2, text, &style, Some(area));
+        assert!(
+            shifted.line_xoff.iter().take(2).all(|&x| x > 100.0),
+            "left obstacle shifts: {:?}",
+            shifted.line_xoff
+        );
     }
 
     #[test]

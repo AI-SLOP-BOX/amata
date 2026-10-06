@@ -316,6 +316,8 @@ fn parse_object_map(map: &rhai::Map) -> Option<Object> {
                 auto_layout: None,
                 visible: true,
                 locked: false,
+                text_wrap: false,
+                wrap_margin: 6.0,
             }
         }
         "group" => {
@@ -351,6 +353,8 @@ fn parse_object_map(map: &rhai::Map) -> Option<Object> {
                 auto_layout: None,
                 visible: true,
                 locked: false,
+                text_wrap: false,
+                wrap_margin: 6.0,
             }
         }
         "path" => {

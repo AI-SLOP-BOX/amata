@@ -143,6 +143,40 @@ impl CanvasWidget {
                 }
 
                 ui.separator();
+                // DTP runaround: text in other frames flows around this object.
+                {
+                    let sel = state.selected_ids.clone();
+                    let any_wrap = sel.iter().any(|id| {
+                        state
+                            .document
+                            .all_objects()
+                            .any(|(_, o)| &o.id == id && o.text_wrap)
+                    });
+                    if ui
+                        .button(if any_wrap {
+                            "テキストの回り込みを解除"
+                        } else {
+                            "テキストの回り込みを設定"
+                        })
+                        .on_hover_text("他のテキストがこの図形をよけて流れます")
+                        .clicked()
+                    {
+                        let next = !any_wrap;
+                        for id in &sel {
+                            state.ensure_object_snapshot(id);
+                        }
+                        for id in &sel {
+                            for (_, obj) in state.document.all_objects_mut() {
+                                if &obj.id == id {
+                                    obj.text_wrap = next;
+                                    break;
+                                }
+                            }
+                        }
+                        state.commit_object_edits("Toggle Text Wrap");
+                        ui.close_menu();
+                    }
+                }
                 ui.menu_button("重ね順 (Arrange)", |ui| {
                     if ui
                         .button(format!("最前面へ   {mk}+Shift+]"))

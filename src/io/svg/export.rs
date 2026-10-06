@@ -861,8 +861,8 @@ fn render_object_to_svg(
             // the first baseline sits at the em-box origin, and lines past the
             // box bottom are clipped (drawn in a clipPath) so raster export
             // matches the canvas.
-            let layout = crate::core::document::thread_frame_layout(doc, &obj.id)
-                .unwrap_or_else(|| crate::core::document::layout_text(text, style, *area));
+            let layout =
+                crate::core::document::layout_text_full(doc, &obj.id, text, style, *area);
             let emit_lines = layout.lines.clone();
             let (area_tx, area_ty) = layout.origin;
             // Text position: local layout origin, plus the object offset in
@@ -902,10 +902,11 @@ fn render_object_to_svg(
                     let col = layout.col_of_line.get(i).copied().unwrap_or(0);
                     let lx = layout.col_x.get(col).copied().unwrap_or(area_tx);
                     let indent = layout.line_indent.get(i).copied().unwrap_or(0.0);
+                    let xoff = layout.line_xoff.get(i).copied().unwrap_or(0.0);
                     let line_x = if transform_has_linear_part(&obj.transform) {
-                        lx + indent
+                        lx + indent + xoff
                     } else {
-                        tx + lx + indent
+                        tx + lx + indent + xoff
                     };
                     if i == 0 {
                         spans.push_str(&format!(
