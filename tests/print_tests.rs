@@ -205,9 +205,18 @@ fn test_press_pdf_separations_overprint_images_shadings() {
     assert!(text.contains("/Separation"), "spot color space");
     assert!(text.contains("Reflex"), "spot name survives: {warnings:?}");
     assert!(text.contains("/OP true"), "overprint ExtGState");
-    assert!(text.contains("/ShadingType 2"), "axial shading for gradients");
-    assert!(!text.contains("/SMask"), "alpha composited onto paper, no masks");
-    assert!(text.contains("/DCTDecode") || text.contains("/FlateDecode"), "image XObject");
+    assert!(
+        text.contains("/ShadingType 2"),
+        "axial shading for gradients"
+    );
+    assert!(
+        !text.contains("/SMask"),
+        "alpha composited onto paper, no masks"
+    );
+    assert!(
+        text.contains("/DCTDecode") || text.contains("/FlateDecode"),
+        "image XObject"
+    );
     assert!(text.contains("DeviceCMYK"), "CMYK mode output");
     // And it all still parses.
     parse(&pdf);

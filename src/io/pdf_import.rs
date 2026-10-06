@@ -30,7 +30,7 @@ pub fn parse_ai_bytes(bytes: &[u8]) -> Result<(Document, Vec<String>), String> {
     let (doc, warnings) = parse_pdf_bytes(bytes)?;
     // Illustrator version from the Info dict, when present.
     let mut version = String::new();
-    if let Ok(loaded) = lopdf::Document::load_mem(bytes) {
+    if let Ok(loaded) = load_pdf_guarded(bytes) {
         if let Ok(info) = loaded.trailer.get(b"Info") {
             let dict_opt: Option<lopdf::Dictionary> = match info {
                 lopdf::Object::Dictionary(d) => Some(d.clone()),
@@ -64,9 +64,37 @@ pub fn parse_ai_bytes(bytes: &[u8]) -> Result<(Document, Vec<String>), String> {
     Ok((doc, out))
 }
 
+/// Max accepted PDF input (DoS guard: the parser walks the whole file
+/// into memory, and the xref repair below clones it once more).
+pub const MAX_PDF_BYTES: usize = 256 * 1024 * 1024;
+
+/// Parse a PDF on a dedicated big-stack thread.
+///
+/// RUSTSEC-2026-0187: lopdf recurses into nested objects, so a malicious
+/// file can overflow a normal 8MB stack and abort the process (stack
+/// overflow is not catchable). A 256MB thread stack absorbs adversarial
+/// nesting; the input cap above bounds the memory side.
+fn load_pdf_guarded(bytes: &[u8]) -> Result<lopdf::Document, String> {
+    if bytes.len() > MAX_PDF_BYTES {
+        return Err(format!(
+            "PDFが大きすぎます（上限{}MB）",
+            MAX_PDF_BYTES / 1024 / 1024
+        ));
+    }
+    let owned = bytes.to_vec();
+    std::thread::Builder::new()
+        .name("amata-pdf-parse".to_string())
+        .stack_size(256 * 1024 * 1024)
+        .spawn(move || lopdf::Document::load_mem(&owned))
+        .map_err(|e| format!("PDF解析スレッドを起動できません: {e}"))?
+        .join()
+        .map_err(|_| "PDFの解析中に異常終了しました（不正なファイルの可能性）".to_string())?
+        .map_err(|e| format!("PDFを開けません: {e}"))
+}
+
 /// Imported document plus non-fatal warnings (shown as one toast).
 pub fn parse_pdf_bytes(bytes: &[u8]) -> Result<(Document, Vec<String>), String> {
-    match lopdf::Document::load_mem(bytes) {
+    match load_pdf_guarded(bytes) {
         Ok(doc) => {
             let mut imp = Importer::new(&doc);
             imp.run()?;
@@ -77,13 +105,11 @@ pub fn parse_pdf_bytes(bytes: &[u8]) -> Result<(Document, Vec<String>), String> 
             // xref tables. Rebuild one by scanning object offsets and retry
             // (incremental-style append, so nothing original is touched).
             if let Some(repaired) = repair_xref(bytes) {
-                if let Ok(doc) = lopdf::Document::load_mem(&repaired) {
+                if let Ok(doc) = load_pdf_guarded(&repaired) {
                     let mut imp = Importer::new(&doc);
                     imp.run()?;
-                    imp.warnings.insert(
-                        0,
-                        "相互参照テーブルを修復して開きました".to_string(),
-                    );
+                    imp.warnings
+                        .insert(0, "相互参照テーブルを修復して開きました".to_string());
                     return Ok((imp.out, imp.warnings));
                 }
             }

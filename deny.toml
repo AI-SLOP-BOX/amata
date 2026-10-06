@@ -1,0 +1,58 @@
+# cargo-deny configuration for Amata (MIT project, ships binaries + Docker).
+# Policy: permissive licenses and weak copyleft (MPL-2.0/EPL) are allowed;
+# strong copyleft (GPL/AGPL/SSPL) and unknown licenses are denied so a
+# dependency can never silently force relicensing or a takedown.
+[licenses]
+# Permissive + weak copyleft only. Anything else (GPL/AGPL/SSPL/unknown)
+# fails the check, so a dependency can never silently force relicensing.
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Zlib",
+    "Unicode-3.0",
+    "OFL-1.1",
+    "MPL-2.0",
+    "CC0-1.0",
+    "Unlicense",
+    "NCSA",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSL-1.0",
+    "Ubuntu-font-1.0",
+]
+confidence-threshold = 0.8
+exceptions = []
+
+[advisories]
+db-path = "~/.cargo/advisory-dbs"
+db-urls = ["https://github.com/RustSec/advisory-db"]
+yanked = "deny"
+ignore = [
+    # ttf-parser is frozen, not broken: the workhorse of our text pipeline
+    # (shaping input + outline extraction). No maintained fork covers its
+    # API; we pin 0.25 and watch for actual vulnerabilities.
+    "RUSTSEC-2026-0192",
+    # paste: transitive proc-macro glue (winit etc.). No runtime surface.
+    "RUSTSEC-2024-0436",
+    # smartstring: transitive via rhai (scripting strings). No fix path
+    # without forking rhai; unmaintained but not vulnerable.
+    "RUSTSEC-2026-0249",
+    # lopdf stack overflow on adversarial nesting: mitigated in-tree
+    # (pdf_import::load_pdf_guarded parses on a 256MB-stack thread behind
+    # a 256MB input cap), so the residual is a slow-parse DoS at worst.
+    # Revisit when upstream ships a fix.
+    "RUSTSEC-2026-0187",
+]
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []
+
+[bans]
+multiple-versions = "allow"
+wildcards = "deny"
+highlight = "all"
