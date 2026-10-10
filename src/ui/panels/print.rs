@@ -13,27 +13,34 @@ fn generate_traps(state: &mut AppState) {
     use crate::core::document::Layer;
     use crate::core::history::{AddLayerCommand, BatchCommand, Command, RemoveLayerCommand};
     use crate::core::trap::{find_trap_strokes, trap_object, TRAP_LAYER_NAME};
+    let locale = state.prefs.language.clone();
     let width = state.document.trap_width;
     if width <= 0.0 {
-        state.notify_info("トラップ幅を0より大きくしてください".to_string());
+        state.notify_info(crate::ui::i18n::text(&locale, "print.trap_width_error").into_owned());
         return;
     }
     let (strokes, skipped) = find_trap_strokes(&state.document, width);
     if strokes.is_empty() {
-        let mut msg = "共有辺がありません — トラップなし".to_string();
+        let mut msg = crate::ui::i18n::text(&locale, "print.no_shared_edges").into_owned();
         if skipped > 0 {
-            msg.push_str(&format!("（特色境界{skipped}件は対象外）"));
+            msg.push_str(&crate::ui::i18n::format(
+                &locale,
+                "print.skipped_spot_edges",
+                &[("count", &skipped.to_string())],
+            ));
         }
         state.notify_info(msg);
         return;
     }
     let mut cmds: Vec<Box<dyn Command>> = Vec::new();
-    if let Some(pos) = state
+    // Regeneration keeps the old slot so a manually-ordered Traps layer
+    // does not jump to the end on every rebuild.
+    let old_pos = state
         .document
         .layers
         .iter()
-        .position(|l| l.name == TRAP_LAYER_NAME)
-    {
+        .position(|l| l.name == TRAP_LAYER_NAME);
+    if let Some(pos) = old_pos {
         cmds.push(Box::new(RemoveLayerCommand {
             layer: state.document.layers[pos].clone(),
             index: pos,
@@ -46,16 +53,21 @@ fn generate_traps(state: &mut AppState) {
     let n = strokes.len();
     cmds.push(Box::new(AddLayerCommand {
         layer,
-        index: state.document.layers.len(),
+        index: old_pos.unwrap_or(state.document.layers.len()),
         prev_active: state.document.active_layer_idx,
     }));
     state.undo_manager.execute(
         Box::new(BatchCommand::new("Generate Traps", cmds)),
         &mut state.document,
     );
-    let mut msg = format!("トラップ{n}件を配置しました");
+    let mut msg =
+        crate::ui::i18n::format(&locale, "print.traps_placed", &[("count", &n.to_string())]);
     if skipped > 0 {
-        msg.push_str(&format!("（特色境界{skipped}件は対象外）"));
+        msg.push_str(&crate::ui::i18n::format(
+            &locale,
+            "print.skipped_spot_edges",
+            &[("count", &skipped.to_string())],
+        ));
     }
     state.notify_success(msg);
 }
@@ -64,13 +76,14 @@ fn generate_traps(state: &mut AppState) {
 fn remove_traps(state: &mut AppState) {
     use crate::core::history::RemoveLayerCommand;
     use crate::core::trap::TRAP_LAYER_NAME;
+    let locale = state.prefs.language.clone();
     let Some(pos) = state
         .document
         .layers
         .iter()
         .position(|l| l.name == TRAP_LAYER_NAME)
     else {
-        state.notify_info("トラップはありません".to_string());
+        state.notify_info(crate::ui::i18n::text(&locale, "print.no_traps").into_owned());
         return;
     };
     let cmd = RemoveLayerCommand {
@@ -81,52 +94,69 @@ fn remove_traps(state: &mut AppState) {
         Box::new(cmd) as Box<dyn crate::core::history::Command>,
         &mut state.document,
     );
-    state.notify_success("トラップを削除しました".to_string());
+    state.notify_success(crate::ui::i18n::text(&locale, "print.traps_removed").into_owned());
 }
 
 impl PrintPanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("Print").strong());
+        let locale = state.prefs.language.clone();
+        ui.heading(RichText::new(crate::ui::i18n::text(&locale, "print.title")).strong());
         ui.add_space(4.0);
 
         // Color mode + bleed.
         ui.horizontal(|ui| {
-            ui.label("モード:");
+            ui.label(crate::ui::i18n::text(&locale, "print.mode"));
             let cmyk = state.document.color_mode == ColorMode::Cmyk;
             if ui
                 .selectable_label(cmyk, "CMYK")
-                .on_hover_text("印刷用（書き出し時にCMYK/特色で出力）")
+                .on_hover_text(crate::ui::i18n::text(&locale, "print.cmyk_tip"))
                 .clicked()
             {
                 state.document.color_mode = ColorMode::Cmyk;
-                state.notify_info("CMYKモードに切り替えました");
+                state.notify_info(crate::ui::i18n::text(&locale, "print.cmyk_enabled"));
             }
             if ui
                 .selectable_label(!cmyk, "RGB")
-                .on_hover_text("画面用")
+                .on_hover_text(crate::ui::i18n::text(&locale, "print.rgb_tip"))
                 .clicked()
             {
                 state.document.color_mode = ColorMode::Rgb;
             }
         });
         ui.horizontal(|ui| {
-            ui.label("ブリード:");
+            ui.label(crate::ui::i18n::text(&locale, "print.bleed"));
             let mut mm = state.document.bleed * 25.4 / 72.0;
             if ui
-                .add(egui::DragValue::new(&mut mm).speed(0.1).range(0.0..=20.0).suffix("mm"))
+                .add(
+                    egui::DragValue::new(&mut mm)
+                        .speed(0.1)
+                        .range(0.0..=20.0)
+                        .suffix("mm"),
+                )
                 .changed()
             {
                 state.document.bleed = (mm * 72.0 / 25.4).max(0.0);
             }
         });
-        ui.checkbox(&mut state.print_marks, "トンボ・レジスターマーク");
-        ui.checkbox(&mut state.print_pdfx, "PDF/X-1a互換出力");
+        ui.checkbox(
+            &mut state.print_marks,
+            crate::ui::i18n::text(&locale, "print.marks"),
+        );
+        ui.checkbox(
+            &mut state.export_outline_text,
+            crate::ui::i18n::text(&locale, "print.outline_text"),
+        )
+        .on_hover_text(crate::ui::i18n::text(&locale, "utility.outline_text_tip"));
+        ui.checkbox(
+            &mut state.print_pdfx,
+            crate::ui::i18n::text(&locale, "print.pdfx"),
+        );
         ui.add_space(4.0);
 
         // Separations preview: pick which plate the canvas shows.
         // Preview-only; the document is untouched.
         ui.horizontal(|ui| {
-            ui.label("版プレビュー:");
+            ui.label(crate::ui::i18n::text(&locale, "print.separations_preview"));
             let mut plates: Vec<print::PreviewPlate> = vec![
                 print::PreviewPlate::Composite,
                 print::PreviewPlate::Cyan,
@@ -157,7 +187,7 @@ impl PrintPanel {
         });
         if state.preview_plate != print::PreviewPlate::Composite {
             ui.label(
-                RichText::new("版プレビュー中：表示のみ、データは変更されません")
+                RichText::new(crate::ui::i18n::text(&locale, "print.preview_notice"))
                     .weak()
                     .size(10.0),
             );
@@ -166,12 +196,13 @@ impl PrintPanel {
         ui.separator();
 
         // Spot library.
-        ui.label(RichText::new("特色ライブラリ").strong());
+        ui.label(RichText::new(crate::ui::i18n::text(&locale, "print.spot_library")).strong());
         let mut delete: Option<String> = None;
         for spot in state.document.spots.clone() {
             ui.horizontal(|ui| {
                 let rgb = spot.preview_rgb();
-                let (rect, _) = ui.allocate_exact_size(egui::Vec2::splat(16.0), egui::Sense::hover());
+                let (rect, _) =
+                    ui.allocate_exact_size(egui::Vec2::splat(16.0), egui::Sense::hover());
                 if ui.is_rect_visible(rect) {
                     ui.painter().rect_filled(
                         rect,
@@ -201,27 +232,179 @@ impl PrintPanel {
             state.document.spots.retain(|s| s.name != name);
             // Dangling references fall back to process color (exporter +
             // preflight handle them); nothing else to repair.
-            state.notify_info(format!("特色「{name}」を削除しました"));
+            state.notify_info(crate::ui::i18n::format(
+                &locale,
+                "print.spot_deleted",
+                &[("name", &name)],
+            ));
         }
-        if ui.button("現在の塗り色を特色登録").clicked() {
+        if ui
+            .button(crate::ui::i18n::text(&locale, "print.register_fill_spot"))
+            .clicked()
+        {
             let c = state.fill_color;
             // Register with the same ink the exporter would write, so the
             // spot's process fallback and the plates cannot drift apart.
             let ink = crate::core::icc::rgb_to_cmyk([c[0], c[1], c[2], 1.0]);
             let n = state.document.spots.len() + 1;
-            let name = format!("Spot {n}");
-            state.document.spots.push(print::SpotColor::new(name.clone(), ink));
-            state.notify_success(format!("特色「{name}」を登録しました"));
+            let name =
+                crate::ui::i18n::format(&locale, "print.spot_name", &[("count", &n.to_string())]);
+            state
+                .document
+                .spots
+                .push(print::SpotColor::new(name.clone(), ink));
+            state.notify_success(crate::ui::i18n::format(
+                &locale,
+                "print.spot_registered",
+                &[("name", &name)],
+            ));
+        }
+        // Pantone kit lookup: kit ink when the formula is known, the
+        // current fill as the honest fallback otherwise.
+        ui.horizontal(|ui| {
+            ui.label(crate::ui::i18n::text(&locale, "print.pantone_name"));
+            let resp = ui.add(
+                egui::TextEdit::singleline(&mut state.spot_kit_query)
+                    .desired_width(150.0)
+                    .hint_text("Pantone 185 C"),
+            );
+            if resp.changed() {
+                state.spot_kit_last_hit =
+                    crate::core::print::pantone_display_name(state.spot_kit_query.trim());
+            }
+            if let Some(hit) = state.spot_kit_last_hit {
+                if let Some(cmyk) = crate::core::print::pantone_cmyk(hit) {
+                    let ink = cmyk
+                        .iter()
+                        .take(3)
+                        .map(|c| (c * 100.0).round() as i32)
+                        .map(|c| c.to_string())
+                        .collect::<Vec<_>>()
+                        .join("/");
+                    ui.label(crate::ui::i18n::format(
+                        &locale,
+                        "print.pantone_hit",
+                        &[("ink", &ink)],
+                    ));
+                }
+            }
+            if ui
+                .button(crate::ui::i18n::text(&locale, "print.pantone_register"))
+                .clicked()
+            {
+                let q = state.spot_kit_query.trim().to_string();
+                if !q.is_empty() {
+                    let (name, ink, known) = match crate::core::print::pantone_display_name(&q) {
+                        Some(display) => {
+                            let cmyk = crate::core::print::pantone_cmyk(&q).unwrap_or([0.0; 4]);
+                            (display.to_string(), cmyk, true)
+                        }
+                        None => {
+                            let c = state.fill_color;
+                            (
+                                q.clone(),
+                                crate::core::icc::rgb_to_cmyk([c[0], c[1], c[2], 1.0]),
+                                false,
+                            )
+                        }
+                    };
+                    if !state.document.spots.iter().any(|s| s.name == name) {
+                        state
+                            .document
+                            .spots
+                            .push(print::SpotColor::new(name.clone(), ink));
+                    }
+                    if known {
+                        let ink_txt = ink
+                            .iter()
+                            .map(|c| (c * 100.0).round() as i32)
+                            .map(|c| c.to_string())
+                            .collect::<Vec<_>>()
+                            .join("/");
+                        state.notify_success(crate::ui::i18n::format(
+                            &locale,
+                            "print.pantone_registered",
+                            &[("name", &name), ("ink", &ink_txt)],
+                        ));
+                    } else {
+                        state.notify_info(crate::ui::i18n::format(
+                            &locale,
+                            "print.pantone_unknown",
+                            &[("name", &q)],
+                        ));
+                    }
+                }
+            }
+        });
+        // Adobe Swatch Exchange import (read-only subset; see io::ase).
+        if ui
+            .button(crate::ui::i18n::text(&locale, "print.ase_import"))
+            .clicked()
+        {
+            if let Some(path) = rfd::FileDialog::new()
+                .add_filter("Adobe Swatch Exchange", &["ase"])
+                .pick_file()
+            {
+                match crate::io::ase::import_ase(&path) {
+                    Ok(spots) if spots.is_empty() => {
+                        state.notify_info(crate::ui::i18n::format(
+                            &locale,
+                            "print.ase_imported",
+                            &[("count", "0")],
+                        ));
+                    }
+                    Ok(spots) => {
+                        let n = spots.len();
+                        for spot in spots {
+                            if !state.document.spots.iter().any(|s| s.name == spot.name) {
+                                state.document.spots.push(spot);
+                            }
+                        }
+                        state.notify_success(crate::ui::i18n::format(
+                            &locale,
+                            "print.ase_imported",
+                            &[("count", &n.to_string())],
+                        ));
+                    }
+                    Err(e) => {
+                        state.notify_error(crate::ui::i18n::format(
+                            &locale,
+                            "print.ase_failed",
+                            &[("reason", &e.to_string())],
+                        ));
+                    }
+                }
+            }
+        }
+        // Bundled swatch libraries (our own traditional-color set).
+        if !crate::io::library::built_in_swatches().is_empty() {
+            ui.label(crate::ui::i18n::text(&locale, "print.swatch_libraries"));
+            for lib in crate::io::library::built_in_swatches() {
+                if ui.button(&lib.name).clicked() {
+                    let mut added = 0usize;
+                    for spot in lib.to_spots() {
+                        if !state.document.spots.iter().any(|s| s.name == spot.name) {
+                            state.document.spots.push(spot);
+                            added += 1;
+                        }
+                    }
+                    state.notify_success(crate::ui::i18n::format(
+                        &locale,
+                        "print.swatch_imported",
+                        &[("name", &lib.name), ("count", &added.to_string())],
+                    ));
+                }
+            }
         }
         ui.add_space(4.0);
         ui.separator();
 
         // Trapping: spread strokes along shared edges.
-        ui.label(RichText::new("トラップ").strong());
+        ui.label(RichText::new(crate::ui::i18n::text(&locale, "print.trapping")).strong());
         ui.horizontal(|ui| {
             // Direct document-field edit (same convention as bleed/mode
             // above): scalar doc settings are not undo-tracked anywhere.
-            ui.label("幅:");
+            ui.label(crate::ui::i18n::text(&locale, "print.width"));
             ui.add(
                 egui::DragValue::new(&mut state.document.trap_width)
                     .speed(0.05)
@@ -238,19 +421,24 @@ impl PrintPanel {
             .sum();
         ui.horizontal(|ui| {
             if ui
-                .button("トラップ生成")
-                .on_hover_text("共有辺に濃色スプレッド（オーバープリント）を配置")
+                .button(crate::ui::i18n::text(&locale, "print.generate_traps"))
+                .on_hover_text(crate::ui::i18n::text(&locale, "print.generate_traps_tip"))
                 .clicked()
             {
                 generate_traps(state);
             }
-            if ui.button("トラップ削除").clicked() {
+            if ui
+                .button(crate::ui::i18n::text(&locale, "print.remove_traps"))
+                .clicked()
+            {
                 remove_traps(state);
             }
         });
         ui.label(
-            RichText::new(format!(
-                "配置済み: {trap_count}件（特色境界・グラデーションは対象外）"
+            RichText::new(crate::ui::i18n::format(
+                &locale,
+                "print.traps_count",
+                &[("count", &trap_count.to_string())],
             ))
             .weak()
             .size(10.0),
@@ -259,7 +447,7 @@ impl PrintPanel {
         ui.separator();
 
         // Preflight.
-        ui.label(RichText::new("プリフライト").strong());
+        ui.label(RichText::new(crate::ui::i18n::text(&locale, "print.preflight")).strong());
         for issue in print::preflight(&state.document) {
             let (icon, color) = match issue.level {
                 PreflightLevel::Pass => ("●", Color32::from_rgb(80, 200, 120)),
@@ -274,7 +462,10 @@ impl PrintPanel {
         ui.add_space(4.0);
 
         // Export.
-        if ui.button("印刷用PDFを書き出し").clicked() {
+        if ui
+            .button(crate::ui::i18n::text(&locale, "print.export_pdf"))
+            .clicked()
+        {
             if let Some(path) = rfd::FileDialog::new()
                 .add_filter("PDF", &["pdf"])
                 .set_file_name("print.pdf")
@@ -284,6 +475,7 @@ impl PrintPanel {
                     marks: state.print_marks,
                     bleed: None,
                     pdfx: state.print_pdfx,
+                    outline_text: state.export_outline_text,
                 };
                 let (bytes, warnings) =
                     crate::io::pdf_print::export_pdf_print(&state.document, &opts);
@@ -292,23 +484,29 @@ impl PrintPanel {
                 // exactly why, instead of shipping a bogus compliant file.
                 // (Uncheck PDF/X-1a to export the same content untagged.)
                 if opts.pdfx && warnings.iter().any(|w| w.starts_with("PDF/X-1a違反")) {
-                    state.notify_error(format!(
-                        "PDF/X-1a違反のため書き出しを中止: {}",
-                        warnings.join(" / ")
+                    state.notify_error(crate::ui::i18n::format(
+                        &locale,
+                        "print.pdfx_violation",
+                        &[("details", &warnings.join(" / "))],
                     ));
                 } else {
                     match crate::io::atomic::atomic_write_bytes(&path, &bytes) {
                         Ok(_) => {
-                            let mut msg =
-                                format!("印刷用PDFを書き出しました ({}KB)", bytes.len() / 1024);
+                            let mut msg = crate::ui::i18n::format(
+                                &locale,
+                                "print.pdf_exported",
+                                &[("size", &(bytes.len() / 1024).to_string())],
+                            );
                             if !warnings.is_empty() {
                                 msg.push_str(&format!(" — {}", warnings.join(" / ")));
                             }
                             state.notify_success(msg);
                         }
-                        Err(e) => {
-                            state.notify_error(format!("書き出しに失敗しました: {e}"))
-                        }
+                        Err(e) => state.notify_error(crate::ui::i18n::format(
+                            &locale,
+                            "print.export_failed",
+                            &[("error", &e.to_string())],
+                        )),
                     }
                 }
             }

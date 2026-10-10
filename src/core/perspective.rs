@@ -77,7 +77,11 @@ impl PerspectiveGrid {
         let mut best_i = 0;
         for i in 0..n {
             let a = angs[i];
-            let b = if i + 1 < n { angs[i + 1] } else { angs[0] + 2.0 * std::f64::consts::PI };
+            let b = if i + 1 < n {
+                angs[i + 1]
+            } else {
+                angs[0] + 2.0 * std::f64::consts::PI
+            };
             if b - a > best_gap {
                 best_gap = b - a;
                 best_i = i;
@@ -88,7 +92,9 @@ impl PerspectiveGrid {
         let rays = self.rays.max(2);
         if span >= std::f64::consts::PI * 1.5 {
             // VP inside (or hugging) the canvas: full circle.
-            (0..rays).map(|i| start + i as f64 * 2.0 * std::f64::consts::PI / rays as f64).collect()
+            (0..rays)
+                .map(|i| start + i as f64 * 2.0 * std::f64::consts::PI / rays as f64)
+                .collect()
         } else {
             (0..rays)
                 .map(|i| start + i as f64 * span / (rays - 1) as f64)
@@ -164,7 +170,12 @@ pub fn clip_seg_to_rect(
     let (ry0, ry1) = if y0 < y1 { (y0, y1) } else { (y1, y0) };
     let (mut t0, mut t1) = (0.0, 1.0);
     let (dx, dy) = (p1.0 - p0.0, p1.1 - p0.1);
-    for (p, q) in [(-dx, p0.0 - rx0), (dx, rx1 - p0.0), (-dy, p0.1 - ry0), (dy, ry1 - p0.1)] {
+    for (p, q) in [
+        (-dx, p0.0 - rx0),
+        (dx, rx1 - p0.0),
+        (-dy, p0.1 - ry0),
+        (dy, ry1 - p0.1),
+    ] {
         if p.abs() < 1e-12 {
             if q < 0.0 {
                 return None;
@@ -219,7 +230,9 @@ mod tests {
         g.snap = true;
         let canvas = (0.0, 0.0, 400.0, 300.0);
         // On the horizon already: snaps to itself.
-        let p = g.snap_point(123.0, g.horizon_y, canvas, 5.0).expect("horizon");
+        let p = g
+            .snap_point(123.0, g.horizon_y, canvas, 5.0)
+            .expect("horizon");
         assert!((p.0 - 123.0).abs() < 1e-6 && (p.1 - g.horizon_y).abs() < 1e-9);
         // Far from everything: no snap.
         assert!(g.snap_point(200.0, 299.0, canvas, 0.01).is_none());
@@ -233,6 +246,6 @@ mod tests {
         let r = (0.0, 0.0, 10.0, 10.0);
         assert!(clip_seg_to_rect((20.0, 20.0), (30.0, 30.0), r).is_none());
         let kept = clip_seg_to_rect((-5.0, 5.0), (15.0, 5.0), r).expect("clipped");
-        assert!((kept.0.0 - 0.0).abs() < 1e-9 && (kept.1.0 - 10.0).abs() < 1e-9);
+        assert!((kept.0 .0 - 0.0).abs() < 1e-9 && (kept.1 .0 - 10.0).abs() < 1e-9);
     }
 }

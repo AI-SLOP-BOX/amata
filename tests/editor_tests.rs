@@ -414,7 +414,11 @@ fn test_raster_export_webp_and_avif() {
     // ISO-BMFF container: size(4) + "ftyp"(4) + major brand "avif"/"avis"
     assert_eq!(&avif_bytes[4..8], b"ftyp");
     let brand = &avif_bytes[8..12];
-    assert!(brand == b"avif" || brand == b"avis", "unexpected AVIF brand: {:?}", brand);
+    assert!(
+        brand == b"avif" || brand == b"avis",
+        "unexpected AVIF brand: {:?}",
+        brand
+    );
 
     // Round-trip: WebP/AVIF bytes must decode back into placeable images
     let (w, h, png) = irasu_illustrator::io::raster::decode_placed_image(&webp_bytes)

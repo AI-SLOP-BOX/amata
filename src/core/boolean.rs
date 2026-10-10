@@ -186,10 +186,7 @@ fn gh_seg_dist_t(p: AnchorPoint, a: AnchorPoint, b: AnchorPoint) -> (f64, f64) {
         return (p.distance(a), 0.0);
     }
     let t = (((p.x - a.x) * dx + (p.y - a.y) * dy) / len_sq).clamp(0.0, 1.0);
-    (
-        AnchorPoint::new(a.x + t * dx, a.y + t * dy).distance(p),
-        t,
-    )
+    (AnchorPoint::new(a.x + t * dx, a.y + t * dy).distance(p), t)
 }
 
 /// A polygon is convex when all turns share a sign (collinear runs OK).
@@ -647,8 +644,7 @@ fn gh_boolean(subject: &[AnchorPoint], clip: &[AnchorPoint], op: GhOp) -> Vec<Ve
                             s_list[ahead_idx].p
                         };
                         let self_poly = if on_s { subject } else { clip };
-                        let probe_in =
-                            gh_probe(node_p, gh_edge_dir(node_p, ahead_p), self_poly);
+                        let probe_in = gh_probe(node_p, gh_edge_dir(node_p, ahead_p), self_poly);
                         // Candidates live on the other polygon (!on_s),
                         // tested against this one.
                         if gh_keep(op, !on_s, probe_in) {
@@ -717,4 +713,3 @@ fn gh_boolean(subject: &[AnchorPoint], clip: &[AnchorPoint], op: GhOp) -> Vec<Ve
     }
     rings
 }
-

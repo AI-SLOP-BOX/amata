@@ -19,8 +19,12 @@ fn style(size: f64, max_w: f64) -> TextStyle {
         word_wrap: true,
         variations: Vec::new(),
         vertical: false,
+        auto_spacing: true,
+        auto_spacing_em: 0.25,
         ligatures: true,
+        ot_features: Vec::new(),
         list: irasu_illustrator::core::document::ListStyle::None,
+        burasage: true,
     }
 }
 
@@ -39,7 +43,10 @@ fn test_fullwidth_advances_full_em() {
     assert!((char_advance_estimate('漢') - 1.0).abs() < 1e-9);
     assert!((char_advance_estimate('한') - 1.0).abs() < 1e-9);
     assert!((char_advance_estimate('A') - 0.6).abs() < 1e-9);
-    assert!((char_advance_estimate('ｱ') - 0.6).abs() < 1e-9, "halfwidth kana stays narrow");
+    assert!(
+        (char_advance_estimate('ｱ') - 0.6).abs() < 1e-9,
+        "halfwidth kana stays narrow"
+    );
 }
 
 #[test]
@@ -245,7 +252,8 @@ fn test_kerning_applies_between_glyphs() {
         .unwrap_or_else(|| "sans-serif".to_string());
     let mut st = TextStyle::new(family, 100.0);
     st.font_style = irasu_illustrator::core::document::FontStyle::Normal;
-    let outline = |s: &str| irasu_illustrator::core::text_path::text_to_outline_path_with_style(s, &st);
+    let outline =
+        |s: &str| irasu_illustrator::core::text_path::text_to_outline_path_with_style(s, &st);
     let x1 = |s: &str| outline(s).bounding_box().map(|(_, mx)| mx.x);
     let pair_str: String = [ca, cb].iter().collect();
     let (x1_pair, x1_b, x0_pair, x0_a) = match (
@@ -332,27 +340,39 @@ fn test_area_export_clips_and_round_trips() {
     doc.width = 400.0;
     doc.height = 300.0;
     let mut obj = Object::new_text("T", "あいうえお", 10.0, 20.0, 10.0);
-    if let irasu_illustrator::core::document::ObjectType::Text { area, .. } =
-        &mut obj.object_type
-    {
+    if let irasu_illustrator::core::document::ObjectType::Text { area, .. } = &mut obj.object_type {
         *area = Some(TextArea::new(0.0, 0.0, 25.0, 30.0));
     }
     doc.add_object(obj);
     let svg = export_svg(&doc);
-    assert!(svg.contains("data-text-area=\"0 0 25 30\""), "box preserved");
-    assert!(svg.contains("<clipPath"), "overflow is clipped, not dropped");
+    assert!(
+        svg.contains("data-text-area=\"0 0 25 30\""),
+        "box preserved"
+    );
+    assert!(
+        svg.contains("<clipPath"),
+        "overflow is clipped, not dropped"
+    );
     // Position composes: object at (10,20), box at local (0,0).
     assert!(svg.contains("x=\"10\""), "text x includes object offset");
     let doc2 = parse_svg_document(&svg);
     let back = doc2
         .all_objects()
         .map(|(_, o)| o)
-        .find(|o| matches!(o.object_type, irasu_illustrator::core::document::ObjectType::Text { .. }))
+        .find(|o| {
+            matches!(
+                o.object_type,
+                irasu_illustrator::core::document::ObjectType::Text { .. }
+            )
+        })
         .expect("text reimports");
     if let irasu_illustrator::core::document::ObjectType::Text { area, text, .. } =
         &back.object_type
     {
-        assert_eq!(text, "あい\nうえ\nお", "lines survive as breaks, overflow kept");
+        assert_eq!(
+            text, "あい\nうえ\nお",
+            "lines survive as breaks, overflow kept"
+        );
         let a = area.expect("area round-trips");
         assert_eq!((a.x, a.y, a.width, a.height), (0.0, 0.0, 25.0, 30.0));
     } else {
@@ -367,9 +387,7 @@ fn test_area_diff_detected() {
     let mut b = Document::default();
     a.add_object(Object::new_text("T", "hi", 0.0, 0.0, 12.0));
     let mut obj = Object::new_text("T", "hi", 0.0, 0.0, 12.0);
-    if let irasu_illustrator::core::document::ObjectType::Text { area, .. } =
-        &mut obj.object_type
-    {
+    if let irasu_illustrator::core::document::ObjectType::Text { area, .. } = &mut obj.object_type {
         *area = Some(TextArea::new(0.0, 0.0, 100.0, 50.0));
     }
     b.add_object(obj);
@@ -377,7 +395,79 @@ fn test_area_diff_detected() {
     let changed: Vec<_> = diff
         .objects
         .iter()
-        .filter(|d| matches!(d.status, irasu_illustrator::core::diff::ObjectDiffStatus::Modified { .. }))
+        .filter(|d| {
+            matches!(
+                d.status,
+                irasu_illustrator::core::diff::ObjectDiffStatus::Modified { .. }
+            )
+        })
         .collect();
     assert_eq!(changed.len(), 1, "boxing the text is a modification");
+}
+
+#[test]
+fn test_crlf_paste_wraps_like_lf() {
+    // Windows pastes carry \r\n: the stray \r used to map to .notdef and
+    // tofu the whole run, and counted 0.6em in wrapping.
+    let lf = compute_wrapped_lines("あいう\nえお", &style(10.0, 25.0), 25.0);
+    let crlf = compute_wrapped_lines("あいう\r\nえお", &style(10.0, 25.0), 25.0);
+    assert_eq!(lf, crlf);
+    assert_eq!(crlf.concat(), "あいうえお");
+    let layout = layout_text("a\r\nb", &style(10.0, 1000.0), None);
+    assert_eq!(layout.lines, vec!["a".to_string(), "b".to_string()]);
+}
+
+#[test]
+fn test_emoji_counts_fullwidth_in_wrap() {
+    // Emoji used to estimate 0.6em, overflowing CJK boxes by ~40%.
+    let lines = compute_wrapped_lines("😀😀😀", &style(10.0, 25.0), 25.0);
+    assert_eq!(lines.len(), 2, "2 fullwidth emoji per 25px line: {lines:?}");
+    assert_eq!(lines.concat(), "😀😀😀");
+    // VS16/ZWJ add no width: flag sequence stays on one CJK-width line.
+    let flag = compute_wrapped_lines("🇯🇵あ", &style(10.0, 1000.0), 1000.0);
+    assert_eq!(flag.len(), 1);
+    assert_eq!(flag.concat(), "🇯🇵あ");
+}
+
+#[test]
+fn test_halfwidth_brackets_and_dash_kinsoku() {
+    let st = style(10.0, 10.0);
+    for text in ["あ｣あ", "あｰあ", "あ—あ", "あ―あ", "あゝあ"] {
+        let lines = compute_wrapped_lines(text, &st, 10.0);
+        assert_eq!(lines.concat(), text, "no text lost: {lines:?}");
+    }
+    let lines = compute_wrapped_lines("あいう｣えお", &style(10.0, 25.0), 25.0);
+    assert!(lines.iter().all(|l| !l.starts_with('｣')), "{lines:?}");
+    let lines = compute_wrapped_lines("あいう｢えお", &style(10.0, 35.0), 35.0);
+    assert!(lines.iter().all(|l| !l.ends_with('｢')), "{lines:?}");
+}
+
+#[test]
+fn test_tsv_paste_wraps_at_tabs() {
+    let lines = compute_wrapped_lines("aa\tbb\tcc", &style(10.0, 30.0), 30.0);
+    assert!(lines.len() >= 2, "tabs must break like spaces: {lines:?}");
+    assert_eq!(lines.concat().replace('\t', ""), "aabbcc");
+}
+
+#[test]
+fn test_hostile_style_never_leaks_nan() {
+    // Hand-edited JSON may carry NaN/Inf/negative text metrics; layout,
+    // measurement and SVG/PDF export must stay finite (no "NaN" literals).
+    use irasu_illustrator::core::document::Document;
+    let mut st = style(10.0, 100.0);
+    st.font_size = f64::NAN;
+    st.letter_spacing = f64::NAN;
+    st.line_height = Some(f64::INFINITY);
+    let layout = layout_text("あいうえお", &st, Some(TextArea::new(0.0, 0.0, 50.0, 50.0)));
+    assert!(layout.origin.0.is_finite() && layout.origin.1.is_finite());
+    let mut doc = Document::default();
+    let mut obj = Object::new_text("T", "あいう", 10.0, 20.0, 12.0);
+    if let irasu_illustrator::core::document::ObjectType::Text { style: s, .. } =
+        &mut obj.object_type
+    {
+        *s = st;
+    }
+    doc.add_object(obj);
+    let svg = irasu_illustrator::io::svg::export_svg(&doc);
+    assert!(!svg.contains("NaN"), "export must not serialize NaN");
 }

@@ -10,7 +10,8 @@ pub struct AutoLayoutPanel;
 
 impl AutoLayoutPanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading("オートレイアウト");
+        let locale = state.prefs.language.clone();
+        ui.heading(crate::ui::i18n::text(&locale, "auto_layout.title"));
         ui.add_space(6.0);
 
         let selected: Vec<String> = state.selected_ids.clone();
@@ -18,10 +19,13 @@ impl AutoLayoutPanel {
         // Multi-select → create group with auto layout.
         let group_target = if selected.len() >= 2 {
             if ui
-                .button("オートレイアウトを追加（選択をグループ化）")
+                .button(crate::ui::i18n::text(
+                    &locale,
+                    "auto_layout.create_selection",
+                ))
                 .clicked()
             {
-                create_from_selection(state);
+                create_from_selection(state, &locale);
             }
             ui.separator();
             selected
@@ -43,7 +47,7 @@ impl AutoLayoutPanel {
         };
 
         let Some(group_id) = group_target else {
-            ui.label("グループ、または複数のオブジェクトを選択してください。");
+            ui.label(crate::ui::i18n::text(&locale, "auto_layout.select_group"));
             return;
         };
 
@@ -52,32 +56,44 @@ impl AutoLayoutPanel {
             return;
         };
         if !matches!(group.object_type, ObjectType::Group(ref c) if !c.is_empty()) {
-            ui.label("選択したグループが空です。");
+            ui.label(crate::ui::i18n::text(&locale, "auto_layout.empty_group"));
             return;
         }
 
-        let mut layout = group
-            .auto_layout
-            .unwrap_or_else(AutoLayout::default);
+        let mut layout = group.auto_layout.unwrap_or_else(AutoLayout::default);
         let mut dirty = false;
 
         egui::Grid::new("auto_layout_grid")
             .num_columns(2)
             .spacing([8.0, 4.0])
             .show(ui, |ui| {
-                ui.label("向き");
+                ui.label(crate::ui::i18n::text(&locale, "auto_layout.direction"));
                 let mut horiz = layout.direction == AutoLayoutDirection::Horizontal;
-                if ui.selectable_value(&mut horiz, true, "横").changed() {
+                if ui
+                    .selectable_value(
+                        &mut horiz,
+                        true,
+                        crate::ui::i18n::text(&locale, "auto_layout.horizontal"),
+                    )
+                    .changed()
+                {
                     layout.direction = AutoLayoutDirection::Horizontal;
                     dirty = true;
                 }
-                if ui.selectable_value(&mut horiz, false, "縦").changed() {
+                if ui
+                    .selectable_value(
+                        &mut horiz,
+                        false,
+                        crate::ui::i18n::text(&locale, "auto_layout.vertical"),
+                    )
+                    .changed()
+                {
                     layout.direction = AutoLayoutDirection::Vertical;
                     dirty = true;
                 }
                 ui.end_row();
 
-                ui.label("間隔");
+                ui.label(crate::ui::i18n::text(&locale, "auto_layout.gap"));
                 let mut gap = layout.gap as f32;
                 if ui
                     .add(egui::DragValue::new(&mut gap).range(0.0..=10_000.0))
@@ -88,7 +104,7 @@ impl AutoLayoutPanel {
                 }
                 ui.end_row();
 
-                ui.label("余白");
+                ui.label(crate::ui::i18n::text(&locale, "auto_layout.padding"));
                 let mut pad = [
                     layout.padding_top as f32,
                     layout.padding_right as f32,
@@ -97,7 +113,13 @@ impl AutoLayoutPanel {
                 ];
                 let mut pad_changed = false;
                 ui.horizontal(|ui| {
-                    for (i, label) in ["上", "右", "下", "左"].iter().enumerate() {
+                    let labels = [
+                        crate::ui::i18n::text(&locale, "auto_layout.top"),
+                        crate::ui::i18n::text(&locale, "auto_layout.right"),
+                        crate::ui::i18n::text(&locale, "auto_layout.bottom"),
+                        crate::ui::i18n::text(&locale, "auto_layout.left"),
+                    ];
+                    for (i, label) in labels.iter().enumerate() {
                         if ui
                             .add(
                                 egui::DragValue::new(&mut pad[i])
@@ -119,9 +141,12 @@ impl AutoLayoutPanel {
                 }
                 ui.end_row();
 
-                ui.label("並び順");
+                ui.label(crate::ui::i18n::text(&locale, "auto_layout.order"));
                 if ui
-                    .checkbox(&mut layout.reverse, "逆順")
+                    .checkbox(
+                        &mut layout.reverse,
+                        crate::ui::i18n::text(&locale, "auto_layout.reverse"),
+                    )
                     .changed()
                 {
                     dirty = true;
@@ -132,18 +157,19 @@ impl AutoLayoutPanel {
         layout.normalize();
 
         if dirty || group.auto_layout != Some(layout) {
-            apply_auto_layout(state, &group_id, layout, "オートレイアウト");
+            apply_auto_layout(state, &group_id, layout, "Add Auto Layout");
         }
     }
 }
 
-fn create_from_selection(state: &mut AppState) {
+fn create_from_selection(state: &mut AppState, locale: &str) {
     let layout = AutoLayout::default();
+    let group_name = crate::ui::i18n::text(locale, "auto_layout.title").into_owned();
     state.replace_selected("Add Auto Layout", |objects| {
         if objects.len() < 2 {
             return None;
         }
-        let mut group = Object::new_group("オートレイアウト", objects);
+        let mut group = Object::new_group(&group_name, objects);
         group.auto_layout = Some(layout);
         if let ObjectType::Group(children) = &mut group.object_type {
             let moves = compute_moves(&layout, children);
@@ -181,7 +207,14 @@ fn compute_moves(layout: &AutoLayout, children: &[Object]) -> Vec<(usize, f64, f
             } else {
                 min.y
             };
-            Some((c.id.clone(), main_min, cross_min, extent, c.transform.x, c.transform.y))
+            Some((
+                c.id.clone(),
+                main_min,
+                cross_min,
+                extent,
+                c.transform.x,
+                c.transform.y,
+            ))
         })
         .collect();
 

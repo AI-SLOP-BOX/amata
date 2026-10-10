@@ -208,17 +208,11 @@ impl IrasuApp {
                 for id in &ids {
                     // Clone first (nested children included), then locate for
                     // an undo that restores the true parent/position.
-                    if let Some(obj) = self
-                        .state
-                        .document
-                        .find_object(id)
-                        .cloned()
-                    {
-                        let cmd =
-                            crate::core::history::RemoveObjectCommand::located(
-                                obj,
-                                &self.state.document,
-                            );
+                    if let Some(obj) = self.state.document.find_object(id).cloned() {
+                        let cmd = crate::core::history::RemoveObjectCommand::located(
+                            obj,
+                            &self.state.document,
+                        );
                         cmds.push(Box::new(cmd));
                     }
                 }
@@ -264,9 +258,7 @@ impl IrasuApp {
                         &watcher.file_path,
                     ) {
                         Ok(_) => {
-                            if let Ok(content) =
-                                std::fs::read_to_string(&watcher.file_path)
-                            {
+                            if let Ok(content) = std::fs::read_to_string(&watcher.file_path) {
                                 watcher.mark_saved(&content);
                             } else {
                                 watcher.update_timestamp();
@@ -332,19 +324,13 @@ impl IrasuApp {
             }
 
             // Shortcuts help (Cmd+/ / Ctrl+/)
-            if (i.modifiers.ctrl || i.modifiers.mac_cmd)
-                && i.key_pressed(egui::Key::Slash)
-            {
+            if (i.modifiers.ctrl || i.modifiers.mac_cmd) && i.key_pressed(egui::Key::Slash) {
                 self.shortcuts_modal.is_open = true;
             }
 
             // Menu accelerators: Alt+F (File), Alt+H (Help) — match the
             // "(F)" / "(H)" hints on the top-level menu titles.
-            if i.modifiers.alt
-                && !i.modifiers.ctrl
-                && !i.modifiers.mac_cmd
-                && !i.modifiers.shift
-            {
+            if i.modifiers.alt && !i.modifiers.ctrl && !i.modifiers.mac_cmd && !i.modifiers.shift {
                 if i.key_pressed(egui::Key::F) {
                     // File: open New Document (primary File action).
                     self.new_doc_modal.is_open = true;
@@ -372,16 +358,16 @@ impl IrasuApp {
             // Arrange z-order (Cmd/Ctrl+] [ +Shift for front/back).
             // These were advertised on the arrange buttons but never bound.
             if (i.modifiers.ctrl || i.modifiers.mac_cmd)
-                && (i.key_pressed(egui::Key::CloseBracket)
-                    || i.key_pressed(egui::Key::OpenBracket))
+                && (i.key_pressed(egui::Key::CloseBracket) || i.key_pressed(egui::Key::OpenBracket))
             {
                 let forward = i.key_pressed(egui::Key::CloseBracket);
                 let jump = i.modifiers.shift;
                 let sel = self.state.selected_ids.clone();
                 if forward && jump {
-                    self.state.reorder_objects_undoable("Bring to Front", |doc| {
-                        arrange_move(&sel, doc, true, true);
-                    });
+                    self.state
+                        .reorder_objects_undoable("Bring to Front", |doc| {
+                            arrange_move(&sel, doc, true, true);
+                        });
                 } else if forward {
                     self.state.reorder_objects_undoable("Bring Forward", |doc| {
                         arrange_move(&sel, doc, true, false);
@@ -446,9 +432,7 @@ impl IrasuApp {
                     let mut added = Vec::new();
                     let mut new_ids = Vec::new();
                     for obj in objects {
-                        if let Some(outlined) =
-                            crate::core::text_path::create_text_outlines(&obj)
-                        {
+                        if let Some(outlined) = crate::core::text_path::create_text_outlines(&obj) {
                             new_ids.push(outlined.id.clone());
                             added.push(outlined);
                         } else {
@@ -530,15 +514,16 @@ impl IrasuApp {
                         },
                     );
                 } else {
-                    self.state.replace_selected("Make Compound Path", |objects| {
-                        if objects.len() < 2 {
-                            return None;
-                        }
-                        Object::make_compound_path(&objects).map(|compound| {
-                            let nid = compound.id.clone();
-                            (vec![compound], vec![nid])
-                        })
-                    });
+                    self.state
+                        .replace_selected("Make Compound Path", |objects| {
+                            if objects.len() < 2 {
+                                return None;
+                            }
+                            Object::make_compound_path(&objects).map(|compound| {
+                                let nid = compound.id.clone();
+                                (vec![compound], vec![nid])
+                            })
+                        });
                 }
             }
 
@@ -586,13 +571,14 @@ impl IrasuApp {
                 }
                 if cmds.len() == 1 {
                     let cmd = cmds.pop().unwrap();
-                    self.state.undo_manager.execute(cmd, &mut self.state.document);
+                    self.state
+                        .undo_manager
+                        .execute(cmd, &mut self.state.document);
                 } else if !cmds.is_empty() {
-                    let batch = Box::new(crate::core::history::BatchCommand::new(
-                        "Nudge",
-                        cmds,
-                    ));
-                    self.state.undo_manager.execute(batch, &mut self.state.document);
+                    let batch = Box::new(crate::core::history::BatchCommand::new("Nudge", cmds));
+                    self.state
+                        .undo_manager
+                        .execute(batch, &mut self.state.document);
                 }
             }
 
@@ -653,24 +639,24 @@ impl IrasuApp {
                 for id in &ids {
                     if let Some(obj) = self.state.document.find_object(id).cloned() {
                         self.state.clipboard.push(obj.clone());
-                        cmds.push(Box::new(
-                            crate::core::history::RemoveObjectCommand::located(
-                                obj,
-                                &self.state.document,
-                            ),
-                        )
+                        cmds.push(Box::new(crate::core::history::RemoveObjectCommand::located(
+                            obj,
+                            &self.state.document,
+                        ))
                             as Box<dyn crate::core::history::Command>);
                     }
                 }
                 if cmds.len() == 1 {
                     let cmd = cmds.pop().unwrap();
-                    self.state.undo_manager.execute(cmd, &mut self.state.document);
+                    self.state
+                        .undo_manager
+                        .execute(cmd, &mut self.state.document);
                 } else if !cmds.is_empty() {
-                    let batch = Box::new(crate::core::history::BatchCommand::new(
-                        "Cut Objects",
-                        cmds,
-                    ));
-                    self.state.undo_manager.execute(batch, &mut self.state.document);
+                    let batch =
+                        Box::new(crate::core::history::BatchCommand::new("Cut Objects", cmds));
+                    self.state
+                        .undo_manager
+                        .execute(batch, &mut self.state.document);
                 }
                 self.state.selected_ids.clear();
             }
@@ -705,20 +691,24 @@ impl IrasuApp {
                         offset += 15.0;
                     }
                     new_ids.push(new_obj.id.clone());
-                    cmds.push(Box::new(
-                        crate::core::history::AddObjectCommand::new(new_obj),
-                    )
-                        as Box<dyn crate::core::history::Command>);
+                    cmds.push(
+                        Box::new(crate::core::history::AddObjectCommand::new(new_obj))
+                            as Box<dyn crate::core::history::Command>,
+                    );
                 }
                 if cmds.len() == 1 {
                     let cmd = cmds.pop().unwrap();
-                    self.state.undo_manager.execute(cmd, &mut self.state.document);
+                    self.state
+                        .undo_manager
+                        .execute(cmd, &mut self.state.document);
                 } else if !cmds.is_empty() {
                     let batch = Box::new(crate::core::history::BatchCommand::new(
                         "Paste Objects",
                         cmds,
                     ));
-                    self.state.undo_manager.execute(batch, &mut self.state.document);
+                    self.state
+                        .undo_manager
+                        .execute(batch, &mut self.state.document);
                 }
                 self.state.selected_ids = new_ids;
             }
@@ -748,13 +738,17 @@ impl IrasuApp {
                 }
                 if cmds.len() == 1 {
                     let cmd = cmds.pop().unwrap();
-                    self.state.undo_manager.execute(cmd, &mut self.state.document);
+                    self.state
+                        .undo_manager
+                        .execute(cmd, &mut self.state.document);
                 } else if !cmds.is_empty() {
                     let batch = Box::new(crate::core::history::BatchCommand::new(
                         "Duplicate Objects",
                         cmds,
                     ));
-                    self.state.undo_manager.execute(batch, &mut self.state.document);
+                    self.state
+                        .undo_manager
+                        .execute(batch, &mut self.state.document);
                 }
                 self.state.selected_ids = new_ids;
             }

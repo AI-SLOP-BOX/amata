@@ -1,0 +1,449 @@
+{
+  "name": "A4縦組みポスター",
+  "layers": [
+    {
+      "id": "19e58ec0-898b-4928-b13e-baeede0e0460",
+      "name": "Layer 1",
+      "objects": [
+        {
+          "id": "0771b9fb-3b3c-4ace-b665-22a8a87b6c3c",
+          "name": "背景",
+          "object_type": {
+            "Rectangle": {
+              "width": 1240.0,
+              "height": 1754.0,
+              "corner_radius": 0.0
+            }
+          },
+          "transform": {
+            "x": 0.0,
+            "y": 0.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": {
+            "color": [
+              0.96,
+              0.94,
+              0.9,
+              1.0
+            ],
+            "fill_type": {
+              "Solid": [
+                0.96,
+                0.94,
+                0.9,
+                1.0
+              ]
+            },
+            "rule": "NonZero",
+            "overprint": false,
+            "spot": null
+          },
+          "stroke": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "width": 1.0,
+            "dash_pattern": null,
+            "cap": "Butt",
+            "join": "Miter",
+            "miter_limit": 4.0,
+            "arrow_start": "None",
+            "arrow_end": "None",
+            "overprint": false,
+            "spot": null
+          },
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        },
+        {
+          "id": "f885b60c-a408-43f8-af8b-457fe24c007e",
+          "name": "本文",
+          "object_type": {
+            "Text": {
+              "text": "｜組版《くみはん》の手本\n縦組みでも崩れない、\n和欧間12pt入りの\nサンプル_textです。",
+              "font_size": 34.0,
+              "style": {
+                "font_family": "Noto Sans JP",
+                "font_size": 34.0,
+                "font_weight": 400,
+                "font_style": "Normal",
+                "letter_spacing": 0.0,
+                "text_anchor": "Start",
+                "line_height": 1.8,
+                "max_width": 340.0,
+                "word_wrap": true,
+                "variations": [],
+                "vertical": true,
+                "auto_spacing": true,
+                "auto_spacing_em": 0.25,
+                "ligatures": true,
+                "ot_features": [],
+                "list": "None",
+                "burasage": true
+              },
+              "area": {
+                "x": 120.0,
+                "y": 160.0,
+                "width": 380.0,
+                "height": 1400.0,
+                "cols": 1,
+                "gutter": 12.0
+              },
+              "next_frame": null
+            }
+          },
+          "transform": {
+            "x": 120.0,
+            "y": 160.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "fill_type": {
+              "Solid": [
+                0.0,
+                0.0,
+                0.0,
+                1.0
+              ]
+            },
+            "rule": "NonZero",
+            "overprint": false,
+            "spot": null
+          },
+          "stroke": null,
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        },
+        {
+          "id": "f78bcae1-a10a-4836-9d13-7fb01c826bea",
+          "name": "見出し",
+          "object_type": {
+            "Text": {
+              "text": "季刊 組",
+              "font_size": 96.0,
+              "style": {
+                "font_family": "Noto Sans JP",
+                "font_size": 96.0,
+                "font_weight": 700,
+                "font_style": "Normal",
+                "letter_spacing": 0.0,
+                "text_anchor": "Start",
+                "line_height": null,
+                "max_width": null,
+                "word_wrap": false,
+                "variations": [],
+                "vertical": false,
+                "auto_spacing": true,
+                "auto_spacing_em": 0.25,
+                "ligatures": true,
+                "ot_features": [],
+                "list": "None",
+                "burasage": true
+              },
+              "area": {
+                "x": 760.0,
+                "y": 220.0,
+                "width": 360.0,
+                "height": 560.0,
+                "cols": 1,
+                "gutter": 12.0
+              },
+              "next_frame": null
+            }
+          },
+          "transform": {
+            "x": 760.0,
+            "y": 220.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "fill_type": {
+              "Solid": [
+                0.0,
+                0.0,
+                0.0,
+                1.0
+              ]
+            },
+            "rule": "NonZero",
+            "overprint": false,
+            "spot": null
+          },
+          "stroke": null,
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        },
+        {
+          "id": "dae1bc94-6808-448a-aa21-a73041d6b0f6",
+          "name": "リード",
+          "object_type": {
+            "Text": {
+              "text": "季刊号｜第《だい》十二巻\n二〇二六年・秋",
+              "font_size": 30.0,
+              "style": {
+                "font_family": "Noto Sans JP",
+                "font_size": 30.0,
+                "font_weight": 400,
+                "font_style": "Italic",
+                "letter_spacing": 0.0,
+                "text_anchor": "Start",
+                "line_height": null,
+                "max_width": null,
+                "word_wrap": false,
+                "variations": [],
+                "vertical": false,
+                "auto_spacing": true,
+                "auto_spacing_em": 0.25,
+                "ligatures": true,
+                "ot_features": [],
+                "list": "None",
+                "burasage": true
+              },
+              "area": {
+                "x": 760.0,
+                "y": 900.0,
+                "width": 360.0,
+                "height": 200.0,
+                "cols": 1,
+                "gutter": 12.0
+              },
+              "next_frame": null
+            }
+          },
+          "transform": {
+            "x": 760.0,
+            "y": 900.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "fill_type": {
+              "Solid": [
+                0.0,
+                0.0,
+                0.0,
+                1.0
+              ]
+            },
+            "rule": "NonZero",
+            "overprint": false,
+            "spot": null
+          },
+          "stroke": null,
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        }
+      ],
+      "visible": true,
+      "locked": false,
+      "opacity": 1.0
+    }
+  ],
+  "active_layer_idx": 0,
+  "width": 1240.0,
+  "height": 1754.0,
+  "symbols": [],
+  "timeline": {
+    "fps": 60.0,
+    "total_frames": 180,
+    "current_frame": 0,
+    "is_playing": false,
+    "loop_playback": true,
+    "tracks": []
+  },
+  "guides": [],
+  "color_mode": "Rgb",
+  "spots": [
+    {
+      "name": "Spot Reflex Blue",
+      "cmyk": [
+        1.0,
+        0.72,
+        0.0,
+        0.04
+      ]
+    },
+    {
+      "name": "Spot Warm Red",
+      "cmyk": [
+        0.0,
+        0.91,
+        0.76,
+        0.0
+      ]
+    },
+    {
+      "name": "Spot Green",
+      "cmyk": [
+        0.95,
+        0.0,
+        1.0,
+        0.0
+      ]
+    }
+  ],
+  "bleed": 0.0,
+  "perspective": null,
+  "artboards": [
+    {
+      "id": "25c76cbd-cfcb-42a6-a4e1-da40ec278360",
+      "name": "A4",
+      "x": 0.0,
+      "y": 0.0,
+      "width": 1240.0,
+      "height": 1754.0,
+      "layout_grid": null
+    }
+  ],
+  "trap_width": 0.0,
+  "toc_threshold": 18.0,
+  "paragraph_styles": [
+    {
+      "name": "見出し",
+      "style": {
+        "font_family": "Inter, sans-serif",
+        "font_size": 24.0,
+        "font_weight": 700,
+        "font_style": "Normal",
+        "letter_spacing": 0.0,
+        "text_anchor": "Start",
+        "line_height": null,
+        "max_width": null,
+        "word_wrap": false,
+        "variations": [],
+        "vertical": false,
+        "auto_spacing": true,
+        "auto_spacing_em": 0.25,
+        "ligatures": true,
+        "ot_features": [],
+        "list": "None",
+        "burasage": true
+      }
+    },
+    {
+      "name": "本文",
+      "style": {
+        "font_family": "Inter, sans-serif",
+        "font_size": 12.0,
+        "font_weight": 400,
+        "font_style": "Normal",
+        "letter_spacing": 0.0,
+        "text_anchor": "Start",
+        "line_height": null,
+        "max_width": null,
+        "word_wrap": false,
+        "variations": [],
+        "vertical": false,
+        "auto_spacing": true,
+        "auto_spacing_em": 0.25,
+        "ligatures": true,
+        "ot_features": [],
+        "list": "None",
+        "burasage": true
+      }
+    },
+    {
+      "name": "キャプション",
+      "style": {
+        "font_family": "Inter, sans-serif",
+        "font_size": 9.0,
+        "font_weight": 400,
+        "font_style": "Normal",
+        "letter_spacing": 0.0,
+        "text_anchor": "Start",
+        "line_height": null,
+        "max_width": null,
+        "word_wrap": false,
+        "variations": [],
+        "vertical": false,
+        "auto_spacing": true,
+        "auto_spacing_em": 0.25,
+        "ligatures": true,
+        "ot_features": [],
+        "list": "None",
+        "burasage": true
+      }
+    }
+  ]
+}

@@ -29,6 +29,7 @@ uuid = { version = "1.0", features = ["v4"] }
 log = "0.4"
 env_logger = "0.11"
 clap = { version = "4.5", features = ["derive"] }
+fax = "0.2"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "avif", "avif-native", "gif", "bmp"] }
 qrcode = { version = "0.14", default-features = false }
 rhai = { version = "1.20", features = ["sync", "serde", "metadata"] }
@@ -46,3 +47,5 @@ lcms2-sys = "4.0.7"
 [dev-dependencies]
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "avif", "avif-native", "gif", "bmp"] }
 
+[build-dependencies]
+serde_json = "1.0"

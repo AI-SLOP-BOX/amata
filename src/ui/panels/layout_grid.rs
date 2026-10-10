@@ -8,7 +8,8 @@ pub struct LayoutGridPanel;
 
 impl LayoutGridPanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("▦ レイアウトグリッド").strong());
+        let locale = state.prefs.language.clone();
+        ui.heading(RichText::new(crate::ui::i18n::text(&locale, "layout_grid.title")).strong());
         ui.add_space(4.0);
 
         // Implicit artboard (document.artboards empty): materialize it so
@@ -38,15 +39,20 @@ impl LayoutGridPanel {
         let enabled = state.document.artboards[idx].layout_grid.is_some();
 
         if !enabled {
-            if ui.button("レイアウトグリッドを追加").clicked() {
+            if ui
+                .button(crate::ui::i18n::text(&locale, "layout_grid.add"))
+                .clicked()
+            {
                 let before = state.document.artboards.clone();
                 state.document.artboards[idx].layout_grid = Some(LayoutGrid::default());
                 let after = state.document.artboards.clone();
                 state.push_artboards_undo("Add Layout Grid", before, after);
-                state.notify_success("レイアウトグリッドを追加しました");
+                state.notify_success(
+                    crate::ui::i18n::text(&locale, "layout_grid.added").into_owned(),
+                );
             }
             ui.label(
-                RichText::new("カラム / 行 / 方眼をアートボードに重ねて表示します。")
+                RichText::new(crate::ui::i18n::text(&locale, "layout_grid.description"))
                     .weak()
                     .size(11.0),
             );
@@ -57,39 +63,70 @@ impl LayoutGridPanel {
         let before = grid.clone();
         grid.normalize();
 
-        ui.checkbox(&mut grid.show, "表示");
+        ui.checkbox(
+            &mut grid.show,
+            crate::ui::i18n::text(&locale, "layout_grid.visible"),
+        );
         ui.horizontal(|ui| {
-            ui.label("種類:");
-            ui.selectable_value(&mut grid.kind, LayoutGridKind::Columns, "カラム");
-            ui.selectable_value(&mut grid.kind, LayoutGridKind::Rows, "行");
-            ui.selectable_value(&mut grid.kind, LayoutGridKind::Grid, "方眼");
+            ui.label(crate::ui::i18n::text(&locale, "layout_grid.kind"));
+            ui.selectable_value(
+                &mut grid.kind,
+                LayoutGridKind::Columns,
+                crate::ui::i18n::text(&locale, "layout_grid.columns"),
+            );
+            ui.selectable_value(
+                &mut grid.kind,
+                LayoutGridKind::Rows,
+                crate::ui::i18n::text(&locale, "layout_grid.rows"),
+            );
+            ui.selectable_value(
+                &mut grid.kind,
+                LayoutGridKind::Grid,
+                crate::ui::i18n::text(&locale, "layout_grid.grid"),
+            );
         });
 
         match grid.kind {
             LayoutGridKind::Columns | LayoutGridKind::Rows => {
                 ui.horizontal(|ui| {
-                    ui.label("本数:");
+                    ui.label(crate::ui::i18n::text(&locale, "layout_grid.count"));
                     ui.add(egui::DragValue::new(&mut grid.count).range(1..=64));
                 });
                 ui.horizontal(|ui| {
-                    ui.label("ガター:");
-                    ui.add(egui::DragValue::new(&mut grid.gutter).speed(1.0).range(0.0..=500.0));
+                    ui.label(crate::ui::i18n::text(&locale, "layout_grid.gutter"));
+                    ui.add(
+                        egui::DragValue::new(&mut grid.gutter)
+                            .speed(1.0)
+                            .range(0.0..=500.0),
+                    );
                 });
                 ui.horizontal(|ui| {
-                    ui.label("マージン:");
-                    ui.add(egui::DragValue::new(&mut grid.margin).speed(1.0).range(0.0..=1000.0));
+                    ui.label(crate::ui::i18n::text(&locale, "layout_grid.margin"));
+                    ui.add(
+                        egui::DragValue::new(&mut grid.margin)
+                            .speed(1.0)
+                            .range(0.0..=1000.0),
+                    );
                 });
             }
             LayoutGridKind::Grid => {
                 ui.horizontal(|ui| {
-                    ui.label("セル:");
-                    ui.add(egui::DragValue::new(&mut grid.size).speed(1.0).range(1.0..=500.0));
+                    ui.label(crate::ui::i18n::text(&locale, "layout_grid.cell"));
+                    ui.add(
+                        egui::DragValue::new(&mut grid.size)
+                            .speed(1.0)
+                            .range(1.0..=500.0),
+                    );
                 });
             }
         }
         ui.horizontal(|ui| {
-            ui.label("不透明度:");
-            ui.add(egui::DragValue::new(&mut grid.opacity).speed(0.01).range(0.0..=1.0));
+            ui.label(crate::ui::i18n::text(&locale, "layout_grid.opacity"));
+            ui.add(
+                egui::DragValue::new(&mut grid.opacity)
+                    .speed(0.01)
+                    .range(0.0..=1.0),
+            );
         });
 
         if grid != before {
@@ -98,7 +135,10 @@ impl LayoutGridPanel {
             let art_after = state.document.artboards.clone();
             state.push_artboards_undo("Edit Layout Grid", art_before, art_after);
         }
-        if ui.button("削除").clicked() {
+        if ui
+            .button(crate::ui::i18n::text(&locale, "common.delete"))
+            .clicked()
+        {
             let art_before = state.document.artboards.clone();
             state.document.artboards[idx].layout_grid = None;
             let art_after = state.document.artboards.clone();

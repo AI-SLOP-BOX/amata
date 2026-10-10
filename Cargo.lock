@@ -95,6 +95,7 @@ dependencies = [
  "eframe",
  "egui",
  "env_logger",
+ "fax",
  "flate2",
  "fontdb",
  "harfrust",

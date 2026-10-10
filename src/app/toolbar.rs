@@ -1,6 +1,7 @@
 use super::control_bar::mod_key;
 use super::icons::{
-    icon_button, icon_seek_first, icon_seek_last, icon_seek_next, icon_seek_prev, tool_icon_button,
+    icon_button_labeled, icon_seek_first, icon_seek_last, icon_seek_next, icon_seek_prev,
+    tool_icon_button,
 };
 use super::zoom_to_fit;
 use super::IrasuApp;
@@ -124,18 +125,37 @@ impl IrasuApp {
                     // Artboard Navigator Pager
                     let ab_count = self.state.document.effective_artboards().len();
                     let nav = Vec2::new(20.0, 18.0);
-                    if icon_button(ui, nav, icon_seek_first)
-                        .on_hover_text("最初のアートボード")
-                        .clicked()
+                    if icon_button_labeled(
+                        ui,
+                        nav,
+                        icon_seek_first,
+                        crate::ui::i18n::text(&self.state.prefs.language, "toolbar.first_artboard"),
+                    )
+                    .on_hover_text(crate::ui::i18n::text(
+                        &self.state.prefs.language,
+                        "toolbar.first_artboard",
+                    ))
+                    .clicked()
                     {
-                        self.state.active_artboard_idx = 0;
+                        self.state.zoom_to_artboard(0);
                     }
-                    if icon_button(ui, nav, icon_seek_prev)
-                        .on_hover_text("前のアートボード")
-                        .clicked()
+                    if icon_button_labeled(
+                        ui,
+                        nav,
+                        icon_seek_prev,
+                        crate::ui::i18n::text(
+                            &self.state.prefs.language,
+                            "toolbar.previous_artboard",
+                        ),
+                    )
+                    .on_hover_text(crate::ui::i18n::text(
+                        &self.state.prefs.language,
+                        "toolbar.previous_artboard",
+                    ))
+                    .clicked()
                     {
-                        self.state.active_artboard_idx =
-                            self.state.active_artboard_idx.saturating_sub(1);
+                        let previous = self.state.active_artboard_idx.saturating_sub(1);
+                        self.state.zoom_to_artboard(previous);
                     }
                     ui.label(
                         RichText::new(format!(" {} ", self.state.active_artboard_idx + 1))
@@ -143,30 +163,49 @@ impl IrasuApp {
                             .monospace()
                             .color(Color32::WHITE),
                     );
-                    if icon_button(ui, nav, icon_seek_next)
-                        .on_hover_text("次のアートボード")
-                        .clicked()
+                    if icon_button_labeled(
+                        ui,
+                        nav,
+                        icon_seek_next,
+                        crate::ui::i18n::text(&self.state.prefs.language, "toolbar.next_artboard"),
+                    )
+                    .on_hover_text(crate::ui::i18n::text(
+                        &self.state.prefs.language,
+                        "toolbar.next_artboard",
+                    ))
+                    .clicked()
                     {
                         let next = self.state.active_artboard_idx + 1;
                         if next < ab_count {
-                            self.state.active_artboard_idx = next;
+                            self.state.zoom_to_artboard(next);
                         }
                     }
-                    if icon_button(ui, nav, icon_seek_last)
-                        .on_hover_text("最後のアートボード")
-                        .clicked()
+                    if icon_button_labeled(
+                        ui,
+                        nav,
+                        icon_seek_last,
+                        crate::ui::i18n::text(&self.state.prefs.language, "toolbar.last_artboard"),
+                    )
+                    .on_hover_text(crate::ui::i18n::text(
+                        &self.state.prefs.language,
+                        "toolbar.last_artboard",
+                    ))
+                    .clicked()
                         && ab_count > 0
                     {
-                        self.state.active_artboard_idx = ab_count - 1;
+                        self.state.zoom_to_artboard(ab_count - 1);
                     }
 
                     ui.separator();
 
-                    // Status / Mode Label (Image 1 & 3: "選択")
+                    // Status / Mode Label (Image 1 & 3: crate::ui::i18n::text(&self.state.prefs.language, "toolbar.selection"))
                     ui.label(
-                        RichText::new("選択")
-                            .size(11.0)
-                            .color(Color32::from_rgb(175, 175, 175)),
+                        RichText::new(crate::ui::i18n::text(
+                            &self.state.prefs.language,
+                            "toolbar.selection",
+                        ))
+                        .size(11.0)
+                        .color(Color32::from_rgb(175, 175, 175)),
                     );
 
                     // Right-aligned coordinates and selection info
@@ -193,9 +232,12 @@ impl IrasuApp {
                         let sel_count = self.state.selected_ids.len();
                         if sel_count == 0 {
                             ui.label(
-                                egui::RichText::new("0 個のオブジェクトを選択")
-                                    .weak()
-                                    .size(11.0),
+                                egui::RichText::new(crate::ui::i18n::text(
+                                    &self.state.prefs.language,
+                                    "toolbar.none_selected",
+                                ))
+                                .weak()
+                                .size(11.0),
                             );
                         } else if sel_count == 1 {
                             let fid = &self.state.selected_ids[0];
@@ -216,7 +258,13 @@ impl IrasuApp {
                                         .size(11.0),
                                     );
                                 } else {
-                                    ui.label(egui::RichText::new("1 個選択中").size(11.0));
+                                    ui.label(
+                                        egui::RichText::new(crate::ui::i18n::text(
+                                            &self.state.prefs.language,
+                                            "toolbar.one_selected",
+                                        ))
+                                        .size(11.0),
+                                    );
                                 }
                             }
                         } else {
@@ -263,7 +311,10 @@ impl IrasuApp {
         if self.state.prefs.show_tool_hints {
             let mut tip = format!("{} ({})", tool.name(), tool.shortcut());
             if group.len() > 1 {
-                tip.push_str(" — 右クリック/長押しでサブツール");
+                tip.push_str(&crate::ui::i18n::text(
+                    &self.state.prefs.language,
+                    "toolbar.subtool_tip",
+                ));
             }
             response = response.on_hover_text(tip);
         }
@@ -384,11 +435,7 @@ impl IrasuApp {
                         (Tool::ShapeBuilder, Tool::Eyedropper),
                         (Tool::Hand, Tool::Zoom),
                     ];
-                    let pixel_tools = [
-                        Tool::PixelPencil,
-                        Tool::PixelEraser,
-                        Tool::PixelBucket,
-                    ];
+                    let pixel_tools = [Tool::PixelPencil, Tool::PixelEraser, Tool::PixelBucket];
 
                     for (gi, (t1, t2)) in tool_pairs.into_iter().enumerate() {
                         let group = [t1, t2];
@@ -504,50 +551,61 @@ impl IrasuApp {
                     // Swap / Default / None — painted as clean vector icons
                     ui.horizontal(|ui| {
                         // Swap arrows icon
-                        let swap_resp = icon_button(ui, Vec2::splat(22.0), |p, r, col| {
-                            let c = r.center();
-                            let w = r.width() * 0.35;
-                            let h = r.height() * 0.20;
-                            // Top arrow →
-                            p.line_segment(
-                                [Pos2::new(c.x - w, c.y - h), Pos2::new(c.x + w, c.y - h)],
-                                Stroke::new(1.3_f32, col),
-                            );
-                            p.line_segment(
-                                [
-                                    Pos2::new(c.x + w - 4.0, c.y - h - 3.0),
-                                    Pos2::new(c.x + w, c.y - h),
-                                ],
-                                Stroke::new(1.3_f32, col),
-                            );
-                            p.line_segment(
-                                [
-                                    Pos2::new(c.x + w - 4.0, c.y - h + 3.0),
-                                    Pos2::new(c.x + w, c.y - h),
-                                ],
-                                Stroke::new(1.3_f32, col),
-                            );
-                            // Bottom arrow ←
-                            p.line_segment(
-                                [Pos2::new(c.x + w, c.y + h), Pos2::new(c.x - w, c.y + h)],
-                                Stroke::new(1.3_f32, col),
-                            );
-                            p.line_segment(
-                                [
-                                    Pos2::new(c.x - w + 4.0, c.y + h - 3.0),
-                                    Pos2::new(c.x - w, c.y + h),
-                                ],
-                                Stroke::new(1.3_f32, col),
-                            );
-                            p.line_segment(
-                                [
-                                    Pos2::new(c.x - w + 4.0, c.y + h + 3.0),
-                                    Pos2::new(c.x - w, c.y + h),
-                                ],
-                                Stroke::new(1.3_f32, col),
-                            );
-                        })
-                        .on_hover_text("塗りと線を入れ替え（Shift+X）");
+                        let swap_resp = icon_button_labeled(
+                            ui,
+                            Vec2::splat(22.0),
+                            |p, r, col| {
+                                let c = r.center();
+                                let w = r.width() * 0.35;
+                                let h = r.height() * 0.20;
+                                // Top arrow →
+                                p.line_segment(
+                                    [Pos2::new(c.x - w, c.y - h), Pos2::new(c.x + w, c.y - h)],
+                                    Stroke::new(1.3_f32, col),
+                                );
+                                p.line_segment(
+                                    [
+                                        Pos2::new(c.x + w - 4.0, c.y - h - 3.0),
+                                        Pos2::new(c.x + w, c.y - h),
+                                    ],
+                                    Stroke::new(1.3_f32, col),
+                                );
+                                p.line_segment(
+                                    [
+                                        Pos2::new(c.x + w - 4.0, c.y - h + 3.0),
+                                        Pos2::new(c.x + w, c.y - h),
+                                    ],
+                                    Stroke::new(1.3_f32, col),
+                                );
+                                // Bottom arrow ←
+                                p.line_segment(
+                                    [Pos2::new(c.x + w, c.y + h), Pos2::new(c.x - w, c.y + h)],
+                                    Stroke::new(1.3_f32, col),
+                                );
+                                p.line_segment(
+                                    [
+                                        Pos2::new(c.x - w + 4.0, c.y + h - 3.0),
+                                        Pos2::new(c.x - w, c.y + h),
+                                    ],
+                                    Stroke::new(1.3_f32, col),
+                                );
+                                p.line_segment(
+                                    [
+                                        Pos2::new(c.x - w + 4.0, c.y + h + 3.0),
+                                        Pos2::new(c.x - w, c.y + h),
+                                    ],
+                                    Stroke::new(1.3_f32, col),
+                                );
+                            },
+                            crate::ui::i18n::text(
+                                &self.state.prefs.language,
+                                "toolbar.swap_fill_stroke",
+                            ),
+                        )
+                        .on_hover_text(crate::ui::i18n::text(
+                            &self.state.prefs.language,
+                            "toolbar.swap_fill_stroke",
+                        ));
                         if swap_resp.clicked() {
                             std::mem::swap(
                                 &mut self.state.fill_color,
@@ -556,24 +614,35 @@ impl IrasuApp {
                         }
 
                         // Default colors icon (white square outline)
-                        let default_resp = icon_button(ui, Vec2::splat(22.0), |p, r, col| {
-                            let sq = r.shrink(r.width() * 0.22);
-                            p.rect_stroke(
-                                sq,
-                                1.0,
-                                Stroke::new(1.4_f32, col),
-                                egui::StrokeKind::Middle,
-                            );
-                            // Small "D" text hint
-                            p.text(
-                                r.center() + Vec2::new(0.0, 0.5),
-                                egui::Align2::CENTER_CENTER,
-                                "D",
-                                egui::FontId::proportional(8.0),
-                                col,
-                            );
-                        })
-                        .on_hover_text("デフォルト色：白塗り、黒線（D）");
+                        let default_resp = icon_button_labeled(
+                            ui,
+                            Vec2::splat(22.0),
+                            |p, r, col| {
+                                let sq = r.shrink(r.width() * 0.22);
+                                p.rect_stroke(
+                                    sq,
+                                    1.0,
+                                    Stroke::new(1.4_f32, col),
+                                    egui::StrokeKind::Middle,
+                                );
+                                // Small "D" text hint
+                                p.text(
+                                    r.center() + Vec2::new(0.0, 0.5),
+                                    egui::Align2::CENTER_CENTER,
+                                    "D",
+                                    egui::FontId::proportional(8.0),
+                                    col,
+                                );
+                            },
+                            crate::ui::i18n::text(
+                                &self.state.prefs.language,
+                                "toolbar.default_colors",
+                            ),
+                        )
+                        .on_hover_text(crate::ui::i18n::text(
+                            &self.state.prefs.language,
+                            "toolbar.default_colors",
+                        ));
                         if default_resp.clicked() {
                             self.state.fill_color = [1.0, 1.0, 1.0, 1.0];
                             self.state.stroke_color = [0.0, 0.0, 0.0, 1.0];
@@ -581,20 +650,28 @@ impl IrasuApp {
                         }
 
                         // None/transparent icon (circle with slash)
-                        let none_resp = icon_button(ui, Vec2::splat(22.0), |p, r, col| {
-                            let c = r.center();
-                            let rad = r.size().min_elem() * 0.32;
-                            p.circle_stroke(c, rad, Stroke::new(1.4_f32, col));
-                            let diag = rad * 0.72;
-                            p.line_segment(
-                                [
-                                    Pos2::new(c.x - diag, c.y + diag),
-                                    Pos2::new(c.x + diag, c.y - diag),
-                                ],
-                                Stroke::new(1.4_f32, Color32::from_rgb(200, 50, 50)),
-                            );
-                        })
-                        .on_hover_text("なし/透明（/）");
+                        let none_resp = icon_button_labeled(
+                            ui,
+                            Vec2::splat(22.0),
+                            |p, r, col| {
+                                let c = r.center();
+                                let rad = r.size().min_elem() * 0.32;
+                                p.circle_stroke(c, rad, Stroke::new(1.4_f32, col));
+                                let diag = rad * 0.72;
+                                p.line_segment(
+                                    [
+                                        Pos2::new(c.x - diag, c.y + diag),
+                                        Pos2::new(c.x + diag, c.y - diag),
+                                    ],
+                                    Stroke::new(1.4_f32, Color32::from_rgb(200, 50, 50)),
+                                );
+                            },
+                            crate::ui::i18n::text(&self.state.prefs.language, "toolbar.no_color"),
+                        )
+                        .on_hover_text(crate::ui::i18n::text(
+                            &self.state.prefs.language,
+                            "toolbar.no_color",
+                        ));
                         if none_resp.clicked() {
                             self.state.fill_color = [0.0, 0.0, 0.0, 0.0];
                         }
@@ -610,7 +687,14 @@ impl IrasuApp {
                     )
                     .fill(Color32::TRANSPARENT)
                     .min_size(Vec2::new(32.0, 22.0));
-                    if ui.add(more_btn).on_hover_text("環境設定").clicked() {
+                    if ui
+                        .add(more_btn)
+                        .on_hover_text(crate::ui::i18n::text(
+                            &self.state.prefs.language,
+                            "control.preferences",
+                        ))
+                        .clicked()
+                    {
                         self.preferences_dialog.is_open = true;
                     }
                 });

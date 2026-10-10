@@ -36,11 +36,14 @@ pub struct RecentFileItem {
 // watcher rebinding and history live there, not in the view).
 pub enum HomeAction {
     OpenFile(std::path::PathBuf),
+    /// Create a document from a bundled template (id).
+    OpenTemplate(String),
     RestoreRecovery,
     DismissRecovery,
 }
 
 pub struct HomeView {
+    pub(crate) locale: String,
     pub is_open: bool,
     pub current_tab: HomeSidebarTab,
     pub preset_cat: HomePresetCategory,
@@ -51,6 +54,7 @@ pub struct HomeView {
 impl Default for HomeView {
     fn default() -> Self {
         let mut view = Self {
+            locale: "ja".to_string(),
             is_open: true, // Show Home by default like CC
             current_tab: HomeSidebarTab::Home,
             preset_cat: HomePresetCategory::Recommend,
@@ -91,6 +95,7 @@ impl HomeView {
         new_doc_modal: &mut crate::ui::NewDocModal,
         tour_guide_open: &mut bool,
     ) -> Option<HomeAction> {
+        self.locale = state.prefs.language.clone();
         if !self.is_open {
             return None;
         }
@@ -206,14 +211,20 @@ impl HomeView {
         ui.group(|ui| {
             ui.horizontal(|ui| {
                 ui.label(
-                    RichText::new("🛟 未保存の作業データがあります")
+                    RichText::new(crate::ui::i18n::text(&self.locale, "home.recovery_title"))
                         .strong()
                         .color(Color32::from_rgb(255, 200, 100)),
                 );
-                if ui.button("復元する").clicked() {
+                if ui
+                    .button(crate::ui::i18n::text(&self.locale, "home.restore_recovery"))
+                    .clicked()
+                {
                     action = Some(HomeAction::RestoreRecovery);
                 }
-                if ui.button("破棄する").clicked() {
+                if ui
+                    .button(crate::ui::i18n::text(&self.locale, "home.discard_recovery"))
+                    .clicked()
+                {
                     action = Some(HomeAction::DismissRecovery);
                 }
             });
@@ -264,10 +275,22 @@ impl HomeView {
 
             // Nav Tabs — clean professional typography matching Illustrator CC Home
             let tabs = [
-                (HomeSidebarTab::Home, "ホーム"),
-                (HomeSidebarTab::Recent, "最近使用したファイル"),
-                (HomeSidebarTab::Cloud, "クラウドドキュメント"),
-                (HomeSidebarTab::Learn, "学ぶ"),
+                (
+                    HomeSidebarTab::Home,
+                    crate::ui::i18n::text(&self.locale, "home.sidebar.home"),
+                ),
+                (
+                    HomeSidebarTab::Recent,
+                    crate::ui::i18n::text(&self.locale, "home.sidebar.recent"),
+                ),
+                (
+                    HomeSidebarTab::Cloud,
+                    crate::ui::i18n::text(&self.locale, "home.sidebar.cloud"),
+                ),
+                (
+                    HomeSidebarTab::Learn,
+                    crate::ui::i18n::text(&self.locale, "home.sidebar.learn"),
+                ),
             ];
 
             for (tab, label) in tabs {
@@ -297,9 +320,9 @@ impl HomeView {
 
             ui.add_space(24.0);
 
-            // "新規作成" Pill Button
+            // crate::ui::i18n::text(&self.locale, "home.create") Pill Button
             let new_btn = egui::Button::new(
-                RichText::new("新規作成")
+                RichText::new(crate::ui::i18n::text(&self.locale, "home.create"))
                     .strong()
                     .size(12.5)
                     .color(Color32::from_rgb(20, 20, 20)),
@@ -313,13 +336,33 @@ impl HomeView {
 
             ui.add_space(8.0);
 
-            // "開く..." Pill Outline Button
-            let open_btn =
-                egui::Button::new(RichText::new("開く...").size(12.0).color(Color32::WHITE))
-                    .fill(Color32::TRANSPARENT)
-                    .stroke(Stroke::new(1.0_f32, Color32::from_rgb(90, 90, 90)))
-                    .corner_radius(16.0)
-                    .min_size(Vec2::new(140.0, 30.0));
+            // Bundled templates: our own starter documents.
+            ui.label(
+                RichText::new(crate::ui::i18n::text(&self.locale, "home.templates"))
+                    .size(11.0)
+                    .color(Color32::from_rgb(150, 150, 150)),
+            );
+            for template in crate::io::library::built_in_templates() {
+                let label = format!(
+                    "{}  ({}×{})",
+                    template.title, template.size.0 as i32, template.size.1 as i32
+                );
+                if ui.button(label).clicked() {
+                    action = Some(HomeAction::OpenTemplate(template.id.to_string()));
+                }
+            }
+            ui.add_space(8.0);
+
+            // crate::ui::i18n::text(&self.locale, "home.open") Pill Outline Button
+            let open_btn = egui::Button::new(
+                RichText::new(crate::ui::i18n::text(&self.locale, "home.open"))
+                    .size(12.0)
+                    .color(Color32::WHITE),
+            )
+            .fill(Color32::TRANSPARENT)
+            .stroke(Stroke::new(1.0_f32, Color32::from_rgb(90, 90, 90)))
+            .corner_radius(16.0)
+            .min_size(Vec2::new(140.0, 30.0));
             if ui.add(open_btn).clicked() {
                 if let Some(path) = rfd::FileDialog::new()
                     .add_filter(
@@ -364,21 +407,21 @@ impl HomeView {
         p.text(
             Pos2::new(rect.min.x + 24.0, rect.min.y + 24.0),
             egui::Align2::LEFT_TOP,
-            "Amata（数多）へようこそ",
+            crate::ui::i18n::text(&self.locale, "home.welcome"),
             egui::FontId::proportional(22.0),
             Color32::WHITE,
         );
         p.text(
             Pos2::new(rect.min.x + 24.0, rect.min.y + 56.0),
             egui::Align2::LEFT_TOP,
-            "美しいベクターグラフィックで、アイデアをカタチに。",
+            crate::ui::i18n::text(&self.locale, "home.tagline"),
             egui::FontId::proportional(12.5),
             Color32::from_rgb(180, 180, 180),
         );
         p.text(
             Pos2::new(rect.max.x - 130.0, rect.max.y - 18.0),
             egui::Align2::RIGHT_BOTTOM,
-            "つくる、ひろがる、もっと自由に。",
+            crate::ui::i18n::text(&self.locale, "home.tagline_secondary"),
             egui::FontId::proportional(11.0),
             Color32::from_rgb(200, 180, 150),
         );
@@ -391,7 +434,7 @@ impl HomeView {
         new_doc_modal: &mut crate::ui::NewDocModal,
     ) {
         ui.label(
-            RichText::new("新規ドキュメントを作成")
+            RichText::new(crate::ui::i18n::text(&self.locale, "home.create_document"))
                 .strong()
                 .size(13.5)
                 .color(Color32::WHITE),
@@ -401,12 +444,30 @@ impl HomeView {
         // Category Subtabs
         ui.horizontal(|ui| {
             let cats = [
-                (HomePresetCategory::Recommend, "おすすめ"),
-                (HomePresetCategory::Print, "印刷"),
-                (HomePresetCategory::Web, "Web"),
-                (HomePresetCategory::Mobile, "モバイル"),
-                (HomePresetCategory::Social, "ソーシャル"),
-                (HomePresetCategory::Custom, "カスタム"),
+                (
+                    HomePresetCategory::Recommend,
+                    crate::ui::i18n::text(&self.locale, "home.category.recommended"),
+                ),
+                (
+                    HomePresetCategory::Print,
+                    crate::ui::i18n::text(&self.locale, "home.category.print"),
+                ),
+                (
+                    HomePresetCategory::Web,
+                    crate::ui::i18n::text(&self.locale, "home.category.web"),
+                ),
+                (
+                    HomePresetCategory::Mobile,
+                    crate::ui::i18n::text(&self.locale, "home.category.mobile"),
+                ),
+                (
+                    HomePresetCategory::Social,
+                    crate::ui::i18n::text(&self.locale, "home.category.social"),
+                ),
+                (
+                    HomePresetCategory::Custom,
+                    crate::ui::i18n::text(&self.locale, "home.category.custom"),
+                ),
             ];
             for (cat, name) in cats {
                 let is_active = self.preset_cat == cat;
@@ -432,15 +493,29 @@ impl HomeView {
         // applies mm/in/pt → px conversion (writing raw 210×297 into the
         // document used to create a 210px "A4").
         let presets = [
-            ("doc", "A4", "210 × 297 mm", 210.0, 297.0, "ミリメートル"),
-            ("doc", "US レター", "8.5 × 11 in", 612.0, 792.0, "ポイント"),
+            (
+                "doc",
+                "A4",
+                "210 × 297 mm",
+                210.0,
+                297.0,
+                crate::core::unit::LengthUnit::Mm,
+            ),
+            (
+                "letter",
+                "US レター",
+                "8.5 × 11 in",
+                612.0,
+                792.0,
+                crate::core::unit::LengthUnit::Pt,
+            ),
             (
                 "desktop",
                 "Web (横長)",
                 "1920 × 1080 px",
                 1920.0,
                 1080.0,
-                "ピクセル",
+                crate::core::unit::LengthUnit::Px,
             ),
             (
                 "phone",
@@ -448,7 +523,7 @@ impl HomeView {
                 "1179 × 2556 px",
                 1179.0,
                 2556.0,
-                "ピクセル",
+                crate::core::unit::LengthUnit::Px,
             ),
             (
                 "camera",
@@ -456,7 +531,7 @@ impl HomeView {
                 "1080 × 1080 px",
                 1080.0,
                 1080.0,
-                "ピクセル",
+                crate::core::unit::LengthUnit::Px,
             ),
             (
                 "more",
@@ -464,12 +539,24 @@ impl HomeView {
                 "カスタム",
                 800.0,
                 600.0,
-                "ピクセル",
+                crate::core::unit::LengthUnit::Px,
             ),
         ];
 
         ui.horizontal_wrapped(|ui| {
             for (icon_type, title, dim, w, h, unit) in presets {
+                let display_title = match icon_type {
+                    "letter" => crate::ui::i18n::text(&self.locale, "home.preset.us_letter"),
+                    "desktop" => crate::ui::i18n::text(&self.locale, "home.preset.web_landscape"),
+                    "camera" => crate::ui::i18n::text(&self.locale, "home.preset.instagram_post"),
+                    "more" => crate::ui::i18n::text(&self.locale, "home.preset.other"),
+                    _ => std::borrow::Cow::Borrowed(title),
+                };
+                let display_dim = if icon_type == "more" {
+                    crate::ui::i18n::text(&self.locale, "home.preset.custom")
+                } else {
+                    std::borrow::Cow::Borrowed(dim)
+                };
                 let card_w = ui.available_width().min(115.0);
                 let (rect, resp) =
                     ui.allocate_exact_size(Vec2::new(card_w, 110.0), egui::Sense::click());
@@ -514,14 +601,14 @@ impl HomeView {
                 ui.painter().text(
                     Pos2::new(center_x, rect.min.y + 62.0),
                     egui::Align2::CENTER_CENTER,
-                    title,
+                    display_title.clone(),
                     egui::FontId::proportional(11.0),
                     Color32::WHITE,
                 );
                 ui.painter().text(
                     Pos2::new(center_x, rect.min.y + 84.0),
                     egui::Align2::CENTER_CENTER,
-                    dim,
+                    display_dim,
                     egui::FontId::proportional(9.5),
                     Color32::from_rgb(150, 150, 150),
                 );
@@ -534,30 +621,26 @@ impl HomeView {
                     new_doc_modal.is_open = true;
                     new_doc_modal.width = w;
                     new_doc_modal.height = h;
-                    new_doc_modal.unit = unit.to_string();
+                    new_doc_modal.unit = unit;
                     new_doc_modal.orientation = if h >= w {
                         crate::ui::new_doc_modal::Orientation::Portrait
                     } else {
                         crate::ui::new_doc_modal::Orientation::Landscape
                     };
-                    new_doc_modal.doc_name = if title == "その他のプリセット" {
-                        "名称未設定".to_string()
+                    new_doc_modal.doc_name = if icon_type == "more" {
+                        crate::ui::i18n::text(&self.locale, "home.untitled").into_owned()
                     } else {
-                        title.to_string()
+                        display_title.to_string()
                     };
                 }
             }
         });
     }
 
-    fn show_recent_files(
-        &mut self,
-        ui: &mut Ui,
-        _state: &mut AppState,
-    ) -> Option<HomeAction> {
+    fn show_recent_files(&mut self, ui: &mut Ui, _state: &mut AppState) -> Option<HomeAction> {
         if self.recent_files.is_empty() {
             ui.label(
-                RichText::new("最近開いたファイルはここに表示されます")
+                RichText::new(crate::ui::i18n::text(&self.locale, "home.recent_empty"))
                     .weak()
                     .size(11.0),
             );
@@ -566,14 +649,14 @@ impl HomeView {
         let mut action = None;
         ui.horizontal(|ui| {
             ui.label(
-                RichText::new("最近使用したファイル")
+                RichText::new(crate::ui::i18n::text(&self.locale, "home.sidebar.recent"))
                     .strong()
                     .size(13.5)
                     .color(Color32::WHITE),
             );
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.label(
-                    RichText::new("すべて表示 ➔")
+                    RichText::new(crate::ui::i18n::text(&self.locale, "home.show_all"))
                         .size(11.0)
                         .color(Color32::from_rgb(180, 180, 180)),
                 );
@@ -585,8 +668,8 @@ impl HomeView {
         // Card grid: column count tracks pane width so cards never clip.
         let card_w = 175.0_f32;
         let spacing = 14.0_f32;
-        let cols = (((ui.available_width() + spacing) / (card_w + spacing)).floor() as usize)
-            .clamp(1, 4);
+        let cols =
+            (((ui.available_width() + spacing) / (card_w + spacing)).floor() as usize).clamp(1, 4);
         egui::Grid::new("recent_files_grid")
             .num_columns(cols)
             .spacing(Vec2::new(spacing, spacing))
@@ -659,7 +742,7 @@ impl HomeView {
         ui.painter().text(
             Pos2::new(rect.min.x + 12.0, rect.min.y + 12.0),
             egui::Align2::LEFT_TOP,
-            "制作をもっとスムーズに",
+            crate::ui::i18n::text(&self.locale, "home.smoother_workflow"),
             egui::FontId::proportional(12.5),
             Color32::WHITE,
         );
@@ -685,19 +768,19 @@ impl HomeView {
         ui.painter().text(
             Pos2::new(rect.min.x + 12.0, rect.min.y + 124.0),
             egui::Align2::LEFT_TOP,
-            "はじめてのベクター作成",
+            crate::ui::i18n::text(&self.locale, "home.first_vector"),
             egui::FontId::proportional(11.5),
             Color32::WHITE,
         );
         ui.painter().text(
             Pos2::new(rect.min.x + 12.0, rect.min.y + 140.0),
             egui::Align2::LEFT_TOP,
-            "基本的なツールの使い方を学べます。",
+            crate::ui::i18n::text(&self.locale, "home.learn_tools"),
             egui::FontId::proportional(9.5),
             Color32::from_rgb(160, 160, 160),
         );
 
-        // "チュートリアルを開く" Button
+        // crate::ui::i18n::text(&self.locale, "home.open_tutorial") Button
         let btn_rect = Rect::from_min_max(
             Pos2::new(rect.min.x + 12.0, rect.max.y - 32.0),
             Pos2::new(rect.max.x - 12.0, rect.max.y - 8.0),
@@ -718,7 +801,7 @@ impl HomeView {
         ui.painter().text(
             btn_rect.center(),
             egui::Align2::CENTER_CENTER,
-            "チュートリアルを開く",
+            crate::ui::i18n::text(&self.locale, "home.open_tutorial"),
             egui::FontId::proportional(11.0),
             Color32::WHITE,
         );
@@ -737,23 +820,35 @@ impl HomeView {
         ui.painter().text(
             Pos2::new(rect.min.x + 12.0, rect.min.y + 12.0),
             egui::Align2::LEFT_TOP,
-            "ヒントと情報",
+            crate::ui::i18n::text(&self.locale, "home.tips_title"),
             egui::FontId::proportional(12.5),
             Color32::WHITE,
         );
         ui.painter().text(
             Pos2::new(rect.max.x - 12.0, rect.min.y + 12.0),
             egui::Align2::RIGHT_TOP,
-            "すべて表示 ➔",
+            crate::ui::i18n::text(&self.locale, "home.show_all"),
             egui::FontId::proportional(10.0),
             Color32::from_rgb(170, 170, 170),
         );
 
         let tips = [
-            ("図形の作成と編集", "基本のツールを使いこなす"),
-            ("デザインを効率化するショートカット", "作業をスピードアップ"),
-            ("カラーテーマの活用", "一貫したデザインに仕上げる"),
-            ("クラウドで共同作業", "どこからでも、チームで制作"),
+            (
+                crate::ui::i18n::text(&self.locale, "home.tip.shapes"),
+                crate::ui::i18n::text(&self.locale, "home.tip.shapes_desc"),
+            ),
+            (
+                crate::ui::i18n::text(&self.locale, "home.tip.shortcuts"),
+                crate::ui::i18n::text(&self.locale, "home.tip.shortcuts_desc"),
+            ),
+            (
+                crate::ui::i18n::text(&self.locale, "home.tip.themes"),
+                crate::ui::i18n::text(&self.locale, "home.tip.themes_desc"),
+            ),
+            (
+                crate::ui::i18n::text(&self.locale, "home.tip.collaboration"),
+                crate::ui::i18n::text(&self.locale, "home.tip.collaboration_desc"),
+            ),
         ];
 
         let mut y = rect.min.y + 36.0;
@@ -807,14 +902,14 @@ impl HomeView {
         ui.painter().text(
             Pos2::new(rect.min.x + 12.0, rect.min.y + 12.0),
             egui::Align2::LEFT_TOP,
-            "最近開いたプロジェクト",
+            crate::ui::i18n::text(&self.locale, "home.recent_projects"),
             egui::FontId::proportional(12.0),
             Color32::WHITE,
         );
         ui.painter().text(
             Pos2::new(rect.max.x - 12.0, rect.min.y + 12.0),
             egui::Align2::RIGHT_TOP,
-            "すべて表示 ➔",
+            crate::ui::i18n::text(&self.locale, "home.show_all"),
             egui::FontId::proportional(10.0),
             Color32::from_rgb(170, 170, 170),
         );

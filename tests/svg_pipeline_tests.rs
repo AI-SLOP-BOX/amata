@@ -44,7 +44,7 @@ fn test_svg_render_png_and_scale() {
 
     std::fs::write(&svg_path, SAMPLE_SVG).unwrap();
 
-    let res = handle_render(&svg_path, &out_png, Some(4.0), None, None, None);
+    let res = handle_render(&svg_path, &out_png, Some(4.0), None, None, None, false);
 
     assert!(res.is_ok(), "Render 4x should succeed: {:?}", res.err());
     assert!(out_png.exists(), "PNG file should be created");
@@ -64,7 +64,7 @@ fn test_svg_render_huge_canvas_guard() {
     std::fs::write(&svg_path, SAMPLE_SVG).unwrap();
 
     // Scale 100 on 400x300 canvas = 40000x30000 > 16384 max limit
-    let res = handle_render(&svg_path, &out_png, Some(100.0), None, None, None);
+    let res = handle_render(&svg_path, &out_png, Some(100.0), None, None, None, false);
 
     assert!(res.is_err(), "Huge canvas should be rejected");
     let err_msg = res.unwrap_err().to_string();
@@ -281,7 +281,10 @@ fn test_svg_clip_path_import_and_roundtrip() {
     }
     // Mask shapes must not appear as free top-level objects.
     let top_level = doc.all_objects().count();
-    assert_eq!(top_level, 2, "only the two ClippingMask wrappers at top level");
+    assert_eq!(
+        top_level, 2,
+        "only the two ClippingMask wrappers at top level"
+    );
 
     // Round-trip: export re-emits clipPath + clip-path, re-import keeps masks.
     let out = export_svg(&doc);
@@ -309,8 +312,7 @@ fn test_svg_missing_clip_ref_does_not_crash() {
     let doc = parse_svg_document(svg);
     let objs: Vec<&Object> = doc.all_objects().map(|(_, o)| o).collect();
     assert_eq!(objs.len(), 2, "missing clip refs keep content unclipped");
-    assert!(
-        objs.iter()
-            .all(|o| !matches!(o.object_type, ObjectType::ClippingMask { .. }))
-    );
+    assert!(objs
+        .iter()
+        .all(|o| !matches!(o.object_type, ObjectType::ClippingMask { .. })));
 }

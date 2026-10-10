@@ -1,9 +1,7 @@
 use super::attrs::*;
 use super::tokenize::*;
 use super::util::*;
-use crate::core::document::{
-    Document, FontStyle, Object, ObjectType, TextAnchor, TextStyle,
-};
+use crate::core::document::{Document, FontStyle, Object, ObjectType, TextAnchor, TextStyle};
 use crate::core::path::{
     AnchorPoint, BezierSegment, FillStyle, FillType, PathData, PathElement, StrokeStyle,
 };
@@ -494,10 +492,19 @@ pub fn parse_svg_color(color_str: &str) -> Option<[f32; 4]> {
 /// Scope note: usvg also normalizes and may reject exotic-but-tolerable
 /// input, so this gate is used at interactive replacement points (Open,
 /// external-change notice) — never in batch/CLI paths, which stay lenient.
+/// Max accepted SVG input (DoS guard: the tokenizer clones the whole
+/// input into chars + tag strings, and nested symbols re-enter the parser).
+pub const MAX_SVG_BYTES: usize = 32 * 1024 * 1024;
+
 pub fn try_parse_svg_document(svg_text: &str) -> Result<Document, String> {
+    if svg_text.len() > MAX_SVG_BYTES {
+        return Err(format!(
+            "SVG too large ({}MB limit)",
+            MAX_SVG_BYTES / 1024 / 1024
+        ));
+    }
     let options = resvg::usvg::Options::default();
-    resvg::usvg::Tree::from_str(svg_text, &options)
-        .map_err(|e| format!("Invalid SVG: {e}"))?;
+    resvg::usvg::Tree::from_str(svg_text, &options).map_err(|e| format!("Invalid SVG: {e}"))?;
     Ok(parse_svg_document(svg_text))
 }
 
@@ -592,6 +599,21 @@ pub fn svg_import_warnings(svg_text: &str) -> Vec<String> {
 }
 
 fn parse_svg_document_inner(svg_text: &str) -> Document {
+    parse_svg_document_depth(svg_text, 0)
+}
+
+/// Nested symbol/clipPath content re-enters the parser; the depth cap keeps
+/// adversarial nesting from overflowing the stack (each level also clones
+/// its tag slice, so depth*input memory stays bounded too).
+const MAX_NEST_DEPTH: usize = 16;
+
+fn parse_svg_document_depth(svg_text: &str, depth: usize) -> Document {
+    if depth > MAX_NEST_DEPTH {
+        return Document {
+            name: "SVG Import (truncated: nesting too deep)".to_string(),
+            ..Default::default()
+        };
+    }
     let mut doc = Document {
         name: "SVG Import".to_string(),
         ..Default::default()
@@ -642,7 +664,7 @@ fn parse_svg_document_inner(svg_text: &str) -> Document {
             }
             if !sym_id.is_empty() {
                 let inner_svg = format!("<svg>{}</svg>", child_tags.join("\n"));
-                let inner_doc = parse_svg_document(&inner_svg);
+                let inner_doc = parse_svg_document_depth(&inner_svg, depth + 1);
                 let inner_objects: Vec<_> =
                     inner_doc.all_objects().map(|(_, o)| o.clone()).collect();
                 let master = if inner_objects.len() == 1 {
@@ -664,10 +686,7 @@ fn parse_svg_document_inner(svg_text: &str) -> Document {
                 if !clip_id.is_empty() {
                     clip_paths.insert(
                         clip_id.clone(),
-                        Object::new_path(
-                            &format!("Mask {clip_id}"),
-                            PathData::new(),
-                        ),
+                        Object::new_path(&format!("Mask {clip_id}"), PathData::new()),
                     );
                 }
             } else {
@@ -679,11 +698,9 @@ fn parse_svg_document_inner(svg_text: &str) -> Document {
                 }
                 if !clip_id.is_empty() {
                     let inner_svg = format!("<svg>{}</svg>", child_tags.join("\n"));
-                    let inner_doc = parse_svg_document(&inner_svg);
-                    let mut objs: Vec<Object> = inner_doc
-                        .all_objects()
-                        .map(|(_, o)| o.clone())
-                        .collect();
+                    let inner_doc = parse_svg_document_depth(&inner_svg, depth + 1);
+                    let mut objs: Vec<Object> =
+                        inner_doc.all_objects().map(|(_, o)| o.clone()).collect();
                     // clipPath's own transform applies on top of children.
                     let cm = parse_svg_transform(trimmed);
                     if !is_affine_identity(&cm) {
@@ -705,12 +722,19 @@ fn parse_svg_document_inner(svg_text: &str) -> Document {
 
     // 2. Parse Elements & Nested Groups
     let mut group_stack: Vec<[f64; 6]> = vec![affine_identity()];
+    // Nesting depth guard (DoS): subtrees deeper than this are skipped
+    // entirely (open/close tracked so siblings still import).
+    const MAX_GROUP_DEPTH: usize = 256;
+    let mut group_depth: usize = 0;
+    let mut skip_depth: usize = 0;
     // Accumulated group opacity (SVG groups compose opacity
     // multiplicatively; previously dropped on import).
     let mut group_opacity: Vec<f32> = vec![1.0];
-    let mut in_defs = false;
+    // Depth counters (not bools): toggles inside skipped subtrees must
+    // stay balanced, so opens/closes count unconditionally.
+    let mut in_defs: usize = 0;
     // Skip <clipPath>…</clipPath> content in the drawable pass (defs or not).
-    let mut in_clip_path = false;
+    let mut in_clip_path: usize = 0;
     // Clip groups: parallel to every <g>, true when that <g> opened a
     // collector frame for `clip-path="url(#…)"`.
     let mut g_opens_clip: Vec<bool> = Vec::new();
@@ -723,28 +747,38 @@ fn parse_svg_document_inner(svg_text: &str) -> Document {
 
         // defs may be self-closing (<defs/>) — don't wait for </defs>.
         if trimmed.starts_with("<defs") {
-            in_defs = !trimmed.ends_with("/>");
+            if !trimmed.ends_with("/>") {
+                in_defs += 1;
+            }
             continue;
         }
         if trimmed.starts_with("</defs>") || trimmed.starts_with("</defs ") {
-            in_defs = false;
+            in_defs = in_defs.saturating_sub(1);
             continue;
         }
-        if in_defs {
+        if in_defs > 0 {
             continue;
         }
 
         // clipPath definitions are collected in pass 1; skip their markup
         // here so child shapes are not imported as drawable objects.
         if trimmed.starts_with("<clipPath") {
-            in_clip_path = !trimmed.ends_with("/>");
+            if !trimmed.ends_with("/>") {
+                in_clip_path += 1;
+            }
             continue;
         }
         if trimmed.starts_with("</clipPath") {
-            in_clip_path = false;
+            in_clip_path = in_clip_path.saturating_sub(1);
             continue;
         }
-        if in_clip_path {
+        if in_clip_path > 0 {
+            continue;
+        }
+
+        // Over-cap subtrees: only </g> may pass through so the skip
+        // counter can unwind and siblings still import.
+        if skip_depth > 0 && !(trimmed.starts_with("</g>") || trimmed.starts_with("</g ")) {
             continue;
         }
 
@@ -782,9 +816,7 @@ fn parse_svg_document_inner(svg_text: &str) -> Document {
                         doc.height = vb_h;
                     }
                     // Shift content so viewBox origin (min-x, min-y) maps to 0,0.
-                    if (parts[0].abs() > 1e-9 || parts[1].abs() > 1e-9)
-                        && group_stack.len() == 1
-                    {
+                    if (parts[0].abs() > 1e-9 || parts[1].abs() > 1e-9) && group_stack.len() == 1 {
                         let tx = -parts[0];
                         let ty = -parts[1];
                         if tx != 0.0 || ty != 0.0 {
@@ -798,6 +830,11 @@ fn parse_svg_document_inner(svg_text: &str) -> Document {
 
         // Group opening
         if trimmed.starts_with("<g") {
+            group_depth += 1;
+            if group_depth > MAX_GROUP_DEPTH {
+                skip_depth += 1;
+                continue;
+            }
             let local = parse_svg_transform(trimmed);
             let current = group_stack.last().copied().unwrap_or(affine_identity());
             let full = affine_multiply(&current, &local);
@@ -829,8 +866,19 @@ fn parse_svg_document_inner(svg_text: &str) -> Document {
             continue;
         }
 
+        // (Over-cap </g> unwinding is handled by the group-closing
+        // branch below; the pre-branch skip guard above already lets
+        // </g> through.)
+
         // Group closing
         if trimmed.starts_with("</g>") || trimmed.starts_with("</g ") {
+            group_depth = group_depth.saturating_sub(1);
+            if skip_depth > 0 {
+                // Closes (part of) a skipped subtree: swallow without
+                // touching the live stacks.
+                skip_depth -= 1;
+                continue;
+            }
             let opened_clip = g_opens_clip.pop().unwrap_or(false);
             if opened_clip {
                 if let Some((clip_id, matrix, mut objs)) = clip_frames.pop() {
@@ -840,14 +888,8 @@ fn parse_svg_document_inner(svg_text: &str) -> Document {
                         mask_path.transform(&matrix);
                         let mut children = vec![Object::new_path("Mask", mask_path)];
                         children.append(&mut objs);
-                        let mut clipping = Object::new_rect(
-                            "Clipping Mask",
-                            0.0,
-                            0.0,
-                            100.0,
-                            100.0,
-                            0.0,
-                        );
+                        let mut clipping =
+                            Object::new_rect("Clipping Mask", 0.0, 0.0, 100.0, 100.0, 0.0);
                         clipping.object_type = ObjectType::ClippingMask { children };
                         clipping.name = "Clipping Mask".into();
                         // Emit into the parent clip frame (or the document).
@@ -904,8 +946,7 @@ fn parse_svg_document_inner(svg_text: &str) -> Document {
                                             affine_apply(&total_m, seg.control1.x, seg.control1.y);
                                         let (c2x, c2y) =
                                             affine_apply(&total_m, seg.control2.x, seg.control2.y);
-                                        let (ex, ey) =
-                                            affine_apply(&total_m, seg.end.x, seg.end.y);
+                                        let (ex, ey) = affine_apply(&total_m, seg.end.x, seg.end.y);
                                         seg.start.x = sx;
                                         seg.start.y = sy;
                                         seg.control1.x = c1x;
@@ -934,8 +975,7 @@ fn parse_svg_document_inner(svg_text: &str) -> Document {
                         obj.id = extract_attr_str(trimmed, "id")
                             .map(|s| s.to_string())
                             .unwrap_or_else(|| format!("auto_path_{obj_count}"));
-                        obj.opacity = group_op
-                            * extract_opacity(trimmed).unwrap_or(1.0);
+                        obj.opacity = group_op * extract_opacity(trimmed).unwrap_or(1.0);
                         let obj = wrap_element_clip(obj, trimmed, &clip_paths, &total_m);
                         emit_import_object(&mut doc, &mut clip_frames, obj);
                     }
@@ -978,7 +1018,7 @@ fn parse_svg_document_inner(svg_text: &str) -> Document {
                         obj.opacity = op;
                     }
                     let obj = wrap_element_clip(obj, trimmed, &clip_paths, &total_m);
-                        emit_import_object(&mut doc, &mut clip_frames, obj);
+                    emit_import_object(&mut doc, &mut clip_frames, obj);
                 }
             }
         } else if trimmed.starts_with("<rect") {
@@ -1008,7 +1048,7 @@ fn parse_svg_document_inner(svg_text: &str) -> Document {
                 }
                 obj.opacity = group_op * extract_opacity(trimmed).unwrap_or(1.0);
                 let obj = wrap_element_clip(obj, trimmed, &clip_paths, &total_m);
-                        emit_import_object(&mut doc, &mut clip_frames, obj);
+                emit_import_object(&mut doc, &mut clip_frames, obj);
             }
         } else if trimmed.starts_with("<circle") || trimmed.starts_with("<ellipse") {
             if let (Some(cx), Some(cy), Some(r1), r2) = (
@@ -1019,8 +1059,7 @@ fn parse_svg_document_inner(svg_text: &str) -> Document {
             ) {
                 let ry = r2.unwrap_or(r1);
                 obj_count += 1;
-                let mut obj =
-                    Object::new_ellipse(&format!("Ellipse {obj_count}"), cx, cy, r1, ry);
+                let mut obj = Object::new_ellipse(&format!("Ellipse {obj_count}"), cx, cy, r1, ry);
                 if has_linear {
                     obj.transform = affine_to_transform(&total_m, cx, cy);
                 } else {
@@ -1038,7 +1077,7 @@ fn parse_svg_document_inner(svg_text: &str) -> Document {
                 }
                 obj.opacity = group_op * extract_opacity(trimmed).unwrap_or(1.0);
                 let obj = wrap_element_clip(obj, trimmed, &clip_paths, &total_m);
-                        emit_import_object(&mut doc, &mut clip_frames, obj);
+                emit_import_object(&mut doc, &mut clip_frames, obj);
             }
         } else if trimmed.starts_with("<line") {
             if let (Some(x1), Some(y1), Some(x2), Some(y2)) = (
@@ -1074,7 +1113,7 @@ fn parse_svg_document_inner(svg_text: &str) -> Document {
                 }
                 obj.opacity = group_op * extract_opacity(trimmed).unwrap_or(1.0);
                 let obj = wrap_element_clip(obj, trimmed, &clip_paths, &total_m);
-                        emit_import_object(&mut doc, &mut clip_frames, obj);
+                emit_import_object(&mut doc, &mut clip_frames, obj);
             }
         } else if trimmed.starts_with("<text") {
             let x = extract_attr_f64(trimmed, "x").unwrap_or(0.0);
@@ -1122,10 +1161,18 @@ fn parse_svg_document_inner(svg_text: &str) -> Document {
                 .unwrap_or(false)
                 || extract_attr_str(trimmed, "writing-mode")
                     .map(|m| m.contains("vertical"))
+                    .unwrap_or(false)
+                || extract_attr_str(trimmed, "data-text-vertical")
+                    .map(|m| m.contains('1'))
                     .unwrap_or(false);
             let ligatures = extract_prop_str(trimmed, "font-variant-ligatures")
                 .map(|v| !v.contains("none"))
                 .unwrap_or(true);
+            // CSS `font-feature-settings` round-trips explicit OpenType
+            // overrides (see the exporter): 'palt' 1, "vert" 0, tnum …
+            let ot_features = extract_prop_str(trimmed, "font-feature-settings")
+                .map(|s| parse_font_feature_settings(&s))
+                .unwrap_or_default();
             let next_frame = extract_attr_str(trimmed, "data-text-thread").map(|s| s.to_string());
             let next_frame_from_attr = next_frame.clone();
 
@@ -1139,6 +1186,7 @@ fn parse_svg_document_inner(svg_text: &str) -> Document {
                 variations,
                 vertical,
                 ligatures,
+                ot_features,
                 ..Default::default()
             };
 
@@ -1180,7 +1228,10 @@ fn parse_svg_document_inner(svg_text: &str) -> Document {
                         && parts[2] > 0.0
                         && parts[3] > 0.0
                     {
-                        if let ObjectType::Text { area, next_frame, .. } = &mut obj.object_type {
+                        if let ObjectType::Text {
+                            area, next_frame, ..
+                        } = &mut obj.object_type
+                        {
                             *area = Some(crate::core::document::TextArea::new(
                                 parts[0], parts[1], parts[2], parts[3],
                             ));
@@ -1196,7 +1247,7 @@ fn parse_svg_document_inner(svg_text: &str) -> Document {
                 }
                 obj.opacity = group_op * extract_opacity(trimmed).unwrap_or(1.0);
                 let obj = wrap_element_clip(obj, trimmed, &clip_paths, &total_m);
-                        emit_import_object(&mut doc, &mut clip_frames, obj);
+                emit_import_object(&mut doc, &mut clip_frames, obj);
             }
         } else if trimmed.starts_with("<use") {
             let href = extract_attr_str(trimmed, "href")
@@ -1210,8 +1261,7 @@ fn parse_svg_document_inner(svg_text: &str) -> Document {
                 let w = extract_attr_f64(trimmed, "width");
                 let h = extract_attr_f64(trimmed, "height");
                 obj_count += 1;
-                let mut obj =
-                    Object::new_use(&format!("Use {obj_count}"), clean_href, x, y, w, h);
+                let mut obj = Object::new_use(&format!("Use {obj_count}"), clean_href, x, y, w, h);
                 if has_linear {
                     obj.transform = affine_to_transform(&total_m, x, y);
                 } else {
@@ -1223,7 +1273,7 @@ fn parse_svg_document_inner(svg_text: &str) -> Document {
                     .unwrap_or_else(|| format!("auto_use_{obj_count}"));
                 obj.opacity = group_op * extract_opacity(trimmed).unwrap_or(1.0);
                 let obj = wrap_element_clip(obj, trimmed, &clip_paths, &total_m);
-                        emit_import_object(&mut doc, &mut clip_frames, obj);
+                emit_import_object(&mut doc, &mut clip_frames, obj);
             }
         } else if trimmed.starts_with("<image") {
             // Embedded data URIs only; external file references cannot be
@@ -1232,21 +1282,26 @@ fn parse_svg_document_inner(svg_text: &str) -> Document {
                 .or_else(|| extract_attr_str(trimmed, "xlink:href"))
                 .unwrap_or("");
             if let Some(b64) = href.strip_prefix("data:image/png;base64,") {
-                if let Some(png) = base64_decode(b64.trim()) {
+                // Cap the base64 payload BEFORE decoding (4/3 expansion
+                // would otherwise turn a long attribute into a huge Vec),
+                // then route through the same size-capped decoder as files.
+                const MAX_B64_LEN: usize = 24 * 1024 * 1024;
+                let b64 = b64.trim();
+                if b64.len() > MAX_B64_LEN {
+                    continue;
+                }
+                if let Some(raw) = base64_decode(b64) {
+                    let Ok((_, _, png)) = crate::io::raster::decode_placed_image(&raw) else {
+                        continue;
+                    };
                     let x = extract_attr_f64(trimmed, "x").unwrap_or(0.0);
                     let y = extract_attr_f64(trimmed, "y").unwrap_or(0.0);
                     let w = extract_attr_f64(trimmed, "width").unwrap_or(0.0);
                     let h = extract_attr_f64(trimmed, "height").unwrap_or(0.0);
                     if w > 0.0 && h > 0.0 && !png.is_empty() {
                         obj_count += 1;
-                        let mut obj = Object::new_image(
-                            &format!("Image {obj_count}"),
-                            x,
-                            y,
-                            w,
-                            h,
-                            png,
-                        );
+                        let mut obj =
+                            Object::new_image(&format!("Image {obj_count}"), x, y, w, h, png);
                         if has_linear {
                             obj.transform = affine_to_transform(&total_m, x, y);
                         } else {
@@ -1382,8 +1437,7 @@ fn parse_linear_gradient_tag(tag: &str, child_tags: &[String]) -> (String, FillS
         if stop_tag.trim().starts_with("<stop") {
             // "NaN".parse::<f32>() succeeds; sanitize so NaN never poisons
             // gradient sampling/sorting downstream.
-            let raw =
-                parse_coord_or_percent(extract_attr_str(stop_tag, "offset").unwrap_or("0"));
+            let raw = parse_coord_or_percent(extract_attr_str(stop_tag, "offset").unwrap_or("0"));
             let offset = if raw.is_finite() {
                 raw.clamp(0.0, 1.0)
             } else {
@@ -1444,8 +1498,7 @@ fn parse_radial_gradient_tag(tag: &str, child_tags: &[String]) -> (String, FillS
     let mut stops = Vec::new();
     for stop_tag in child_tags {
         if stop_tag.trim().starts_with("<stop") {
-            let raw =
-                parse_coord_or_percent(extract_attr_str(stop_tag, "offset").unwrap_or("0"));
+            let raw = parse_coord_or_percent(extract_attr_str(stop_tag, "offset").unwrap_or("0"));
             let offset = if raw.is_finite() {
                 raw.clamp(0.0, 1.0)
             } else {
@@ -1504,4 +1557,3 @@ fn parse_coord_or_percent(s: &str) -> f32 {
         trimmed.parse::<f32>().unwrap_or(0.0)
     }
 }
-

@@ -51,10 +51,7 @@ fn rectangle_object_to_path_reflects_corner_radius() {
     let sharp = obj.to_path_data();
     assert_eq!(sharp.elements.len(), 5);
 
-    if let ObjectType::Rectangle {
-        corner_radius, ..
-    } = &mut obj.object_type
-    {
+    if let ObjectType::Rectangle { corner_radius, .. } = &mut obj.object_type {
         *corner_radius = 15.0;
     }
     let rounded = obj.to_path_data();
@@ -66,10 +63,7 @@ fn rectangle_object_to_path_reflects_corner_radius() {
 fn rectangle_property_edit_round_trips_through_object_type() {
     let mut obj = Object::new_rect("R", 10.0, 20.0, 80.0, 40.0, 0.0);
     let target = compute_corner_radius(80.0, 40.0, 8.0, 8.0, (0.0, 0.0));
-    if let ObjectType::Rectangle {
-        corner_radius, ..
-    } = &mut obj.object_type
-    {
+    if let ObjectType::Rectangle { corner_radius, .. } = &mut obj.object_type {
         *corner_radius = target;
     }
     match &obj.object_type {

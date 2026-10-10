@@ -535,12 +535,7 @@ impl CanvasWidget {
     /// Per-cell grid over every visible pixel-art object, plus a hover-cell
     /// highlight while a pixel tool is active. Skipped below ~7 screen px
     /// per cell (sub-pixel lines would just shimmer).
-    pub(super) fn draw_pixel_grid(
-        &self,
-        painter: &egui::Painter,
-        origin: Pos2,
-        state: &AppState,
-    ) {
+    pub(super) fn draw_pixel_grid(&self, painter: &egui::Painter, origin: Pos2, state: &AppState) {
         if !state.pixel_show_grid {
             return;
         }
@@ -558,8 +553,7 @@ impl CanvasWidget {
             .collect();
         while let Some(obj) = stack.pop() {
             match &obj.object_type {
-                ObjectType::Group(children)
-                | ObjectType::ClippingMask { children } => {
+                ObjectType::Group(children) | ObjectType::ClippingMask { children } => {
                     stack.extend(children.iter());
                 }
                 ObjectType::PixelArt(p) => {
@@ -580,19 +574,23 @@ impl CanvasWidget {
                             origin.y + sy as f32 * state.zoom,
                         )
                     };
-                    let thin = Stroke::new(
-                        1.0_f32,
-                        Color32::from_rgba_unmultiplied(255, 255, 255, 26),
-                    );
+                    let thin =
+                        Stroke::new(1.0_f32, Color32::from_rgba_unmultiplied(255, 255, 255, 26));
                     for i in 0..=p.width {
                         painter.line_segment(
-                            [to_screen(i as f64, 0.0), to_screen(i as f64, p.height as f64)],
+                            [
+                                to_screen(i as f64, 0.0),
+                                to_screen(i as f64, p.height as f64),
+                            ],
                             thin,
                         );
                     }
                     for j in 0..=p.height {
                         painter.line_segment(
-                            [to_screen(0.0, j as f64), to_screen(p.width as f64, j as f64)],
+                            [
+                                to_screen(0.0, j as f64),
+                                to_screen(p.width as f64, j as f64),
+                            ],
                             thin,
                         );
                     }
@@ -600,10 +598,7 @@ impl CanvasWidget {
                     if pixel_tool {
                         if let Some((wx, wy)) = state.cursor_world {
                             let (lx, ly) = obj.transform.inverse_transform_point(wx, wy);
-                            if lx >= 0.0
-                                && ly >= 0.0
-                                && lx < p.width as f64
-                                && ly < p.height as f64
+                            if lx >= 0.0 && ly >= 0.0 && lx < p.width as f64 && ly < p.height as f64
                             {
                                 let (cx, cy) = (lx.floor(), ly.floor());
                                 let corners = [
@@ -655,8 +650,10 @@ impl CanvasWidget {
             let rect = Rect::from_min_max(min_p, max_p);
 
             let (point_fill, point_stroke) = handle_palette(state);
-            let sel_stroke =
-                Stroke::new(state.prefs.selection_line_width, Color32::from_rgb(20, 115, 230));
+            let sel_stroke = Stroke::new(
+                state.prefs.selection_line_width,
+                Color32::from_rgb(20, 115, 230),
+            );
             painter.rect_stroke(rect, 0.0_f32, sel_stroke, StrokeKind::Outside);
 
             // Center target crosshair (+)
@@ -730,8 +727,7 @@ impl CanvasWidget {
             } = &obj.object_type
             {
                 if width.abs() >= 1.0 && height.abs() >= 1.0 {
-                    let min_inset = f64::from(HANDLE_HIT_RADIUS)
-                        / f64::from(state.zoom).max(1e-6);
+                    let min_inset = f64::from(HANDLE_HIT_RADIUS) / f64::from(state.zoom).max(1e-6);
                     let max_r = width.abs().min(height.abs()) * 0.5;
                     let inset = corner_radius.clamp(min_inset, max_r);
                     let local_corners = [
@@ -844,11 +840,7 @@ impl CanvasWidget {
                                 point_stroke
                             };
                             painter.circle_filled(c2_sp, 3.5_f32, c2_col);
-                            painter.circle_stroke(
-                                c2_sp,
-                                3.5_f32,
-                                Stroke::new(1.0_f32, point_fill),
-                            );
+                            painter.circle_stroke(c2_sp, 3.5_f32, Stroke::new(1.0_f32, point_fill));
                         }
 
                         // If the next element is CurveTo, draw outgoing control handle (control1)
@@ -870,11 +862,7 @@ impl CanvasWidget {
                                 point_stroke
                             };
                             painter.circle_filled(c1_sp, 3.5_f32, c1_col);
-                            painter.circle_stroke(
-                                c1_sp,
-                                3.5_f32,
-                                Stroke::new(1.0_f32, point_fill),
-                            );
+                            painter.circle_stroke(c1_sp, 3.5_f32, Stroke::new(1.0_f32, point_fill));
                         }
 
                         // Coordinate Tooltip badge
@@ -1304,7 +1292,10 @@ impl CanvasWidget {
             return;
         };
         let w2s = |wx: f64, wy: f64| -> Pos2 {
-            Pos2::new(origin.x + wx as f32 * state.zoom, origin.y + wy as f32 * state.zoom)
+            Pos2::new(
+                origin.x + wx as f32 * state.zoom,
+                origin.y + wy as f32 * state.zoom,
+            )
         };
         let mcol = Color32::from_rgb(242, 72, 34);
         let stroke = Stroke::new(1.0_f32, mcol);
@@ -1382,10 +1373,7 @@ impl CanvasWidget {
         }
 
         // Horizontal (left/right) dimension lines at the y-overlap midpoint.
-        for (side, info) in [
-            ("left", left),
-            ("right", right),
-        ] {
+        for (side, info) in [("left", left), ("right", right)] {
             let Some((gap, y0, y1)) = info else { continue };
             let my = (y0 + y1) * 0.5;
             let (x0, x1) = if side == "left" {
@@ -1397,7 +1385,10 @@ impl CanvasWidget {
             let b = w2s(x1, my);
             painter.line_segment([a, b], stroke);
             for p in [a, b] {
-                painter.line_segment([Pos2::new(p.x, p.y - 3.5), Pos2::new(p.x, p.y + 3.5)], stroke);
+                painter.line_segment(
+                    [Pos2::new(p.x, p.y - 3.5), Pos2::new(p.x, p.y + 3.5)],
+                    stroke,
+                );
             }
             measure_badge(
                 painter,
@@ -1420,7 +1411,10 @@ impl CanvasWidget {
             let b = w2s(mx, y1w);
             painter.line_segment([a, b], stroke);
             for p in [a, b] {
-                painter.line_segment([Pos2::new(p.x - 3.5, p.y), Pos2::new(p.x + 3.5, p.y)], stroke);
+                painter.line_segment(
+                    [Pos2::new(p.x - 3.5, p.y), Pos2::new(p.x + 3.5, p.y)],
+                    stroke,
+                );
             }
             measure_badge(
                 painter,
@@ -1433,19 +1427,17 @@ impl CanvasWidget {
 
     /// Figma-style layout grid overlay on artboards that own one.
     /// Drawn after content so it reads as an editing aid, not artwork.
-    pub(super) fn draw_layout_grid(
-        &self,
-        painter: &egui::Painter,
-        origin: Pos2,
-        state: &AppState,
-    ) {
+    pub(super) fn draw_layout_grid(&self, painter: &egui::Painter, origin: Pos2, state: &AppState) {
         use crate::core::layout_grid::LayoutGridKind;
         for ab in state.document.effective_artboards().iter() {
             let Some(grid) = ab.layout_grid.as_ref().filter(|g| g.show) else {
                 continue;
             };
             let to_screen = |wx: f64, wy: f64| -> Pos2 {
-                Pos2::new(origin.x + wx as f32 * state.zoom, origin.y + wy as f32 * state.zoom)
+                Pos2::new(
+                    origin.x + wx as f32 * state.zoom,
+                    origin.y + wy as f32 * state.zoom,
+                )
             };
             let alpha = (grid.opacity * 255.0) as u8;
             match grid.kind {
@@ -1563,17 +1555,29 @@ impl CanvasWidget {
                     ObjectDiffStatus::Added => (
                         Color32::from_rgb(46, 204, 113),
                         Color32::from_rgba_unmultiplied(46, 204, 113, 35),
-                        format!("＋ 追加: #{}", &obj_diff.id[..8.min(obj_diff.id.len())]),
+                        crate::ui::i18n::format(
+                            &state.prefs.language,
+                            "diff.added_id",
+                            &[("id", &obj_diff.id[..8.min(obj_diff.id.len())])],
+                        ),
                     ),
                     ObjectDiffStatus::Modified { .. } => (
                         Color32::from_rgb(241, 196, 15),
                         Color32::from_rgba_unmultiplied(241, 196, 15, 35),
-                        format!("✎ 変更: #{}", &obj_diff.id[..8.min(obj_diff.id.len())]),
+                        crate::ui::i18n::format(
+                            &state.prefs.language,
+                            "diff.modified_id",
+                            &[("id", &obj_diff.id[..8.min(obj_diff.id.len())])],
+                        ),
                     ),
                     ObjectDiffStatus::Removed => (
                         Color32::from_rgb(231, 76, 60),
                         Color32::from_rgba_unmultiplied(231, 76, 60, 35),
-                        format!("ー 削除: #{}", &obj_diff.id[..8.min(obj_diff.id.len())]),
+                        crate::ui::i18n::format(
+                            &state.prefs.language,
+                            "diff.removed_id",
+                            &[("id", &obj_diff.id[..8.min(obj_diff.id.len())])],
+                        ),
                     ),
                 };
 

@@ -47,7 +47,11 @@ fn test_png_export_clamps_scale_instead_of_cropping() {
     // 4x on a 100px canvas wants 400px; the 64px cap must scale it down to
     // 0.64x uniformly rather than render at 4x into a 64px pixmap.
     let png = export_png_with_limit(&doc, 4.0, false, 64).expect("PNG export");
-    assert_eq!(decoded_size(&png), (64, 32), "aspect ratio must be preserved");
+    assert_eq!(
+        decoded_size(&png),
+        (64, 32),
+        "aspect ratio must be preserved"
+    );
 
     let image = image::load_from_memory(&png).unwrap().to_rgba8();
     let right = image.get_pixel(60, 16).0;
@@ -68,12 +72,21 @@ fn test_atomic_write_str_replaces_file_without_leaving_tmp() {
     let target = dir.join("doc.svg");
 
     atomic_write_str(&target, "<svg>first</svg>").unwrap();
-    assert_eq!(std::fs::read_to_string(&target).unwrap(), "<svg>first</svg>");
-    assert!(!dir.join("doc.svg.tmp").exists(), "no .tmp sibling after success");
+    assert_eq!(
+        std::fs::read_to_string(&target).unwrap(),
+        "<svg>first</svg>"
+    );
+    assert!(
+        !dir.join("doc.svg.tmp").exists(),
+        "no .tmp sibling after success"
+    );
 
     // Overwriting an existing file must work too (rename over the old one).
     atomic_write_bytes(&target, b"<svg>second</svg>").unwrap();
-    assert_eq!(std::fs::read_to_string(&target).unwrap(), "<svg>second</svg>");
+    assert_eq!(
+        std::fs::read_to_string(&target).unwrap(),
+        "<svg>second</svg>"
+    );
     assert!(!dir.join("doc.svg.tmp").exists());
 
     let _ = std::fs::remove_dir_all(&dir);

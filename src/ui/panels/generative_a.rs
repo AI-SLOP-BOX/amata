@@ -6,20 +6,24 @@ pub struct TracePanel;
 
 impl TracePanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("ライブオートトレース").strong());
+        let locale = state.prefs.language.clone();
+        ui.heading(RichText::new(crate::ui::i18n::text(&locale, "gen.trace.title")).strong());
         ui.label(
-            RichText::new("ビットマップをベクターパス化")
+            RichText::new(crate::ui::i18n::text(&locale, "gen.trace.description"))
                 .weak()
                 .size(11.0),
         );
         ui.add_space(4.0);
 
         if ui
-            .button("トレースする画像を開く（PNG/JPG/WebP/AVIF）...")
+            .button(crate::ui::i18n::text(&locale, "gen.trace.open"))
             .clicked()
         {
             if let Some(path) = rfd::FileDialog::new()
-                .add_filter("Image", &["png", "jpg", "jpeg", "webp", "avif", "gif", "bmp"])
+                .add_filter(
+                    "Image",
+                    &["png", "jpg", "jpeg", "webp", "avif", "gif", "bmp"],
+                )
                 .pick_file()
             {
                 if let Ok(img) = image::open(&path) {
@@ -51,7 +55,8 @@ pub struct FormulaPanel;
 
 impl FormulaPanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("数学・数式カーブ").strong());
+        let locale = state.prefs.language.clone();
+        ui.heading(RichText::new(crate::ui::i18n::text(&locale, "gen.formula.title")).strong());
         ui.add_space(4.0);
 
         let cx = state.document.width * 0.5;
@@ -59,8 +64,8 @@ impl FormulaPanel {
 
         ui.horizontal_wrapped(|ui| {
             if ui
-                .button("スパイラル")
-                .on_hover_text("アルキメデスの螺旋")
+                .button(crate::ui::i18n::text(&locale, "gen.formula.spiral"))
+                .on_hover_text(crate::ui::i18n::text(&locale, "gen.formula.spiral_tip"))
                 .clicked()
             {
                 let path = crate::core::formula::FormulaCurves::spiral(cx, cy, 4.0, 5.0, 3.0, 180);
@@ -72,8 +77,8 @@ impl FormulaPanel {
             }
 
             if ui
-                .button("リサジュー")
-                .on_hover_text("オシロスコープ波形")
+                .button(crate::ui::i18n::text(&locale, "gen.formula.lissajous"))
+                .on_hover_text(crate::ui::i18n::text(&locale, "gen.formula.lissajous_tip"))
                 .clicked()
             {
                 let path = crate::core::formula::FormulaCurves::lissajous(
@@ -87,8 +92,8 @@ impl FormulaPanel {
             }
 
             if ui
-                .button("スピログラフ")
-                .on_hover_text("幾何学スピログラフパターン")
+                .button(crate::ui::i18n::text(&locale, "gen.formula.spirograph"))
+                .on_hover_text(crate::ui::i18n::text(&locale, "gen.formula.spirograph_tip"))
                 .clicked()
             {
                 let path = crate::core::formula::FormulaCurves::spirograph(
@@ -102,8 +107,8 @@ impl FormulaPanel {
             }
 
             if ui
-                .button("バラ曲線")
-                .on_hover_text("ロドネアの数学的花")
+                .button(crate::ui::i18n::text(&locale, "gen.formula.rose"))
+                .on_hover_text(crate::ui::i18n::text(&locale, "gen.formula.rose_tip"))
                 .clicked()
             {
                 let path = crate::core::formula::FormulaCurves::rose_curve(cx, cy, 4.0, 90.0, 200);
@@ -121,7 +126,8 @@ pub struct VfxTrailPanel;
 
 impl VfxTrailPanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("VFXパーティクルトレイル").strong());
+        let locale = state.prefs.language.clone();
+        ui.heading(RichText::new(crate::ui::i18n::text(&locale, "gen.trail.title")).strong());
         ui.add_space(4.0);
 
         let has_sel = !state.selected_ids.is_empty();
@@ -130,7 +136,7 @@ impl VfxTrailPanel {
             if ui
                 .add_enabled(
                     has_sel,
-                    egui::Button::new("Export Particle Trails (.json)..."),
+                    egui::Button::new(crate::ui::i18n::text(&locale, "gen.export_particle_trails")),
                 )
                 .clicked()
             {
@@ -151,7 +157,11 @@ impl VfxTrailPanel {
                 }
             }
         } else {
-            ui.label(RichText::new("パスを選択してください").weak().size(11.0));
+            ui.label(
+                RichText::new(crate::ui::i18n::text(&locale, "gen.select_path"))
+                    .weak()
+                    .size(11.0),
+            );
         }
     }
 }
@@ -160,7 +170,8 @@ pub struct HalftonePanel;
 
 impl HalftonePanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("ハーフトーン・ドットマトリクス").strong());
+        let locale = state.prefs.language.clone();
+        ui.heading(RichText::new(crate::ui::i18n::text(&locale, "gen.halftone.title")).strong());
         ui.add_space(4.0);
 
         let has_sel = !state.selected_ids.is_empty();
@@ -173,7 +184,10 @@ impl HalftonePanel {
                 .map(|(_, o)| o.clone());
             ui.horizontal(|ui| {
                 if ui
-                    .add_enabled(has_sel, egui::Button::new("Grid Dots"))
+                    .add_enabled(
+                        has_sel,
+                        egui::Button::new(crate::ui::i18n::text(&locale, "gen.grid_dots")),
+                    )
                     .clicked()
                 {
                     if let Some(obj) = &target_obj {
@@ -194,7 +208,10 @@ impl HalftonePanel {
                 }
 
                 if ui
-                    .add_enabled(has_sel, egui::Button::new("Hex Dots"))
+                    .add_enabled(
+                        has_sel,
+                        egui::Button::new(crate::ui::i18n::text(&locale, "gen.hex_dots")),
+                    )
                     .clicked()
                 {
                     if let Some(obj) = &target_obj {
@@ -217,7 +234,7 @@ impl HalftonePanel {
             });
         } else {
             ui.label(
-                RichText::new("ハーフトーンを適用するオブジェクトを選択してください")
+                RichText::new(crate::ui::i18n::text(&locale, "gen.halftone.select"))
                     .weak()
                     .size(11.0),
             );
@@ -229,7 +246,8 @@ pub struct IsometricPanel;
 
 impl IsometricPanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("2.5D Isometric Transformer").strong());
+        let locale = state.prefs.language.clone();
+        ui.heading(RichText::new(crate::ui::i18n::text(&locale, "gen.iso_transformer")).strong());
         ui.add_space(4.0);
 
         let has_sel = !state.selected_ids.is_empty();
@@ -242,7 +260,10 @@ impl IsometricPanel {
                 .map(|(_, o)| o.clone());
             ui.horizontal(|ui| {
                 if ui
-                    .add_enabled(has_sel, egui::Button::new("Top Plane"))
+                    .add_enabled(
+                        has_sel,
+                        egui::Button::new(crate::ui::i18n::text(&locale, "gen.top_plane")),
+                    )
                     .clicked()
                 {
                     if let Some(obj) = &target_obj {
@@ -258,7 +279,10 @@ impl IsometricPanel {
                 }
 
                 if ui
-                    .add_enabled(has_sel, egui::Button::new("Left Plane"))
+                    .add_enabled(
+                        has_sel,
+                        egui::Button::new(crate::ui::i18n::text(&locale, "gen.left_plane")),
+                    )
                     .clicked()
                 {
                     if let Some(obj) = &target_obj {
@@ -274,7 +298,10 @@ impl IsometricPanel {
                 }
 
                 if ui
-                    .add_enabled(has_sel, egui::Button::new("Right Plane"))
+                    .add_enabled(
+                        has_sel,
+                        egui::Button::new(crate::ui::i18n::text(&locale, "gen.right_plane")),
+                    )
                     .clicked()
                 {
                     if let Some(obj) = &target_obj {
@@ -291,7 +318,7 @@ impl IsometricPanel {
             });
         } else {
             ui.label(
-                RichText::new("等角投影するオブジェクトを選択してください")
+                RichText::new(crate::ui::i18n::text(&locale, "gen.isometric.select"))
                     .weak()
                     .size(11.0),
             );
@@ -303,7 +330,8 @@ pub struct SymmetryPanel;
 
 impl SymmetryPanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("放射対称・マンダラ").strong());
+        let locale = state.prefs.language.clone();
+        ui.heading(RichText::new(crate::ui::i18n::text(&locale, "gen.symmetry.title")).strong());
         ui.add_space(4.0);
 
         let has_sel = !state.selected_ids.is_empty();
@@ -311,19 +339,28 @@ impl SymmetryPanel {
         if let Some(id) = state.selected_ids.first().cloned() {
             ui.horizontal(|ui| {
                 if ui
-                    .add_enabled(has_sel, egui::Button::new("4-Fold"))
+                    .add_enabled(
+                        has_sel,
+                        egui::Button::new(crate::ui::i18n::text(&locale, "gen.fold4")),
+                    )
                     .clicked()
                 {
                     Self::apply_sym(state, &id, 4, false);
                 }
                 if ui
-                    .add_enabled(has_sel, egui::Button::new("6-Fold"))
+                    .add_enabled(
+                        has_sel,
+                        egui::Button::new(crate::ui::i18n::text(&locale, "gen.fold6")),
+                    )
                     .clicked()
                 {
                     Self::apply_sym(state, &id, 6, false);
                 }
                 if ui
-                    .add_enabled(has_sel, egui::Button::new("8-Fold Mirror"))
+                    .add_enabled(
+                        has_sel,
+                        egui::Button::new(crate::ui::i18n::text(&locale, "gen.fold8")),
+                    )
                     .clicked()
                 {
                     Self::apply_sym(state, &id, 8, true);
@@ -331,7 +368,7 @@ impl SymmetryPanel {
             });
         } else {
             ui.label(
-                RichText::new("対称マンダラを作るオブジェクトを選択してください")
+                RichText::new(crate::ui::i18n::text(&locale, "gen.symmetry.select"))
                     .weak()
                     .size(11.0),
             );
@@ -360,10 +397,14 @@ pub struct VoronoiPanel;
 
 impl VoronoiPanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("ボロノイ・モザイク分割").strong());
+        let locale = state.prefs.language.clone();
+        ui.heading(RichText::new(crate::ui::i18n::text(&locale, "gen.voronoi.title")).strong());
         ui.add_space(4.0);
 
-        if ui.button("ボロノイモザイクを生成（40セル）").clicked() {
+        if ui
+            .button(crate::ui::i18n::text(&locale, "gen.voronoi.create"))
+            .clicked()
+        {
             let w = state.document.width;
             let h = state.document.height;
             let mut seeds = Vec::with_capacity(40);
@@ -389,14 +430,18 @@ pub struct LSystemPanel;
 
 impl LSystemPanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("L-systemフラクタル").strong());
+        let locale = state.prefs.language.clone();
+        ui.heading(RichText::new(crate::ui::i18n::text(&locale, "gen.lsystem.title")).strong());
         ui.add_space(4.0);
 
         let cx = state.document.width * 0.5;
         let cy = state.document.height * 0.5;
 
         ui.horizontal_wrapped(|ui| {
-            if ui.button("樹木").clicked() {
+            if ui
+                .button(crate::ui::i18n::text(&locale, "gen.lsystem.tree"))
+                .clicked()
+            {
                 let path = crate::core::lsystem::generate_lsystem(
                     crate::core::lsystem::LSystemPreset::Tree,
                     4,
@@ -409,7 +454,10 @@ impl LSystemPanel {
                 state.undo_manager.execute(cmd, &mut state.document);
             }
 
-            if ui.button("ドラゴン").clicked() {
+            if ui
+                .button(crate::ui::i18n::text(&locale, "gen.lsystem.dragon"))
+                .clicked()
+            {
                 let path = crate::core::lsystem::generate_lsystem(
                     crate::core::lsystem::LSystemPreset::Dragon,
                     10,
@@ -422,7 +470,10 @@ impl LSystemPanel {
                 state.undo_manager.execute(cmd, &mut state.document);
             }
 
-            if ui.button("雪の結晶").clicked() {
+            if ui
+                .button(crate::ui::i18n::text(&locale, "gen.lsystem.snowflake"))
+                .clicked()
+            {
                 let path = crate::core::lsystem::generate_lsystem(
                     crate::core::lsystem::LSystemPreset::Snowflake,
                     3,
@@ -435,7 +486,10 @@ impl LSystemPanel {
                 state.undo_manager.execute(cmd, &mut state.document);
             }
 
-            if ui.button("ヒルベルト").clicked() {
+            if ui
+                .button(crate::ui::i18n::text(&locale, "gen.lsystem.hilbert"))
+                .clicked()
+            {
                 let path = crate::core::lsystem::generate_lsystem(
                     crate::core::lsystem::LSystemPreset::Hilbert,
                     4,
@@ -455,14 +509,18 @@ pub struct QrCodePanel;
 
 impl QrCodePanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("ベクターQR・バーコード").strong());
+        let locale = state.prefs.language.clone();
+        ui.heading(RichText::new(crate::ui::i18n::text(&locale, "gen.qr.title")).strong());
         ui.add_space(4.0);
 
         let cx = state.document.width * 0.5;
         let cy = state.document.height * 0.5;
 
         ui.horizontal(|ui| {
-            if ui.button("QRコードを生成...").clicked() {
+            if ui
+                .button(crate::ui::i18n::text(&locale, "gen.qr.create"))
+                .clicked()
+            {
                 if let Ok(path) = crate::core::barcode::generate_vector_qr(
                     "https://github.com/AI-SLOP-BOX/amata",
                     cx,
@@ -475,7 +533,10 @@ impl QrCodePanel {
                 }
             }
 
-            if ui.button("バーコード（Code-128）").clicked() {
+            if ui
+                .button(crate::ui::i18n::text(&locale, "gen.barcode.create"))
+                .clicked()
+            {
                 let path = crate::core::barcode::generate_vector_barcode(
                     "IRASU-AEVFX-2026",
                     cx,
@@ -495,7 +556,8 @@ pub struct DeformPanel;
 
 impl DeformPanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("ノイズ・波形デフォーマー").strong());
+        let locale = state.prefs.language.clone();
+        ui.heading(RichText::new(crate::ui::i18n::text(&locale, "gen.deform.title")).strong());
         ui.add_space(4.0);
 
         let has_sel = !state.selected_ids.is_empty();
@@ -507,7 +569,13 @@ impl DeformPanel {
                 .find(|(_, o)| o.id == id)
                 .map(|(_, o)| o.clone());
             ui.horizontal(|ui| {
-                if ui.add_enabled(has_sel, egui::Button::new("波形")).clicked() {
+                if ui
+                    .add_enabled(
+                        has_sel,
+                        egui::Button::new(crate::ui::i18n::text(&locale, "gen.deform.wave")),
+                    )
+                    .clicked()
+                {
                     if let Some(obj) = &target_obj {
                         let path = obj.to_path_data();
                         let def = crate::core::noise::deform_path(
@@ -527,7 +595,10 @@ impl DeformPanel {
                 }
 
                 if ui
-                    .add_enabled(has_sel, egui::Button::new("ノイズ"))
+                    .add_enabled(
+                        has_sel,
+                        egui::Button::new(crate::ui::i18n::text(&locale, "gen.deform.noise")),
+                    )
                     .clicked()
                 {
                     if let Some(obj) = &target_obj {
@@ -549,7 +620,10 @@ impl DeformPanel {
                 }
 
                 if ui
-                    .add_enabled(has_sel, egui::Button::new("グリッチ"))
+                    .add_enabled(
+                        has_sel,
+                        egui::Button::new(crate::ui::i18n::text(&locale, "gen.deform.glitch")),
+                    )
                     .clicked()
                 {
                     if let Some(obj) = &target_obj {
@@ -572,7 +646,7 @@ impl DeformPanel {
             });
         } else {
             ui.label(
-                RichText::new("変形させるオブジェクトを選択してください")
+                RichText::new(crate::ui::i18n::text(&locale, "gen.deform.select"))
                     .weak()
                     .size(11.0),
             );

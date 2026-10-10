@@ -46,11 +46,20 @@ impl ScriptEngine {
         engine.register_fn("min", |a: f64, b: f64| -> f64 { a.min(b) });
         engine.register_fn("max", |a: f64, b: f64| -> f64 { a.max(b) });
 
-        // Procedural design helpers
+        // Procedural design helpers. Counts are clamped: unclamped
+        // i64 loop bounds (e.g. grid(1e6,1e6)) would hang/OOM the UI
+        // thread long before Rhai's own array limits trigger.
+        const MAX_CELLS: i64 = 100_000;
+        const MAX_COUNT: i64 = 100_000;
         engine.register_fn(
             "grid",
-            |cols: i64, rows: i64, w: f64, h: f64, gap_x: f64, gap_y: f64| -> rhai::Array {
+            move |cols: i64, rows: i64, w: f64, h: f64, gap_x: f64, gap_y: f64| -> rhai::Array {
                 let mut arr = rhai::Array::new();
+                let cols = cols.clamp(0, MAX_CELLS);
+                let rows = rows.clamp(0, MAX_CELLS);
+                if cols.saturating_mul(rows) > MAX_CELLS {
+                    return arr;
+                }
                 for r in 0..rows {
                     for c in 0..cols {
                         let mut map = rhai::Map::new();
@@ -69,9 +78,9 @@ impl ScriptEngine {
 
         engine.register_fn(
             "radial_repeat",
-            |cx: f64, cy: f64, count: i64, radius: f64| -> rhai::Array {
+            move |cx: f64, cy: f64, count: i64, radius: f64| -> rhai::Array {
                 let mut arr = rhai::Array::new();
-                let n = count.max(1);
+                let n = count.clamp(1, MAX_COUNT);
                 for i in 0..n {
                     let angle = (i as f64 / n as f64) * std::f64::consts::TAU;
                     let x = cx + radius * angle.cos();
@@ -89,8 +98,8 @@ impl ScriptEngine {
 
         engine.register_fn(
             "waveform",
-            |x: f64, y: f64, width: f64, height: f64, points: i64, freq: f64| -> rhai::Map {
-                let n = points.max(2);
+            move |x: f64, y: f64, width: f64, height: f64, points: i64, freq: f64| -> rhai::Map {
+                let n = points.clamp(2, MAX_COUNT);
                 let mut elements = rhai::Array::new();
                 for i in 0..n {
                     let t = i as f64 / (n - 1) as f64;
@@ -210,7 +219,19 @@ impl ScriptEngine {
     }
 }
 
+/// Max nested group depth when converting script maps to objects.
+/// Rhai's own call-level cap does not cover this Rust-side recursion, so a
+/// deeply nested map would overflow the stack and abort the app.
+const MAX_PARSE_DEPTH: usize = 64;
+
 fn parse_object_map(map: &rhai::Map) -> Option<Object> {
+    parse_object_map_depth(map, 0)
+}
+
+fn parse_object_map_depth(map: &rhai::Map, depth: usize) -> Option<Object> {
+    if depth > MAX_PARSE_DEPTH {
+        return None;
+    }
     let obj_type = map
         .get("type")
         .and_then(|v| v.clone().try_cast::<String>())?;
@@ -289,7 +310,7 @@ fn parse_object_map(map: &rhai::Map) -> Option<Object> {
                 if let Some(arr) = ch_val.clone().try_cast::<rhai::Array>() {
                     for item in arr {
                         if let Some(ch_map) = item.try_cast::<rhai::Map>() {
-                            if let Some(ch_obj) = parse_object_map(&ch_map) {
+                            if let Some(ch_obj) = parse_object_map_depth(&ch_map, depth + 1) {
                                 children.push(ch_obj);
                             }
                         }
@@ -326,7 +347,7 @@ fn parse_object_map(map: &rhai::Map) -> Option<Object> {
                 if let Some(arr) = ch_val.clone().try_cast::<rhai::Array>() {
                     for item in arr {
                         if let Some(ch_map) = item.try_cast::<rhai::Map>() {
-                            if let Some(ch_obj) = parse_object_map(&ch_map) {
+                            if let Some(ch_obj) = parse_object_map_depth(&ch_map, depth + 1) {
                                 children.push(ch_obj);
                             }
                         }

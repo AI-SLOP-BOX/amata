@@ -37,7 +37,8 @@ fn rgba_to_color32(c: [f32; 4]) -> Color32 {
 
 impl PixelPanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("Pixel Art").strong());
+        let locale = state.prefs.language.clone();
+        ui.heading(RichText::new(crate::ui::i18n::text(&locale, "pixel.title")).strong());
         ui.add_space(4.0);
 
         // Tool quick-switch.
@@ -46,7 +47,10 @@ impl PixelPanel {
                 let active = state.current_tool == tool;
                 if ui
                     .selectable_label(active, tool.name())
-                    .on_hover_text(format!("ショートカット: {}", tool.shortcut()))
+                    .on_hover_text(
+                        crate::ui::i18n::text(&locale, "pixel.shortcut")
+                            .replace("{}", tool.shortcut()),
+                    )
                     .clicked()
                 {
                     state.previous_tool = state.current_tool;
@@ -57,9 +61,9 @@ impl PixelPanel {
         ui.add_space(4.0);
 
         // New canvas.
-        ui.collapsing("＋ 新規ドット絵キャンバス", |ui| {
+        ui.collapsing(crate::ui::i18n::text(&locale, "pixel.new_canvas"), |ui| {
             ui.horizontal(|ui| {
-                ui.label("サイズ:");
+                ui.label(crate::ui::i18n::text(&locale, "pixel.size"));
                 ui.add(
                     egui::DragValue::new(&mut state.pixel_new_size)
                         .range(8..=MAX_PIXEL_DIM)
@@ -71,7 +75,10 @@ impl PixelPanel {
                     }
                 }
             });
-            if ui.button("キャンバスを作成 (PICO-8パレット)").clicked() {
+            if ui
+                .button(crate::ui::i18n::text(&locale, "pixel.create_canvas"))
+                .clicked()
+            {
                 let size = state.pixel_new_size.clamp(1, MAX_PIXEL_DIM);
                 let art = PixelArt::new(size, size, PixelArt::pico8_palette());
                 let (cx, cy) = state.screen_to_world(state.canvas_center_x, state.canvas_center_y);
@@ -87,13 +94,17 @@ impl PixelPanel {
                 state.undo_manager.execute(cmd, &mut state.document);
                 state.selected_ids = vec![id];
                 state.current_tool = Tool::PixelPencil;
-                state.notify_success(format!("{size}x{size} のドット絵キャンバスを作成しました"));
+                state.notify_success(crate::ui::i18n::format(
+                    &locale,
+                    "pixel.created",
+                    &[("size", &size.to_string())],
+                ));
             }
         });
         ui.add_space(4.0);
 
         let Some(id) = target_id(state) else {
-            ui.label(RichText::new("ドット絵レイヤーがありません。上で作成してください。").weak());
+            ui.label(RichText::new(crate::ui::i18n::text(&locale, "pixel.no_layer")).weak());
             return;
         };
 
@@ -108,11 +119,25 @@ impl PixelPanel {
             }
             None => return,
         };
-        ui.label(format!("編集中: {gw}×{gh} / {painted} dots / {pal_len} colors"));
+        ui.label(crate::ui::i18n::format(
+            &locale,
+            "pixel.editing",
+            &[
+                ("width", &gw.to_string()),
+                ("height", &gh.to_string()),
+                ("painted", &painted.to_string()),
+                ("colors", &pal_len.to_string()),
+            ],
+        ));
         if !state.selected_ids.contains(&id) {
             ui.horizontal(|ui| {
-                ui.label(RichText::new("選択中のレイヤーではありません。").weak());
-                if ui.small_button("このレイヤーを選択").clicked() {
+                ui.label(
+                    RichText::new(crate::ui::i18n::text(&locale, "pixel.not_selected")).weak(),
+                );
+                if ui
+                    .small_button(crate::ui::i18n::text(&locale, "pixel.select_layer"))
+                    .clicked()
+                {
                     state.selected_ids = vec![id.clone()];
                 }
             });
@@ -120,7 +145,7 @@ impl PixelPanel {
         ui.add_space(4.0);
 
         // Palette grid.
-        ui.label(RichText::new("パレット").weak());
+        ui.label(RichText::new(crate::ui::i18n::text(&locale, "pixel.palette")).weak());
         let palette: Vec<[f32; 4]> = match state.document.find_object(&id) {
             Some(obj) => {
                 if let ObjectType::PixelArt(p) = &obj.object_type {
@@ -140,10 +165,15 @@ impl PixelPanel {
                         ui.end_row();
                     }
                     let selected = state.pixel_palette_index == i;
-                    let (rect, resp) = ui.allocate_exact_size(Vec2::splat(22.0), egui::Sense::click());
+                    let (rect, resp) =
+                        ui.allocate_exact_size(Vec2::splat(22.0), egui::Sense::click());
                     if ui.is_rect_visible(rect) {
                         let p = ui.painter();
-                        p.rect_filled(rect.expand(if selected { 2.0 } else { 0.0 }), 3.0, rgba_to_color32(*col));
+                        p.rect_filled(
+                            rect.expand(if selected { 2.0 } else { 0.0 }),
+                            3.0,
+                            rgba_to_color32(*col),
+                        );
                         if selected {
                             p.rect_stroke(
                                 rect.expand(2.0),
@@ -157,7 +187,12 @@ impl PixelPanel {
                         state.pixel_palette_index = i;
                         state.fill_color = *col;
                     }
-                    resp.on_hover_text(format!("{i}: #{:02X}{:02X}{:02X}", (col[0]*255.0) as u8, (col[1]*255.0) as u8, (col[2]*255.0) as u8));
+                    resp.on_hover_text(format!(
+                        "{i}: #{:02X}{:02X}{:02X}",
+                        (col[0] * 255.0) as u8,
+                        (col[1] * 255.0) as u8,
+                        (col[2] * 255.0) as u8
+                    ));
                 }
             });
         ui.add_space(4.0);
@@ -175,7 +210,10 @@ impl PixelPanel {
                 state.pixel_palette_index = 0;
                 state.commit_object_edits("Pixel Palette Preset");
             }
-            if ui.small_button("グレースケール").clicked() {
+            if ui
+                .small_button(crate::ui::i18n::text(&locale, "pixel.grayscale"))
+                .clicked()
+            {
                 state.ensure_object_snapshot(&id);
                 if let Some(obj) = state.document.find_object_mut(&id) {
                     if let ObjectType::PixelArt(p) = &mut obj.object_type {
@@ -193,7 +231,7 @@ impl PixelPanel {
                 (state.fill_color[3] * 255.0) as u8,
             ];
             if color_edit_srgba_u8(ui, &mut fill_c)
-                .on_hover_text("現在の塗り色をパレットに追加")
+                .on_hover_text(crate::ui::i18n::text(&locale, "pixel.add_current_fill"))
                 .changed()
             {
                 let color = [
@@ -217,16 +255,21 @@ impl PixelPanel {
                     }
                     None => {
                         state.commit_object_edits("Pixel Palette Add");
-                        state.notify_error("パレットが満杯です（最大255色）");
+                        state.notify_error(
+                            crate::ui::i18n::text(&locale, "pixel.palette_full").into_owned(),
+                        );
                     }
                 }
             }
         });
         ui.add_space(4.0);
 
-        ui.checkbox(&mut state.pixel_show_grid, "ドットグリッドを表示");
+        ui.checkbox(
+            &mut state.pixel_show_grid,
+            crate::ui::i18n::text(&locale, "pixel.show_grid"),
+        );
         ui.label(
-            RichText::new("X: ペン / C: 消しゴム / K: バケツ / I: スポイト")
+            RichText::new(crate::ui::i18n::text(&locale, "pixel.tool_hints"))
                 .weak()
                 .size(11.0),
         );

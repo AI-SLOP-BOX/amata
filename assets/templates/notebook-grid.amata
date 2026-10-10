@@ -1,0 +1,2770 @@
+{
+  "name": "方眼ノート",
+  "layers": [
+    {
+      "id": "3499dcc7-05b3-4804-81ba-1a55d7a31dc8",
+      "name": "Layer 1",
+      "objects": [
+        {
+          "id": "d755b246-2bd8-4337-ba8e-028c571a4b9b",
+          "name": "gx_0",
+          "object_type": {
+            "Line": {
+              "x2": 0.0,
+              "y2": 1754.0
+            }
+          },
+          "transform": {
+            "x": 0.0,
+            "y": 0.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": null,
+          "stroke": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "width": 0.5,
+            "dash_pattern": null,
+            "cap": "Butt",
+            "join": "Miter",
+            "miter_limit": 4.0,
+            "arrow_start": "None",
+            "arrow_end": "None",
+            "overprint": false,
+            "spot": null
+          },
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        },
+        {
+          "id": "97b85d4b-da8f-4a4c-a8a2-8cc624a260c1",
+          "name": "gx_1",
+          "object_type": {
+            "Line": {
+              "x2": 0.0,
+              "y2": 1754.0
+            }
+          },
+          "transform": {
+            "x": 62.0,
+            "y": 0.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": null,
+          "stroke": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "width": 0.5,
+            "dash_pattern": null,
+            "cap": "Butt",
+            "join": "Miter",
+            "miter_limit": 4.0,
+            "arrow_start": "None",
+            "arrow_end": "None",
+            "overprint": false,
+            "spot": null
+          },
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        },
+        {
+          "id": "b8475282-b167-44d3-8d96-77ef915f2b47",
+          "name": "gx_2",
+          "object_type": {
+            "Line": {
+              "x2": 0.0,
+              "y2": 1754.0
+            }
+          },
+          "transform": {
+            "x": 124.0,
+            "y": 0.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": null,
+          "stroke": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "width": 0.5,
+            "dash_pattern": null,
+            "cap": "Butt",
+            "join": "Miter",
+            "miter_limit": 4.0,
+            "arrow_start": "None",
+            "arrow_end": "None",
+            "overprint": false,
+            "spot": null
+          },
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        },
+        {
+          "id": "73749d24-4010-49c0-929c-c84d8bbfda43",
+          "name": "gx_3",
+          "object_type": {
+            "Line": {
+              "x2": 0.0,
+              "y2": 1754.0
+            }
+          },
+          "transform": {
+            "x": 186.0,
+            "y": 0.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": null,
+          "stroke": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "width": 0.5,
+            "dash_pattern": null,
+            "cap": "Butt",
+            "join": "Miter",
+            "miter_limit": 4.0,
+            "arrow_start": "None",
+            "arrow_end": "None",
+            "overprint": false,
+            "spot": null
+          },
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        },
+        {
+          "id": "f3cd3f0f-e722-453c-ad2b-bde0738d81f5",
+          "name": "gx_4",
+          "object_type": {
+            "Line": {
+              "x2": 0.0,
+              "y2": 1754.0
+            }
+          },
+          "transform": {
+            "x": 248.0,
+            "y": 0.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": null,
+          "stroke": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "width": 0.5,
+            "dash_pattern": null,
+            "cap": "Butt",
+            "join": "Miter",
+            "miter_limit": 4.0,
+            "arrow_start": "None",
+            "arrow_end": "None",
+            "overprint": false,
+            "spot": null
+          },
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        },
+        {
+          "id": "91359808-9543-4499-ab35-2986fec17c05",
+          "name": "gx_5",
+          "object_type": {
+            "Line": {
+              "x2": 0.0,
+              "y2": 1754.0
+            }
+          },
+          "transform": {
+            "x": 310.0,
+            "y": 0.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": null,
+          "stroke": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "width": 0.5,
+            "dash_pattern": null,
+            "cap": "Butt",
+            "join": "Miter",
+            "miter_limit": 4.0,
+            "arrow_start": "None",
+            "arrow_end": "None",
+            "overprint": false,
+            "spot": null
+          },
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        },
+        {
+          "id": "d66a94d9-954f-4e03-aa76-5edff2e706e4",
+          "name": "gx_6",
+          "object_type": {
+            "Line": {
+              "x2": 0.0,
+              "y2": 1754.0
+            }
+          },
+          "transform": {
+            "x": 372.0,
+            "y": 0.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": null,
+          "stroke": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "width": 0.5,
+            "dash_pattern": null,
+            "cap": "Butt",
+            "join": "Miter",
+            "miter_limit": 4.0,
+            "arrow_start": "None",
+            "arrow_end": "None",
+            "overprint": false,
+            "spot": null
+          },
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        },
+        {
+          "id": "1558316e-042c-4c88-b889-a879d9c7996e",
+          "name": "gx_7",
+          "object_type": {
+            "Line": {
+              "x2": 0.0,
+              "y2": 1754.0
+            }
+          },
+          "transform": {
+            "x": 434.0,
+            "y": 0.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": null,
+          "stroke": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "width": 0.5,
+            "dash_pattern": null,
+            "cap": "Butt",
+            "join": "Miter",
+            "miter_limit": 4.0,
+            "arrow_start": "None",
+            "arrow_end": "None",
+            "overprint": false,
+            "spot": null
+          },
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        },
+        {
+          "id": "f9f826d8-06ac-421d-943f-3e30352f6bd8",
+          "name": "gx_8",
+          "object_type": {
+            "Line": {
+              "x2": 0.0,
+              "y2": 1754.0
+            }
+          },
+          "transform": {
+            "x": 496.0,
+            "y": 0.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": null,
+          "stroke": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "width": 0.5,
+            "dash_pattern": null,
+            "cap": "Butt",
+            "join": "Miter",
+            "miter_limit": 4.0,
+            "arrow_start": "None",
+            "arrow_end": "None",
+            "overprint": false,
+            "spot": null
+          },
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        },
+        {
+          "id": "55963e6d-6229-48e2-adea-f3cf9958a4a5",
+          "name": "gx_9",
+          "object_type": {
+            "Line": {
+              "x2": 0.0,
+              "y2": 1754.0
+            }
+          },
+          "transform": {
+            "x": 558.0,
+            "y": 0.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": null,
+          "stroke": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "width": 0.5,
+            "dash_pattern": null,
+            "cap": "Butt",
+            "join": "Miter",
+            "miter_limit": 4.0,
+            "arrow_start": "None",
+            "arrow_end": "None",
+            "overprint": false,
+            "spot": null
+          },
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        },
+        {
+          "id": "69f5ed60-df57-4bfa-acdd-94d760cd1b37",
+          "name": "gx_10",
+          "object_type": {
+            "Line": {
+              "x2": 0.0,
+              "y2": 1754.0
+            }
+          },
+          "transform": {
+            "x": 620.0,
+            "y": 0.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": null,
+          "stroke": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "width": 0.5,
+            "dash_pattern": null,
+            "cap": "Butt",
+            "join": "Miter",
+            "miter_limit": 4.0,
+            "arrow_start": "None",
+            "arrow_end": "None",
+            "overprint": false,
+            "spot": null
+          },
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        },
+        {
+          "id": "7a1d4282-4259-4420-bce1-3664c38e0db8",
+          "name": "gx_11",
+          "object_type": {
+            "Line": {
+              "x2": 0.0,
+              "y2": 1754.0
+            }
+          },
+          "transform": {
+            "x": 682.0,
+            "y": 0.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": null,
+          "stroke": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "width": 0.5,
+            "dash_pattern": null,
+            "cap": "Butt",
+            "join": "Miter",
+            "miter_limit": 4.0,
+            "arrow_start": "None",
+            "arrow_end": "None",
+            "overprint": false,
+            "spot": null
+          },
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        },
+        {
+          "id": "c0a7638f-ba31-476a-9a3e-bd019baa80a1",
+          "name": "gx_12",
+          "object_type": {
+            "Line": {
+              "x2": 0.0,
+              "y2": 1754.0
+            }
+          },
+          "transform": {
+            "x": 744.0,
+            "y": 0.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": null,
+          "stroke": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "width": 0.5,
+            "dash_pattern": null,
+            "cap": "Butt",
+            "join": "Miter",
+            "miter_limit": 4.0,
+            "arrow_start": "None",
+            "arrow_end": "None",
+            "overprint": false,
+            "spot": null
+          },
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        },
+        {
+          "id": "cf19fe2e-0072-43f6-8601-e1b0a1e20f9c",
+          "name": "gx_13",
+          "object_type": {
+            "Line": {
+              "x2": 0.0,
+              "y2": 1754.0
+            }
+          },
+          "transform": {
+            "x": 806.0,
+            "y": 0.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": null,
+          "stroke": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "width": 0.5,
+            "dash_pattern": null,
+            "cap": "Butt",
+            "join": "Miter",
+            "miter_limit": 4.0,
+            "arrow_start": "None",
+            "arrow_end": "None",
+            "overprint": false,
+            "spot": null
+          },
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        },
+        {
+          "id": "aeffb045-cc98-4854-8d76-a9cbbcf5fb2d",
+          "name": "gx_14",
+          "object_type": {
+            "Line": {
+              "x2": 0.0,
+              "y2": 1754.0
+            }
+          },
+          "transform": {
+            "x": 868.0,
+            "y": 0.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": null,
+          "stroke": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "width": 0.5,
+            "dash_pattern": null,
+            "cap": "Butt",
+            "join": "Miter",
+            "miter_limit": 4.0,
+            "arrow_start": "None",
+            "arrow_end": "None",
+            "overprint": false,
+            "spot": null
+          },
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        },
+        {
+          "id": "6ce1a728-db97-45d5-a179-6e41351bfe31",
+          "name": "gx_15",
+          "object_type": {
+            "Line": {
+              "x2": 0.0,
+              "y2": 1754.0
+            }
+          },
+          "transform": {
+            "x": 930.0,
+            "y": 0.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": null,
+          "stroke": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "width": 0.5,
+            "dash_pattern": null,
+            "cap": "Butt",
+            "join": "Miter",
+            "miter_limit": 4.0,
+            "arrow_start": "None",
+            "arrow_end": "None",
+            "overprint": false,
+            "spot": null
+          },
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        },
+        {
+          "id": "096d915c-943d-4bd5-ab26-aa27b37727f7",
+          "name": "gx_16",
+          "object_type": {
+            "Line": {
+              "x2": 0.0,
+              "y2": 1754.0
+            }
+          },
+          "transform": {
+            "x": 992.0,
+            "y": 0.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": null,
+          "stroke": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "width": 0.5,
+            "dash_pattern": null,
+            "cap": "Butt",
+            "join": "Miter",
+            "miter_limit": 4.0,
+            "arrow_start": "None",
+            "arrow_end": "None",
+            "overprint": false,
+            "spot": null
+          },
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        },
+        {
+          "id": "bbf6adc0-e5f4-4cb2-8944-3f5d823df3fa",
+          "name": "gx_17",
+          "object_type": {
+            "Line": {
+              "x2": 0.0,
+              "y2": 1754.0
+            }
+          },
+          "transform": {
+            "x": 1054.0,
+            "y": 0.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": null,
+          "stroke": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "width": 0.5,
+            "dash_pattern": null,
+            "cap": "Butt",
+            "join": "Miter",
+            "miter_limit": 4.0,
+            "arrow_start": "None",
+            "arrow_end": "None",
+            "overprint": false,
+            "spot": null
+          },
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        },
+        {
+          "id": "58552d89-e39b-4944-9e65-fd986b0f6e2e",
+          "name": "gx_18",
+          "object_type": {
+            "Line": {
+              "x2": 0.0,
+              "y2": 1754.0
+            }
+          },
+          "transform": {
+            "x": 1116.0,
+            "y": 0.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": null,
+          "stroke": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "width": 0.5,
+            "dash_pattern": null,
+            "cap": "Butt",
+            "join": "Miter",
+            "miter_limit": 4.0,
+            "arrow_start": "None",
+            "arrow_end": "None",
+            "overprint": false,
+            "spot": null
+          },
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        },
+        {
+          "id": "449b7adb-313d-41dc-b731-09e0282c2184",
+          "name": "gx_19",
+          "object_type": {
+            "Line": {
+              "x2": 0.0,
+              "y2": 1754.0
+            }
+          },
+          "transform": {
+            "x": 1178.0,
+            "y": 0.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": null,
+          "stroke": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "width": 0.5,
+            "dash_pattern": null,
+            "cap": "Butt",
+            "join": "Miter",
+            "miter_limit": 4.0,
+            "arrow_start": "None",
+            "arrow_end": "None",
+            "overprint": false,
+            "spot": null
+          },
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        },
+        {
+          "id": "9f92e4e3-945f-4f3f-9cb3-2e4e3a2316c2",
+          "name": "gx_20",
+          "object_type": {
+            "Line": {
+              "x2": 0.0,
+              "y2": 1754.0
+            }
+          },
+          "transform": {
+            "x": 1240.0,
+            "y": 0.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": null,
+          "stroke": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "width": 0.5,
+            "dash_pattern": null,
+            "cap": "Butt",
+            "join": "Miter",
+            "miter_limit": 4.0,
+            "arrow_start": "None",
+            "arrow_end": "None",
+            "overprint": false,
+            "spot": null
+          },
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        },
+        {
+          "id": "8cee943b-9c27-49d4-b047-d92b26dc9bcf",
+          "name": "gy_0",
+          "object_type": {
+            "Line": {
+              "x2": 1240.0,
+              "y2": 0.0
+            }
+          },
+          "transform": {
+            "x": 0.0,
+            "y": 0.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": null,
+          "stroke": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "width": 0.5,
+            "dash_pattern": null,
+            "cap": "Butt",
+            "join": "Miter",
+            "miter_limit": 4.0,
+            "arrow_start": "None",
+            "arrow_end": "None",
+            "overprint": false,
+            "spot": null
+          },
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        },
+        {
+          "id": "377f0e7e-91ae-49b5-be2c-1f12c87ae106",
+          "name": "gy_1",
+          "object_type": {
+            "Line": {
+              "x2": 1240.0,
+              "y2": 0.0
+            }
+          },
+          "transform": {
+            "x": 0.0,
+            "y": 62.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": null,
+          "stroke": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "width": 0.5,
+            "dash_pattern": null,
+            "cap": "Butt",
+            "join": "Miter",
+            "miter_limit": 4.0,
+            "arrow_start": "None",
+            "arrow_end": "None",
+            "overprint": false,
+            "spot": null
+          },
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        },
+        {
+          "id": "2a4b8379-bb01-405d-8737-4ae6858a2788",
+          "name": "gy_2",
+          "object_type": {
+            "Line": {
+              "x2": 1240.0,
+              "y2": 0.0
+            }
+          },
+          "transform": {
+            "x": 0.0,
+            "y": 124.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": null,
+          "stroke": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "width": 0.5,
+            "dash_pattern": null,
+            "cap": "Butt",
+            "join": "Miter",
+            "miter_limit": 4.0,
+            "arrow_start": "None",
+            "arrow_end": "None",
+            "overprint": false,
+            "spot": null
+          },
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        },
+        {
+          "id": "8ee5bb37-3c51-477d-b19a-05be96fb0608",
+          "name": "gy_3",
+          "object_type": {
+            "Line": {
+              "x2": 1240.0,
+              "y2": 0.0
+            }
+          },
+          "transform": {
+            "x": 0.0,
+            "y": 186.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": null,
+          "stroke": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "width": 0.5,
+            "dash_pattern": null,
+            "cap": "Butt",
+            "join": "Miter",
+            "miter_limit": 4.0,
+            "arrow_start": "None",
+            "arrow_end": "None",
+            "overprint": false,
+            "spot": null
+          },
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        },
+        {
+          "id": "3436b26c-2050-42ba-b465-06392f3a7005",
+          "name": "gy_4",
+          "object_type": {
+            "Line": {
+              "x2": 1240.0,
+              "y2": 0.0
+            }
+          },
+          "transform": {
+            "x": 0.0,
+            "y": 248.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": null,
+          "stroke": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "width": 0.5,
+            "dash_pattern": null,
+            "cap": "Butt",
+            "join": "Miter",
+            "miter_limit": 4.0,
+            "arrow_start": "None",
+            "arrow_end": "None",
+            "overprint": false,
+            "spot": null
+          },
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        },
+        {
+          "id": "b54db1e5-0c00-4271-ba7f-ad26da6df2c6",
+          "name": "gy_5",
+          "object_type": {
+            "Line": {
+              "x2": 1240.0,
+              "y2": 0.0
+            }
+          },
+          "transform": {
+            "x": 0.0,
+            "y": 310.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": null,
+          "stroke": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "width": 0.5,
+            "dash_pattern": null,
+            "cap": "Butt",
+            "join": "Miter",
+            "miter_limit": 4.0,
+            "arrow_start": "None",
+            "arrow_end": "None",
+            "overprint": false,
+            "spot": null
+          },
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        },
+        {
+          "id": "be70cc58-5c4f-4d23-839f-682c226f5845",
+          "name": "gy_6",
+          "object_type": {
+            "Line": {
+              "x2": 1240.0,
+              "y2": 0.0
+            }
+          },
+          "transform": {
+            "x": 0.0,
+            "y": 372.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": null,
+          "stroke": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "width": 0.5,
+            "dash_pattern": null,
+            "cap": "Butt",
+            "join": "Miter",
+            "miter_limit": 4.0,
+            "arrow_start": "None",
+            "arrow_end": "None",
+            "overprint": false,
+            "spot": null
+          },
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        },
+        {
+          "id": "96af6a12-e393-4067-bc79-343a463e101c",
+          "name": "gy_7",
+          "object_type": {
+            "Line": {
+              "x2": 1240.0,
+              "y2": 0.0
+            }
+          },
+          "transform": {
+            "x": 0.0,
+            "y": 434.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": null,
+          "stroke": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "width": 0.5,
+            "dash_pattern": null,
+            "cap": "Butt",
+            "join": "Miter",
+            "miter_limit": 4.0,
+            "arrow_start": "None",
+            "arrow_end": "None",
+            "overprint": false,
+            "spot": null
+          },
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        },
+        {
+          "id": "0a5dbca4-7a2c-4d2a-9b61-8d67c6009d18",
+          "name": "gy_8",
+          "object_type": {
+            "Line": {
+              "x2": 1240.0,
+              "y2": 0.0
+            }
+          },
+          "transform": {
+            "x": 0.0,
+            "y": 496.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": null,
+          "stroke": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "width": 0.5,
+            "dash_pattern": null,
+            "cap": "Butt",
+            "join": "Miter",
+            "miter_limit": 4.0,
+            "arrow_start": "None",
+            "arrow_end": "None",
+            "overprint": false,
+            "spot": null
+          },
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        },
+        {
+          "id": "3958b94b-97ca-4ab4-a945-b10aae065af4",
+          "name": "gy_9",
+          "object_type": {
+            "Line": {
+              "x2": 1240.0,
+              "y2": 0.0
+            }
+          },
+          "transform": {
+            "x": 0.0,
+            "y": 558.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": null,
+          "stroke": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "width": 0.5,
+            "dash_pattern": null,
+            "cap": "Butt",
+            "join": "Miter",
+            "miter_limit": 4.0,
+            "arrow_start": "None",
+            "arrow_end": "None",
+            "overprint": false,
+            "spot": null
+          },
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        },
+        {
+          "id": "bed5a873-a716-4501-9410-a498b824d471",
+          "name": "gy_10",
+          "object_type": {
+            "Line": {
+              "x2": 1240.0,
+              "y2": 0.0
+            }
+          },
+          "transform": {
+            "x": 0.0,
+            "y": 620.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": null,
+          "stroke": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "width": 0.5,
+            "dash_pattern": null,
+            "cap": "Butt",
+            "join": "Miter",
+            "miter_limit": 4.0,
+            "arrow_start": "None",
+            "arrow_end": "None",
+            "overprint": false,
+            "spot": null
+          },
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        },
+        {
+          "id": "ee82eb0a-17c4-4e3a-8f9b-5437359037e8",
+          "name": "gy_11",
+          "object_type": {
+            "Line": {
+              "x2": 1240.0,
+              "y2": 0.0
+            }
+          },
+          "transform": {
+            "x": 0.0,
+            "y": 682.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": null,
+          "stroke": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "width": 0.5,
+            "dash_pattern": null,
+            "cap": "Butt",
+            "join": "Miter",
+            "miter_limit": 4.0,
+            "arrow_start": "None",
+            "arrow_end": "None",
+            "overprint": false,
+            "spot": null
+          },
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        },
+        {
+          "id": "91e606f4-d6bf-4d2e-b7ac-cd133c38ac07",
+          "name": "gy_12",
+          "object_type": {
+            "Line": {
+              "x2": 1240.0,
+              "y2": 0.0
+            }
+          },
+          "transform": {
+            "x": 0.0,
+            "y": 744.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": null,
+          "stroke": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "width": 0.5,
+            "dash_pattern": null,
+            "cap": "Butt",
+            "join": "Miter",
+            "miter_limit": 4.0,
+            "arrow_start": "None",
+            "arrow_end": "None",
+            "overprint": false,
+            "spot": null
+          },
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        },
+        {
+          "id": "d9663397-4bb7-452d-bbc7-b25406f6e8ac",
+          "name": "gy_13",
+          "object_type": {
+            "Line": {
+              "x2": 1240.0,
+              "y2": 0.0
+            }
+          },
+          "transform": {
+            "x": 0.0,
+            "y": 806.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": null,
+          "stroke": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "width": 0.5,
+            "dash_pattern": null,
+            "cap": "Butt",
+            "join": "Miter",
+            "miter_limit": 4.0,
+            "arrow_start": "None",
+            "arrow_end": "None",
+            "overprint": false,
+            "spot": null
+          },
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        },
+        {
+          "id": "cc67ff14-18ef-4346-b825-c801e59dec87",
+          "name": "gy_14",
+          "object_type": {
+            "Line": {
+              "x2": 1240.0,
+              "y2": 0.0
+            }
+          },
+          "transform": {
+            "x": 0.0,
+            "y": 868.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": null,
+          "stroke": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "width": 0.5,
+            "dash_pattern": null,
+            "cap": "Butt",
+            "join": "Miter",
+            "miter_limit": 4.0,
+            "arrow_start": "None",
+            "arrow_end": "None",
+            "overprint": false,
+            "spot": null
+          },
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        },
+        {
+          "id": "0cd1ff91-6304-42d9-bbea-4325047bbfb6",
+          "name": "gy_15",
+          "object_type": {
+            "Line": {
+              "x2": 1240.0,
+              "y2": 0.0
+            }
+          },
+          "transform": {
+            "x": 0.0,
+            "y": 930.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": null,
+          "stroke": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "width": 0.5,
+            "dash_pattern": null,
+            "cap": "Butt",
+            "join": "Miter",
+            "miter_limit": 4.0,
+            "arrow_start": "None",
+            "arrow_end": "None",
+            "overprint": false,
+            "spot": null
+          },
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        },
+        {
+          "id": "0625313c-a15f-40a7-a672-2faa3e4e11bd",
+          "name": "gy_16",
+          "object_type": {
+            "Line": {
+              "x2": 1240.0,
+              "y2": 0.0
+            }
+          },
+          "transform": {
+            "x": 0.0,
+            "y": 992.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": null,
+          "stroke": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "width": 0.5,
+            "dash_pattern": null,
+            "cap": "Butt",
+            "join": "Miter",
+            "miter_limit": 4.0,
+            "arrow_start": "None",
+            "arrow_end": "None",
+            "overprint": false,
+            "spot": null
+          },
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        },
+        {
+          "id": "b42cf2d3-1fc9-4eaf-8dca-7578e3cb5ed9",
+          "name": "gy_17",
+          "object_type": {
+            "Line": {
+              "x2": 1240.0,
+              "y2": 0.0
+            }
+          },
+          "transform": {
+            "x": 0.0,
+            "y": 1054.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": null,
+          "stroke": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "width": 0.5,
+            "dash_pattern": null,
+            "cap": "Butt",
+            "join": "Miter",
+            "miter_limit": 4.0,
+            "arrow_start": "None",
+            "arrow_end": "None",
+            "overprint": false,
+            "spot": null
+          },
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        },
+        {
+          "id": "3b77dc33-bd4e-4ede-9ebd-5027a5af8e9e",
+          "name": "gy_18",
+          "object_type": {
+            "Line": {
+              "x2": 1240.0,
+              "y2": 0.0
+            }
+          },
+          "transform": {
+            "x": 0.0,
+            "y": 1116.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": null,
+          "stroke": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "width": 0.5,
+            "dash_pattern": null,
+            "cap": "Butt",
+            "join": "Miter",
+            "miter_limit": 4.0,
+            "arrow_start": "None",
+            "arrow_end": "None",
+            "overprint": false,
+            "spot": null
+          },
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        },
+        {
+          "id": "32a39891-4ad5-4728-9f39-f68008a92ee1",
+          "name": "gy_19",
+          "object_type": {
+            "Line": {
+              "x2": 1240.0,
+              "y2": 0.0
+            }
+          },
+          "transform": {
+            "x": 0.0,
+            "y": 1178.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": null,
+          "stroke": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "width": 0.5,
+            "dash_pattern": null,
+            "cap": "Butt",
+            "join": "Miter",
+            "miter_limit": 4.0,
+            "arrow_start": "None",
+            "arrow_end": "None",
+            "overprint": false,
+            "spot": null
+          },
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        },
+        {
+          "id": "8be53852-7227-416e-9c1b-96086a5d69e4",
+          "name": "gy_20",
+          "object_type": {
+            "Line": {
+              "x2": 1240.0,
+              "y2": 0.0
+            }
+          },
+          "transform": {
+            "x": 0.0,
+            "y": 1240.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": null,
+          "stroke": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "width": 0.5,
+            "dash_pattern": null,
+            "cap": "Butt",
+            "join": "Miter",
+            "miter_limit": 4.0,
+            "arrow_start": "None",
+            "arrow_end": "None",
+            "overprint": false,
+            "spot": null
+          },
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        },
+        {
+          "id": "a6805c4e-1787-4edf-9e94-de436985c444",
+          "name": "gy_21",
+          "object_type": {
+            "Line": {
+              "x2": 1240.0,
+              "y2": 0.0
+            }
+          },
+          "transform": {
+            "x": 0.0,
+            "y": 1302.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": null,
+          "stroke": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "width": 0.5,
+            "dash_pattern": null,
+            "cap": "Butt",
+            "join": "Miter",
+            "miter_limit": 4.0,
+            "arrow_start": "None",
+            "arrow_end": "None",
+            "overprint": false,
+            "spot": null
+          },
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        },
+        {
+          "id": "c2971eb0-9d87-439e-90b6-fa90ae7e7ca7",
+          "name": "gy_22",
+          "object_type": {
+            "Line": {
+              "x2": 1240.0,
+              "y2": 0.0
+            }
+          },
+          "transform": {
+            "x": 0.0,
+            "y": 1364.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": null,
+          "stroke": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "width": 0.5,
+            "dash_pattern": null,
+            "cap": "Butt",
+            "join": "Miter",
+            "miter_limit": 4.0,
+            "arrow_start": "None",
+            "arrow_end": "None",
+            "overprint": false,
+            "spot": null
+          },
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        },
+        {
+          "id": "87e512a1-d830-4f96-a7d5-fe754488f957",
+          "name": "gy_23",
+          "object_type": {
+            "Line": {
+              "x2": 1240.0,
+              "y2": 0.0
+            }
+          },
+          "transform": {
+            "x": 0.0,
+            "y": 1426.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": null,
+          "stroke": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "width": 0.5,
+            "dash_pattern": null,
+            "cap": "Butt",
+            "join": "Miter",
+            "miter_limit": 4.0,
+            "arrow_start": "None",
+            "arrow_end": "None",
+            "overprint": false,
+            "spot": null
+          },
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        },
+        {
+          "id": "e5530bb1-4e35-44f9-ab38-aa4bb6b25b20",
+          "name": "gy_24",
+          "object_type": {
+            "Line": {
+              "x2": 1240.0,
+              "y2": 0.0
+            }
+          },
+          "transform": {
+            "x": 0.0,
+            "y": 1488.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": null,
+          "stroke": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "width": 0.5,
+            "dash_pattern": null,
+            "cap": "Butt",
+            "join": "Miter",
+            "miter_limit": 4.0,
+            "arrow_start": "None",
+            "arrow_end": "None",
+            "overprint": false,
+            "spot": null
+          },
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        },
+        {
+          "id": "a0adb695-26ec-4de1-b003-1be1b4635454",
+          "name": "gy_25",
+          "object_type": {
+            "Line": {
+              "x2": 1240.0,
+              "y2": 0.0
+            }
+          },
+          "transform": {
+            "x": 0.0,
+            "y": 1550.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": null,
+          "stroke": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "width": 0.5,
+            "dash_pattern": null,
+            "cap": "Butt",
+            "join": "Miter",
+            "miter_limit": 4.0,
+            "arrow_start": "None",
+            "arrow_end": "None",
+            "overprint": false,
+            "spot": null
+          },
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        },
+        {
+          "id": "adc17026-6a7c-4f4d-9c92-8de99e344869",
+          "name": "gy_26",
+          "object_type": {
+            "Line": {
+              "x2": 1240.0,
+              "y2": 0.0
+            }
+          },
+          "transform": {
+            "x": 0.0,
+            "y": 1612.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": null,
+          "stroke": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "width": 0.5,
+            "dash_pattern": null,
+            "cap": "Butt",
+            "join": "Miter",
+            "miter_limit": 4.0,
+            "arrow_start": "None",
+            "arrow_end": "None",
+            "overprint": false,
+            "spot": null
+          },
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        },
+        {
+          "id": "eef486a0-679f-4faa-a168-83a2b3ef8f85",
+          "name": "gy_27",
+          "object_type": {
+            "Line": {
+              "x2": 1240.0,
+              "y2": 0.0
+            }
+          },
+          "transform": {
+            "x": 0.0,
+            "y": 1674.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": null,
+          "stroke": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "width": 0.5,
+            "dash_pattern": null,
+            "cap": "Butt",
+            "join": "Miter",
+            "miter_limit": 4.0,
+            "arrow_start": "None",
+            "arrow_end": "None",
+            "overprint": false,
+            "spot": null
+          },
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        },
+        {
+          "id": "fe563bfa-ebb2-4f4d-bde0-446130aed439",
+          "name": "gy_28",
+          "object_type": {
+            "Line": {
+              "x2": 1240.0,
+              "y2": 0.0
+            }
+          },
+          "transform": {
+            "x": 0.0,
+            "y": 1736.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": null,
+          "stroke": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "width": 0.5,
+            "dash_pattern": null,
+            "cap": "Butt",
+            "join": "Miter",
+            "miter_limit": 4.0,
+            "arrow_start": "None",
+            "arrow_end": "None",
+            "overprint": false,
+            "spot": null
+          },
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        },
+        {
+          "id": "4dd5e2a6-f09d-42eb-8997-69aab85b64c7",
+          "name": "ヘッダ",
+          "object_type": {
+            "Text": {
+              "text": "｜設計《せっけい》メモ",
+              "font_size": 40.0,
+              "style": {
+                "font_family": "Noto Sans JP",
+                "font_size": 40.0,
+                "font_weight": 700,
+                "font_style": "Normal",
+                "letter_spacing": 0.0,
+                "text_anchor": "Start",
+                "line_height": null,
+                "max_width": null,
+                "word_wrap": false,
+                "variations": [],
+                "vertical": false,
+                "auto_spacing": true,
+                "auto_spacing_em": 0.25,
+                "ligatures": true,
+                "ot_features": [],
+                "list": "None",
+                "burasage": true
+              },
+              "area": {
+                "x": 80.0,
+                "y": 90.0,
+                "width": 600.0,
+                "height": 120.0,
+                "cols": 1,
+                "gutter": 12.0
+              },
+              "next_frame": null
+            }
+          },
+          "transform": {
+            "x": 80.0,
+            "y": 90.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "fill_type": {
+              "Solid": [
+                0.0,
+                0.0,
+                0.0,
+                1.0
+              ]
+            },
+            "rule": "NonZero",
+            "overprint": false,
+            "spot": null
+          },
+          "stroke": null,
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        },
+        {
+          "id": "21582cb3-4d9c-4bd2-8840-99637cd5b941",
+          "name": "ヘッダ線",
+          "object_type": {
+            "Line": {
+              "x2": 540.0,
+              "y2": 0.0
+            }
+          },
+          "transform": {
+            "x": 80.0,
+            "y": 190.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": null,
+          "stroke": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "width": 2.0,
+            "dash_pattern": null,
+            "cap": "Butt",
+            "join": "Miter",
+            "miter_limit": 4.0,
+            "arrow_start": "None",
+            "arrow_end": "None",
+            "overprint": false,
+            "spot": null
+          },
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        }
+      ],
+      "visible": true,
+      "locked": false,
+      "opacity": 1.0
+    }
+  ],
+  "active_layer_idx": 0,
+  "width": 1240.0,
+  "height": 1754.0,
+  "symbols": [],
+  "timeline": {
+    "fps": 60.0,
+    "total_frames": 180,
+    "current_frame": 0,
+    "is_playing": false,
+    "loop_playback": true,
+    "tracks": []
+  },
+  "guides": [],
+  "color_mode": "Rgb",
+  "spots": [
+    {
+      "name": "Spot Reflex Blue",
+      "cmyk": [
+        1.0,
+        0.72,
+        0.0,
+        0.04
+      ]
+    },
+    {
+      "name": "Spot Warm Red",
+      "cmyk": [
+        0.0,
+        0.91,
+        0.76,
+        0.0
+      ]
+    },
+    {
+      "name": "Spot Green",
+      "cmyk": [
+        0.95,
+        0.0,
+        1.0,
+        0.0
+      ]
+    }
+  ],
+  "bleed": 0.0,
+  "perspective": null,
+  "artboards": [
+    {
+      "id": "b663e923-6e2f-4a46-ac48-f7cd30152fb2",
+      "name": "A4",
+      "x": 0.0,
+      "y": 0.0,
+      "width": 1240.0,
+      "height": 1754.0,
+      "layout_grid": null
+    }
+  ],
+  "trap_width": 0.0,
+  "toc_threshold": 18.0,
+  "paragraph_styles": [
+    {
+      "name": "見出し",
+      "style": {
+        "font_family": "Inter, sans-serif",
+        "font_size": 24.0,
+        "font_weight": 700,
+        "font_style": "Normal",
+        "letter_spacing": 0.0,
+        "text_anchor": "Start",
+        "line_height": null,
+        "max_width": null,
+        "word_wrap": false,
+        "variations": [],
+        "vertical": false,
+        "auto_spacing": true,
+        "auto_spacing_em": 0.25,
+        "ligatures": true,
+        "ot_features": [],
+        "list": "None",
+        "burasage": true
+      }
+    },
+    {
+      "name": "本文",
+      "style": {
+        "font_family": "Inter, sans-serif",
+        "font_size": 12.0,
+        "font_weight": 400,
+        "font_style": "Normal",
+        "letter_spacing": 0.0,
+        "text_anchor": "Start",
+        "line_height": null,
+        "max_width": null,
+        "word_wrap": false,
+        "variations": [],
+        "vertical": false,
+        "auto_spacing": true,
+        "auto_spacing_em": 0.25,
+        "ligatures": true,
+        "ot_features": [],
+        "list": "None",
+        "burasage": true
+      }
+    },
+    {
+      "name": "キャプション",
+      "style": {
+        "font_family": "Inter, sans-serif",
+        "font_size": 9.0,
+        "font_weight": 400,
+        "font_style": "Normal",
+        "letter_spacing": 0.0,
+        "text_anchor": "Start",
+        "line_height": null,
+        "max_width": null,
+        "word_wrap": false,
+        "variations": [],
+        "vertical": false,
+        "auto_spacing": true,
+        "auto_spacing_em": 0.25,
+        "ligatures": true,
+        "ot_features": [],
+        "list": "None",
+        "burasage": true
+      }
+    }
+  ]
+}

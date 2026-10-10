@@ -7,14 +7,18 @@ pub struct FlowFieldPanel;
 
 impl FlowFieldPanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("ベクターフローフィールド").strong());
+        let locale = state.prefs.language.clone();
+        ui.heading(RichText::new(crate::ui::i18n::text(&locale, "gen.flow.title")).strong());
         ui.add_space(4.0);
 
         let w = state.document.width;
         let h = state.document.height;
 
         ui.horizontal(|ui| {
-            if ui.button("渦巻き").clicked() {
+            if ui
+                .button(crate::ui::i18n::text(&locale, "gen.flow.whirlpool"))
+                .clicked()
+            {
                 let lines = crate::core::flowfield::generate_flowfield_streamlines(
                     crate::core::flowfield::FlowFieldPreset::Vortex,
                     w,
@@ -29,7 +33,10 @@ impl FlowFieldPanel {
                 }
             }
 
-            if ui.button("マグネット").clicked() {
+            if ui
+                .button(crate::ui::i18n::text(&locale, "gen.flow.magnet"))
+                .clicked()
+            {
                 let lines = crate::core::flowfield::generate_flowfield_streamlines(
                     crate::core::flowfield::FlowFieldPreset::MagneticDipole,
                     w,
@@ -44,7 +51,10 @@ impl FlowFieldPanel {
                 }
             }
 
-            if ui.button("サイバー").clicked() {
+            if ui
+                .button(crate::ui::i18n::text(&locale, "gen.mesh.preset.cyber"))
+                .clicked()
+            {
                 let lines = crate::core::flowfield::generate_flowfield_streamlines(
                     crate::core::flowfield::FlowFieldPreset::CyberChaos,
                     w,
@@ -66,7 +76,8 @@ pub struct ScatterBrushPanel;
 
 impl ScatterBrushPanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("スキャター・パターンブラシ").strong());
+        let locale = state.prefs.language.clone();
+        ui.heading(RichText::new(crate::ui::i18n::text(&locale, "gen.scatter.title")).strong());
         ui.add_space(4.0);
 
         let has_sel = state.selected_ids.len() >= 2;
@@ -74,7 +85,7 @@ impl ScatterBrushPanel {
         if ui
             .add_enabled(
                 has_sel,
-                egui::Button::new("Scatter 1st (Motif) along 2nd (Path)"),
+                egui::Button::new(crate::ui::i18n::text(&locale, "gen.scatter_action")),
             )
             .clicked()
         {
@@ -105,7 +116,7 @@ impl ScatterBrushPanel {
             }
         } else if !has_sel {
             ui.label(
-                RichText::new("モチーフとカーブの2つを選択してください")
+                RichText::new(crate::ui::i18n::text(&locale, "gen.scatter.select"))
                     .weak()
                     .size(11.0),
             );
@@ -117,14 +128,18 @@ pub struct AudioWavePanel;
 
 impl AudioWavePanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("オーディオ波形（LogicPro DSP）").strong());
+        let locale = state.prefs.language.clone();
+        ui.heading(RichText::new(crate::ui::i18n::text(&locale, "gen.audio.title")).strong());
         ui.add_space(4.0);
 
         let w = state.document.width;
         let h = state.document.height;
 
         ui.horizontal_wrapped(|ui| {
-            if ui.button("正弦波").clicked() {
+            if ui
+                .button(crate::ui::i18n::text(&locale, "gen.audio.sine"))
+                .clicked()
+            {
                 let path = crate::core::audio_curve::generate_audio_waveform(
                     crate::core::audio_curve::WaveformType::Sine,
                     4.0,
@@ -138,7 +153,10 @@ impl AudioWavePanel {
                 state.undo_manager.execute(cmd, &mut state.document);
             }
 
-            if ui.button("ノコギリ波").clicked() {
+            if ui
+                .button(crate::ui::i18n::text(&locale, "gen.audio.saw"))
+                .clicked()
+            {
                 let path = crate::core::audio_curve::generate_audio_waveform(
                     crate::core::audio_curve::WaveformType::Sawtooth,
                     4.0,
@@ -152,7 +170,10 @@ impl AudioWavePanel {
                 state.undo_manager.execute(cmd, &mut state.document);
             }
 
-            if ui.button("倍音").clicked() {
+            if ui
+                .button(crate::ui::i18n::text(&locale, "gen.audio.harmonics"))
+                .clicked()
+            {
                 let path = crate::core::audio_curve::generate_audio_waveform(
                     crate::core::audio_curve::WaveformType::Harmonics,
                     3.0,
@@ -166,7 +187,10 @@ impl AudioWavePanel {
                 state.undo_manager.execute(cmd, &mut state.document);
             }
 
-            if ui.button("FMシンセ").clicked() {
+            if ui
+                .button(crate::ui::i18n::text(&locale, "gen.audio.fm"))
+                .clicked()
+            {
                 let path = crate::core::audio_curve::generate_audio_waveform(
                     crate::core::audio_curve::WaveformType::FM,
                     3.0,
@@ -187,7 +211,8 @@ pub struct MeshWarpPanel;
 
 impl MeshWarpPanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("2D Mesh Warp (Live2D FFD)").strong());
+        let locale = state.prefs.language.clone();
+        ui.heading(RichText::new(crate::ui::i18n::text(&locale, "gen.mesh_warp")).strong());
         ui.add_space(4.0);
 
         let has_sel = !state.selected_ids.is_empty();
@@ -200,7 +225,10 @@ impl MeshWarpPanel {
                 .map(|(_, o)| o.clone());
             ui.horizontal(|ui| {
                 if ui
-                    .add_enabled(has_sel, egui::Button::new("膨らみ"))
+                    .add_enabled(
+                        has_sel,
+                        egui::Button::new(crate::ui::i18n::text(&locale, "gen.deform.bulge")),
+                    )
                     .clicked()
                 {
                     if let Some(obj) = &target_obj {
@@ -219,7 +247,10 @@ impl MeshWarpPanel {
                 }
 
                 if ui
-                    .add_enabled(has_sel, egui::Button::new("ねじれ"))
+                    .add_enabled(
+                        has_sel,
+                        egui::Button::new(crate::ui::i18n::text(&locale, "gen.deform.twist")),
+                    )
                     .clicked()
                 {
                     if let Some(obj) = &target_obj {
@@ -237,7 +268,13 @@ impl MeshWarpPanel {
                     }
                 }
 
-                if ui.add_enabled(has_sel, egui::Button::new("波形")).clicked() {
+                if ui
+                    .add_enabled(
+                        has_sel,
+                        egui::Button::new(crate::ui::i18n::text(&locale, "gen.deform.wave")),
+                    )
+                    .clicked()
+                {
                     if let Some(obj) = &target_obj {
                         let warped = crate::core::mesh_warp::apply_lattice_warp(
                             obj,
@@ -255,7 +292,7 @@ impl MeshWarpPanel {
             });
         } else {
             ui.label(
-                RichText::new("FFD格子で歪めるオブジェクトを選択してください")
+                RichText::new(crate::ui::i18n::text(&locale, "gen.meshwarp.select"))
                     .weak()
                     .size(11.0),
             );
@@ -309,24 +346,40 @@ fn selected_mesh_id(state: &AppState) -> Option<String> {
         .document
         .all_objects()
         .find(|(_, o)| {
-            matches!(o.object_type, crate::core::document::ObjectType::GradientMesh(_))
+            matches!(
+                o.object_type,
+                crate::core::document::ObjectType::GradientMesh(_)
+            )
         })
         .map(|(_, o)| o.id.clone())
 }
 
 impl GradientMeshPanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("グラデーションメッシュ").strong());
+        let locale = state.prefs.language.clone();
+        ui.heading(RichText::new(crate::ui::i18n::text(&locale, "gen.mesh.title")).strong());
         ui.add_space(4.0);
 
         // Create a new editable mesh from a preset.
-        ui.label(RichText::new("新規メッシュ").weak());
+        ui.label(RichText::new(crate::ui::i18n::text(&locale, "gen.mesh.new")).weak());
         ui.horizontal_wrapped(|ui| {
             for (label, preset) in [
-                ("サンセット", crate::core::gradient_mesh::GradientMeshPreset::Sunset),
-                ("サイバー", crate::core::gradient_mesh::GradientMeshPreset::Cyberpunk),
-                ("オーロラ", crate::core::gradient_mesh::GradientMeshPreset::Aurora),
-                ("ゴールド", crate::core::gradient_mesh::GradientMeshPreset::Gold),
+                (
+                    crate::ui::i18n::text(&locale, "gen.mesh.preset.sunset"),
+                    crate::core::gradient_mesh::GradientMeshPreset::Sunset,
+                ),
+                (
+                    crate::ui::i18n::text(&locale, "gen.mesh.preset.cyber"),
+                    crate::core::gradient_mesh::GradientMeshPreset::Cyberpunk,
+                ),
+                (
+                    crate::ui::i18n::text(&locale, "gen.mesh.preset.aurora"),
+                    crate::core::gradient_mesh::GradientMeshPreset::Aurora,
+                ),
+                (
+                    crate::ui::i18n::text(&locale, "gen.mesh.preset.gold"),
+                    crate::core::gradient_mesh::GradientMeshPreset::Gold,
+                ),
             ] {
                 if ui.button(label).clicked() {
                     let size = state.document.width.min(state.document.height) / 2.0;
@@ -340,7 +393,7 @@ impl GradientMeshPanel {
                         preset_corners(preset),
                     );
                     let obj = crate::core::document::Object::new_mesh(
-                        "グラデーションメッシュ",
+                        crate::ui::i18n::text(&locale, "gen.mesh.title").as_ref(),
                         (state.document.width - size) / 2.0,
                         (state.document.height - size) / 2.0,
                         mesh,
@@ -349,7 +402,9 @@ impl GradientMeshPanel {
                     let cmd = Box::new(crate::core::history::AddObjectCommand::new(obj));
                     state.undo_manager.execute(cmd, &mut state.document);
                     state.selected_ids = vec![id];
-                    state.notify_success("グラデーションメッシュを作成しました");
+                    state.notify_success(
+                        crate::ui::i18n::text(&locale, "gen.mesh.created").into_owned(),
+                    );
                 }
             }
         });
@@ -358,7 +413,7 @@ impl GradientMeshPanel {
         // Edit the targeted mesh node by node.
         let Some(id) = selected_mesh_id(state) else {
             ui.label(
-                RichText::new("メッシュを選択するとノード編集できます。ノードはキャンバス上で■表示されます。")
+                RichText::new(crate::ui::i18n::text(&locale, "gen.mesh.help"))
                     .weak()
                     .size(11.0),
             );
@@ -374,32 +429,65 @@ impl GradientMeshPanel {
             }
             None => return,
         };
-        ui.label(format!("編集中: {rows}×{cols} ノード"));
+        ui.label(crate::ui::i18n::format(
+            &locale,
+            "gen.mesh.editing",
+            &[("rows", &rows.to_string()), ("cols", &cols.to_string())],
+        ));
         // Node picker.
         let mut node_rc: Option<(usize, usize)> = None;
         ui.horizontal(|ui| {
-            ui.label("ノード:");
+            ui.label(crate::ui::i18n::text(&locale, "gen.mesh.node"));
             // Persist picker in egui memory (panel is stateless).
             let mem_id = egui::Id::new(("mesh_node", id.clone()));
-            let (mut r, mut c): (usize, usize) = ui.memory_mut(|m| *m.data.get_temp_mut_or_default(mem_id));
+            let (mut r, mut c): (usize, usize) =
+                ui.memory_mut(|m| *m.data.get_temp_mut_or_default(mem_id));
             r = r.min(rows - 1);
             c = c.min(cols - 1);
             egui::ComboBox::from_id_salt(("mesh_row", id.clone()))
-                .selected_text(format!("row {r}"))
+                .selected_text(crate::ui::i18n::format(
+                    &locale,
+                    "gen.row",
+                    &[("count", &r.to_string())],
+                ))
                 .width(70.0)
                 .show_ui(ui, |ui| {
                     for i in 0..rows {
-                        if ui.selectable_label(r == i, format!("row {i}")).clicked() {
+                        if ui
+                            .selectable_label(
+                                r == i,
+                                crate::ui::i18n::format(
+                                    &locale,
+                                    "gen.row",
+                                    &[("count", &i.to_string())],
+                                ),
+                            )
+                            .clicked()
+                        {
                             r = i;
                         }
                     }
                 });
             egui::ComboBox::from_id_salt(("mesh_col", id.clone()))
-                .selected_text(format!("col {c}"))
+                .selected_text(crate::ui::i18n::format(
+                    &locale,
+                    "gen.column",
+                    &[("count", &c.to_string())],
+                ))
                 .width(70.0)
                 .show_ui(ui, |ui| {
                     for i in 0..cols {
-                        if ui.selectable_label(c == i, format!("col {i}")).clicked() {
+                        if ui
+                            .selectable_label(
+                                c == i,
+                                crate::ui::i18n::format(
+                                    &locale,
+                                    "gen.column",
+                                    &[("count", &i.to_string())],
+                                ),
+                            )
+                            .clicked()
+                        {
                             c = i;
                         }
                     }
@@ -433,7 +521,9 @@ impl GradientMeshPanel {
                 if x_resp.changed() || y_resp.changed() {
                     state.ensure_object_snapshot(&id);
                     if let Some(o) = state.document.find_object_mut(&id) {
-                        if let crate::core::document::ObjectType::GradientMesh(m) = &mut o.object_type {
+                        if let crate::core::document::ObjectType::GradientMesh(m) =
+                            &mut o.object_type
+                        {
                             let n = m.node_mut(r, c);
                             n.x = nx;
                             n.y = ny;
@@ -448,10 +538,8 @@ impl GradientMeshPanel {
                 }
             });
             ui.horizontal(|ui| {
-                ui.label("カラー:");
-                if color_edit_srgba_u8(ui, &mut ncolor)
-                    .changed()
-                {
+                ui.label(crate::ui::i18n::text(&locale, "gen.mesh.color"));
+                if color_edit_srgba_u8(ui, &mut ncolor).changed() {
                     let col = [
                         ncolor[0] as f32 / 255.0,
                         ncolor[1] as f32 / 255.0,
@@ -460,7 +548,9 @@ impl GradientMeshPanel {
                     ];
                     state.ensure_object_snapshot(&id);
                     if let Some(o) = state.document.find_object_mut(&id) {
-                        if let crate::core::document::ObjectType::GradientMesh(m) = &mut o.object_type {
+                        if let crate::core::document::ObjectType::GradientMesh(m) =
+                            &mut o.object_type
+                        {
                             m.node_mut(r, c).color = col;
                         }
                     }
@@ -475,7 +565,8 @@ pub struct AxonometricPanel;
 
 impl AxonometricPanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("軸測投影（アーキテクチャ）").strong());
+        let locale = state.prefs.language.clone();
+        ui.heading(RichText::new(crate::ui::i18n::text(&locale, "gen.isometric.title")).strong());
         ui.add_space(4.0);
 
         let has_sel = !state.selected_ids.is_empty();
@@ -488,7 +579,10 @@ impl AxonometricPanel {
                 .map(|(_, o)| o.clone());
             ui.horizontal_wrapped(|ui| {
                 if ui
-                    .add_enabled(has_sel, egui::Button::new("Dimetric"))
+                    .add_enabled(
+                        has_sel,
+                        egui::Button::new(crate::ui::i18n::text(&locale, "gen.dimetric")),
+                    )
                     .clicked()
                 {
                     if let Some(obj) = &target_obj {
@@ -504,7 +598,10 @@ impl AxonometricPanel {
                 }
 
                 if ui
-                    .add_enabled(has_sel, egui::Button::new("Trimetric"))
+                    .add_enabled(
+                        has_sel,
+                        egui::Button::new(crate::ui::i18n::text(&locale, "gen.trimetric")),
+                    )
                     .clicked()
                 {
                     if let Some(obj) = &target_obj {
@@ -520,7 +617,10 @@ impl AxonometricPanel {
                 }
 
                 if ui
-                    .add_enabled(has_sel, egui::Button::new("Cabinet (Oblique)"))
+                    .add_enabled(
+                        has_sel,
+                        egui::Button::new(crate::ui::i18n::text(&locale, "gen.cabinet")),
+                    )
                     .clicked()
                 {
                     if let Some(obj) = &target_obj {
@@ -536,7 +636,10 @@ impl AxonometricPanel {
                 }
 
                 if ui
-                    .add_enabled(has_sel, egui::Button::new("Cavalier"))
+                    .add_enabled(
+                        has_sel,
+                        egui::Button::new(crate::ui::i18n::text(&locale, "gen.cavalier")),
+                    )
                     .clicked()
                 {
                     if let Some(obj) = &target_obj {
@@ -553,9 +656,12 @@ impl AxonometricPanel {
             });
         } else {
             ui.label(
-                RichText::new("軸測投影するオブジェクトを選択してください")
-                    .weak()
-                    .size(11.0),
+                RichText::new(crate::ui::i18n::text(
+                    &locale,
+                    "gen.isometric.profile_select",
+                ))
+                .weak()
+                .size(11.0),
             );
         }
     }
@@ -565,7 +671,8 @@ pub struct RevolvePanel;
 
 impl RevolvePanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("3D Revolve & Lathe Modeler").strong());
+        let locale = state.prefs.language.clone();
+        ui.heading(RichText::new(crate::ui::i18n::text(&locale, "gen.revolve_modeler")).strong());
         ui.add_space(4.0);
 
         let has_sel = !state.selected_ids.is_empty();
@@ -577,7 +684,10 @@ impl RevolvePanel {
                 .find(|(_, o)| o.id == id)
                 .map(|(_, o)| o.clone());
             if ui
-                .add_enabled(has_sel, egui::Button::new("Export 3D Revolve OBJ..."))
+                .add_enabled(
+                    has_sel,
+                    egui::Button::new(crate::ui::i18n::text(&locale, "gen.export_revolve")),
+                )
                 .clicked()
             {
                 if let Some(obj) = &target_obj {
@@ -594,7 +704,7 @@ impl RevolvePanel {
             }
         } else {
             ui.label(
-                RichText::new("3D回転させるプロファイルパスを選択してください")
+                RichText::new(crate::ui::i18n::text(&locale, "gen.revolve.select"))
                     .weak()
                     .size(11.0),
             );
@@ -606,7 +716,8 @@ pub struct EnvelopePanel;
 
 impl EnvelopePanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("エンベロープ歪曲・シェイプモールド").strong());
+        let locale = state.prefs.language.clone();
+        ui.heading(RichText::new(crate::ui::i18n::text(&locale, "gen.envelope.title")).strong());
         ui.add_space(4.0);
 
         let has_sel = state.selected_ids.len() >= 2;
@@ -614,7 +725,7 @@ impl EnvelopePanel {
         if ui
             .add_enabled(
                 has_sel,
-                egui::Button::new("Mold 1st (Art) inside 2nd (Frame)"),
+                egui::Button::new(crate::ui::i18n::text(&locale, "gen.envelope_action")),
             )
             .clicked()
         {
@@ -639,7 +750,7 @@ impl EnvelopePanel {
             }
         } else if !has_sel {
             ui.label(
-                RichText::new("アートとエンベロープ枠の2つを選択してください")
+                RichText::new(crate::ui::i18n::text(&locale, "gen.envelope.select"))
                     .weak()
                     .size(11.0),
             );
@@ -647,19 +758,24 @@ impl EnvelopePanel {
 
         ui.add_space(4.0);
         ui.separator();
-        ui.label(RichText::new("ライブワープ（非破壊）").strong());
+        ui.label(RichText::new(crate::ui::i18n::text(&locale, "gen.live_warp.title")).strong());
 
         // If a live envelope is selected: edit kind/amount or release.
         let live_id = state.selected_ids.iter().find_map(|id| {
-            state.document.find_object(id).and_then(|o| match &o.object_type {
-                crate::core::document::ObjectType::Envelope { .. } => Some(id.clone()),
-                _ => None,
-            })
+            state
+                .document
+                .find_object(id)
+                .and_then(|o| match &o.object_type {
+                    crate::core::document::ObjectType::Envelope { .. } => Some(id.clone()),
+                    _ => None,
+                })
         });
         if let Some(id) = live_id {
             let (kind, amount) = match state.document.find_object(&id) {
                 Some(o) => match &o.object_type {
-                    crate::core::document::ObjectType::Envelope { kind, amount, .. } => (*kind, *amount),
+                    crate::core::document::ObjectType::Envelope { kind, amount, .. } => {
+                        (*kind, *amount)
+                    }
                     _ => return,
                 },
                 None => return,
@@ -674,8 +790,9 @@ impl EnvelopePanel {
                     if ui.selectable_label(kind == k, k.name()).clicked() {
                         state.ensure_object_snapshot(&id);
                         if let Some(o) = state.document.find_object_mut(&id) {
-                            if let crate::core::document::ObjectType::Envelope { kind: kk, .. } =
-                                &mut o.object_type
+                            if let crate::core::document::ObjectType::Envelope {
+                                kind: kk, ..
+                            } = &mut o.object_type
                             {
                                 *kk = k;
                             }
@@ -702,13 +819,19 @@ impl EnvelopePanel {
             if amt_resp.drag_stopped() {
                 state.commit_object_edits("Edit Envelope");
             }
-            if ui.button("リリース（ソースパスを復元）").clicked() {
-                let source = state.document.find_object(&id).and_then(|o| match &o.object_type {
-                    crate::core::document::ObjectType::Envelope { source, .. } => {
-                        Some(source.as_ref().clone())
-                    }
-                    _ => None,
-                });
+            if ui
+                .button(crate::ui::i18n::text(&locale, "gen.live_warp.release"))
+                .clicked()
+            {
+                let source = state
+                    .document
+                    .find_object(&id)
+                    .and_then(|o| match &o.object_type {
+                        crate::core::document::ObjectType::Envelope { source, .. } => {
+                            Some(source.as_ref().clone())
+                        }
+                        _ => None,
+                    });
                 if let Some(mut src) = source {
                     state.ensure_object_snapshot(&id);
                     // Swap in place: keep id/position, drop the deform.
@@ -723,20 +846,27 @@ impl EnvelopePanel {
         } else {
             // Wrap the selection in a new live envelope.
             let wrappable = state.selected_ids.iter().any(|id| {
-                state.document.find_object(id).map(|o| {
-                    matches!(
-                        o.object_type,
-                        crate::core::document::ObjectType::Path(_)
-                            | crate::core::document::ObjectType::Rectangle { .. }
-                            | crate::core::document::ObjectType::Ellipse { .. }
-                            | crate::core::document::ObjectType::Star { .. }
-                            | crate::core::document::ObjectType::Polygon { .. }
-                            | crate::core::document::ObjectType::Line { .. }
-                    )
-                }).unwrap_or(false)
+                state
+                    .document
+                    .find_object(id)
+                    .map(|o| {
+                        matches!(
+                            o.object_type,
+                            crate::core::document::ObjectType::Path(_)
+                                | crate::core::document::ObjectType::Rectangle { .. }
+                                | crate::core::document::ObjectType::Ellipse { .. }
+                                | crate::core::document::ObjectType::Star { .. }
+                                | crate::core::document::ObjectType::Polygon { .. }
+                                | crate::core::document::ObjectType::Line { .. }
+                        )
+                    })
+                    .unwrap_or(false)
             });
             if ui
-                .add_enabled(wrappable, egui::Button::new("Wrap Selection in Live Warp"))
+                .add_enabled(
+                    wrappable,
+                    egui::Button::new(crate::ui::i18n::text(&locale, "gen.live_warp_action")),
+                )
                 .clicked()
             {
                 let ids: Vec<String> = state.selected_ids.clone();
@@ -763,11 +893,9 @@ impl EnvelopePanel {
             }
             if !wrappable {
                 ui.label(
-                    RichText::new(
-                        "ライブワープするパス／図形を選択してください（テキスト・画像は対象外）",
-                    )
-                    .weak()
-                    .size(11.0),
+                    RichText::new(crate::ui::i18n::text(&locale, "gen.live_warp.select"))
+                        .weak()
+                        .size(11.0),
                 );
             }
         }
@@ -778,7 +906,8 @@ pub struct PolarPanel;
 
 impl PolarPanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("極座標・プラネットラップ").strong());
+        let locale = state.prefs.language.clone();
+        ui.heading(RichText::new(crate::ui::i18n::text(&locale, "gen.polar.title")).strong());
         ui.add_space(4.0);
 
         let has_sel = !state.selected_ids.is_empty();
@@ -795,7 +924,10 @@ impl PolarPanel {
                 .map(|(_, o)| o.clone());
             ui.horizontal(|ui| {
                 if ui
-                    .add_enabled(has_sel, egui::Button::new("Rect -> Polar"))
+                    .add_enabled(
+                        has_sel,
+                        egui::Button::new(crate::ui::i18n::text(&locale, "gen.rect_to_polar")),
+                    )
                     .clicked()
                 {
                     if let Some(obj) = &target_obj {
@@ -815,7 +947,10 @@ impl PolarPanel {
                 }
 
                 if ui
-                    .add_enabled(has_sel, egui::Button::new("Polar -> Rect"))
+                    .add_enabled(
+                        has_sel,
+                        egui::Button::new(crate::ui::i18n::text(&locale, "gen.polar_to_rect")),
+                    )
                     .clicked()
                 {
                     if let Some(obj) = &target_obj {
@@ -836,7 +971,7 @@ impl PolarPanel {
             });
         } else {
             ui.label(
-                RichText::new("極座標に巻きつけるオブジェクトを選択してください")
+                RichText::new(crate::ui::i18n::text(&locale, "gen.polar.select"))
                     .weak()
                     .size(11.0),
             );

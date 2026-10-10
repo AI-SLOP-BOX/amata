@@ -1,0 +1,2462 @@
+{
+  "name": "請求書",
+  "layers": [
+    {
+      "id": "ad8f3109-ea1b-4edc-b7c8-2a19c74b0ea3",
+      "name": "Layer 1",
+      "objects": [
+        {
+          "id": "b9c4a265-8f76-49ab-a1ad-02ec0f2bf9fd",
+          "name": "請求書",
+          "object_type": {
+            "Text": {
+              "text": "請 求 書",
+              "font_size": 72.0,
+              "style": {
+                "font_family": "Noto Sans JP",
+                "font_size": 72.0,
+                "font_weight": 700,
+                "font_style": "Normal",
+                "letter_spacing": 0.0,
+                "text_anchor": "Start",
+                "line_height": null,
+                "max_width": null,
+                "word_wrap": false,
+                "variations": [],
+                "vertical": false,
+                "auto_spacing": true,
+                "auto_spacing_em": 0.25,
+                "ligatures": true,
+                "ot_features": [],
+                "list": "None",
+                "burasage": true
+              },
+              "area": null,
+              "next_frame": null
+            }
+          },
+          "transform": {
+            "x": 420.0,
+            "y": 160.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "fill_type": {
+              "Solid": [
+                0.0,
+                0.0,
+                0.0,
+                1.0
+              ]
+            },
+            "rule": "NonZero",
+            "overprint": false,
+            "spot": null
+          },
+          "stroke": null,
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        },
+        {
+          "id": "705554f3-5b13-4577-9efb-83e1bc9d0b97",
+          "name": "番号",
+          "object_type": {
+            "Text": {
+              "text": "No. 2026-1010",
+              "font_size": 24.0,
+              "style": {
+                "font_family": "Noto Sans JP",
+                "font_size": 24.0,
+                "font_weight": 400,
+                "font_style": "Normal",
+                "letter_spacing": 0.0,
+                "text_anchor": "Start",
+                "line_height": null,
+                "max_width": null,
+                "word_wrap": false,
+                "variations": [],
+                "vertical": false,
+                "auto_spacing": true,
+                "auto_spacing_em": 0.25,
+                "ligatures": true,
+                "ot_features": [],
+                "list": "None",
+                "burasage": true
+              },
+              "area": null,
+              "next_frame": null
+            }
+          },
+          "transform": {
+            "x": 840.0,
+            "y": 200.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "fill_type": {
+              "Solid": [
+                0.0,
+                0.0,
+                0.0,
+                1.0
+              ]
+            },
+            "rule": "NonZero",
+            "overprint": false,
+            "spot": null
+          },
+          "stroke": null,
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        },
+        {
+          "id": "0397e0e5-9e18-4231-88f8-7d7eda257c77",
+          "name": "cell_0_0",
+          "object_type": {
+            "Rectangle": {
+              "width": 420.0,
+              "height": 60.0,
+              "corner_radius": 0.0
+            }
+          },
+          "transform": {
+            "x": 100.0,
+            "y": 420.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": null,
+          "stroke": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "width": 1.0,
+            "dash_pattern": null,
+            "cap": "Butt",
+            "join": "Miter",
+            "miter_limit": 4.0,
+            "arrow_start": "None",
+            "arrow_end": "None",
+            "overprint": false,
+            "spot": null
+          },
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        },
+        {
+          "id": "ee7cf689-6a75-46c3-8b7d-e2c5c396109c",
+          "name": "t_0_0",
+          "object_type": {
+            "Text": {
+              "text": "品名",
+              "font_size": 22.0,
+              "style": {
+                "font_family": "Noto Sans JP",
+                "font_size": 22.0,
+                "font_weight": 700,
+                "font_style": "Normal",
+                "letter_spacing": 0.0,
+                "text_anchor": "Start",
+                "line_height": null,
+                "max_width": null,
+                "word_wrap": false,
+                "variations": [],
+                "vertical": false,
+                "auto_spacing": true,
+                "auto_spacing_em": 0.25,
+                "ligatures": true,
+                "ot_features": [],
+                "list": "None",
+                "burasage": true
+              },
+              "area": null,
+              "next_frame": null
+            }
+          },
+          "transform": {
+            "x": 112.0,
+            "y": 462.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "fill_type": {
+              "Solid": [
+                0.0,
+                0.0,
+                0.0,
+                1.0
+              ]
+            },
+            "rule": "NonZero",
+            "overprint": false,
+            "spot": null
+          },
+          "stroke": null,
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        },
+        {
+          "id": "5b78411d-c635-4d98-8d19-b8e5b00eb477",
+          "name": "cell_0_1",
+          "object_type": {
+            "Rectangle": {
+              "width": 120.0,
+              "height": 60.0,
+              "corner_radius": 0.0
+            }
+          },
+          "transform": {
+            "x": 520.0,
+            "y": 420.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": null,
+          "stroke": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "width": 1.0,
+            "dash_pattern": null,
+            "cap": "Butt",
+            "join": "Miter",
+            "miter_limit": 4.0,
+            "arrow_start": "None",
+            "arrow_end": "None",
+            "overprint": false,
+            "spot": null
+          },
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        },
+        {
+          "id": "efce1426-9856-423b-a471-5fab96477a6f",
+          "name": "t_0_1",
+          "object_type": {
+            "Text": {
+              "text": "品名",
+              "font_size": 22.0,
+              "style": {
+                "font_family": "Noto Sans JP",
+                "font_size": 22.0,
+                "font_weight": 700,
+                "font_style": "Normal",
+                "letter_spacing": 0.0,
+                "text_anchor": "Start",
+                "line_height": null,
+                "max_width": null,
+                "word_wrap": false,
+                "variations": [],
+                "vertical": false,
+                "auto_spacing": true,
+                "auto_spacing_em": 0.25,
+                "ligatures": true,
+                "ot_features": [],
+                "list": "None",
+                "burasage": true
+              },
+              "area": null,
+              "next_frame": null
+            }
+          },
+          "transform": {
+            "x": 532.0,
+            "y": 462.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "fill_type": {
+              "Solid": [
+                0.0,
+                0.0,
+                0.0,
+                1.0
+              ]
+            },
+            "rule": "NonZero",
+            "overprint": false,
+            "spot": null
+          },
+          "stroke": null,
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        },
+        {
+          "id": "d0ea86a3-dcbd-4970-b16e-b8b96e756fe2",
+          "name": "cell_0_2",
+          "object_type": {
+            "Rectangle": {
+              "width": 200.0,
+              "height": 60.0,
+              "corner_radius": 0.0
+            }
+          },
+          "transform": {
+            "x": 640.0,
+            "y": 420.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": null,
+          "stroke": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "width": 1.0,
+            "dash_pattern": null,
+            "cap": "Butt",
+            "join": "Miter",
+            "miter_limit": 4.0,
+            "arrow_start": "None",
+            "arrow_end": "None",
+            "overprint": false,
+            "spot": null
+          },
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        },
+        {
+          "id": "15eaa390-daa2-4fe5-8011-96c76966de6a",
+          "name": "t_0_2",
+          "object_type": {
+            "Text": {
+              "text": "品名",
+              "font_size": 22.0,
+              "style": {
+                "font_family": "Noto Sans JP",
+                "font_size": 22.0,
+                "font_weight": 700,
+                "font_style": "Normal",
+                "letter_spacing": 0.0,
+                "text_anchor": "End",
+                "line_height": null,
+                "max_width": null,
+                "word_wrap": false,
+                "variations": [],
+                "vertical": false,
+                "auto_spacing": true,
+                "auto_spacing_em": 0.25,
+                "ligatures": true,
+                "ot_features": [],
+                "list": "None",
+                "burasage": true
+              },
+              "area": null,
+              "next_frame": null
+            }
+          },
+          "transform": {
+            "x": 828.0,
+            "y": 462.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "fill_type": {
+              "Solid": [
+                0.0,
+                0.0,
+                0.0,
+                1.0
+              ]
+            },
+            "rule": "NonZero",
+            "overprint": false,
+            "spot": null
+          },
+          "stroke": null,
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        },
+        {
+          "id": "07831fbb-002e-42b8-a525-a2d8eada6daf",
+          "name": "cell_0_3",
+          "object_type": {
+            "Rectangle": {
+              "width": 240.0,
+              "height": 60.0,
+              "corner_radius": 0.0
+            }
+          },
+          "transform": {
+            "x": 840.0,
+            "y": 420.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": null,
+          "stroke": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "width": 1.0,
+            "dash_pattern": null,
+            "cap": "Butt",
+            "join": "Miter",
+            "miter_limit": 4.0,
+            "arrow_start": "None",
+            "arrow_end": "None",
+            "overprint": false,
+            "spot": null
+          },
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        },
+        {
+          "id": "5e51bf02-368a-4244-9ee4-21cdd0b9ca78",
+          "name": "t_0_3",
+          "object_type": {
+            "Text": {
+              "text": "品名",
+              "font_size": 22.0,
+              "style": {
+                "font_family": "Noto Sans JP",
+                "font_size": 22.0,
+                "font_weight": 700,
+                "font_style": "Normal",
+                "letter_spacing": 0.0,
+                "text_anchor": "End",
+                "line_height": null,
+                "max_width": null,
+                "word_wrap": false,
+                "variations": [],
+                "vertical": false,
+                "auto_spacing": true,
+                "auto_spacing_em": 0.25,
+                "ligatures": true,
+                "ot_features": [],
+                "list": "None",
+                "burasage": true
+              },
+              "area": null,
+              "next_frame": null
+            }
+          },
+          "transform": {
+            "x": 1068.0,
+            "y": 462.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "fill_type": {
+              "Solid": [
+                0.0,
+                0.0,
+                0.0,
+                1.0
+              ]
+            },
+            "rule": "NonZero",
+            "overprint": false,
+            "spot": null
+          },
+          "stroke": null,
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        },
+        {
+          "id": "2c8bcb40-7f58-41ef-b0f6-5afdcd7a209c",
+          "name": "cell_1_0",
+          "object_type": {
+            "Rectangle": {
+              "width": 420.0,
+              "height": 60.0,
+              "corner_radius": 0.0
+            }
+          },
+          "transform": {
+            "x": 100.0,
+            "y": 480.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": null,
+          "stroke": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "width": 1.0,
+            "dash_pattern": null,
+            "cap": "Butt",
+            "join": "Miter",
+            "miter_limit": 4.0,
+            "arrow_start": "None",
+            "arrow_end": "None",
+            "overprint": false,
+            "spot": null
+          },
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        },
+        {
+          "id": "b6776b78-27a0-49f3-991c-3703e18e2d09",
+          "name": "t_1_0",
+          "object_type": {
+            "Text": {
+              "text": "組版データ作成",
+              "font_size": 22.0,
+              "style": {
+                "font_family": "Noto Sans JP",
+                "font_size": 22.0,
+                "font_weight": 400,
+                "font_style": "Normal",
+                "letter_spacing": 0.0,
+                "text_anchor": "Start",
+                "line_height": null,
+                "max_width": null,
+                "word_wrap": false,
+                "variations": [],
+                "vertical": false,
+                "auto_spacing": true,
+                "auto_spacing_em": 0.25,
+                "ligatures": true,
+                "ot_features": [],
+                "list": "None",
+                "burasage": true
+              },
+              "area": null,
+              "next_frame": null
+            }
+          },
+          "transform": {
+            "x": 112.0,
+            "y": 522.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "fill_type": {
+              "Solid": [
+                0.0,
+                0.0,
+                0.0,
+                1.0
+              ]
+            },
+            "rule": "NonZero",
+            "overprint": false,
+            "spot": null
+          },
+          "stroke": null,
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        },
+        {
+          "id": "78e5290b-466f-4e5f-915b-80bdc2e24e09",
+          "name": "cell_1_1",
+          "object_type": {
+            "Rectangle": {
+              "width": 120.0,
+              "height": 60.0,
+              "corner_radius": 0.0
+            }
+          },
+          "transform": {
+            "x": 520.0,
+            "y": 480.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": null,
+          "stroke": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "width": 1.0,
+            "dash_pattern": null,
+            "cap": "Butt",
+            "join": "Miter",
+            "miter_limit": 4.0,
+            "arrow_start": "None",
+            "arrow_end": "None",
+            "overprint": false,
+            "spot": null
+          },
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        },
+        {
+          "id": "1b4f8b75-ef0d-4f71-8e64-b8e099ffb779",
+          "name": "t_1_1",
+          "object_type": {
+            "Text": {
+              "text": "1",
+              "font_size": 22.0,
+              "style": {
+                "font_family": "Noto Sans JP",
+                "font_size": 22.0,
+                "font_weight": 400,
+                "font_style": "Normal",
+                "letter_spacing": 0.0,
+                "text_anchor": "Start",
+                "line_height": null,
+                "max_width": null,
+                "word_wrap": false,
+                "variations": [],
+                "vertical": false,
+                "auto_spacing": true,
+                "auto_spacing_em": 0.25,
+                "ligatures": true,
+                "ot_features": [],
+                "list": "None",
+                "burasage": true
+              },
+              "area": null,
+              "next_frame": null
+            }
+          },
+          "transform": {
+            "x": 532.0,
+            "y": 522.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "fill_type": {
+              "Solid": [
+                0.0,
+                0.0,
+                0.0,
+                1.0
+              ]
+            },
+            "rule": "NonZero",
+            "overprint": false,
+            "spot": null
+          },
+          "stroke": null,
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        },
+        {
+          "id": "7c34e1bd-a343-4e5f-b69d-5e7aa0bc5c17",
+          "name": "cell_1_2",
+          "object_type": {
+            "Rectangle": {
+              "width": 200.0,
+              "height": 60.0,
+              "corner_radius": 0.0
+            }
+          },
+          "transform": {
+            "x": 640.0,
+            "y": 480.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": null,
+          "stroke": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "width": 1.0,
+            "dash_pattern": null,
+            "cap": "Butt",
+            "join": "Miter",
+            "miter_limit": 4.0,
+            "arrow_start": "None",
+            "arrow_end": "None",
+            "overprint": false,
+            "spot": null
+          },
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        },
+        {
+          "id": "91ea8adf-f83b-4268-937c-127be515407d",
+          "name": "t_1_2",
+          "object_type": {
+            "Text": {
+              "text": "1",
+              "font_size": 22.0,
+              "style": {
+                "font_family": "Noto Sans JP",
+                "font_size": 22.0,
+                "font_weight": 400,
+                "font_style": "Normal",
+                "letter_spacing": 0.0,
+                "text_anchor": "End",
+                "line_height": null,
+                "max_width": null,
+                "word_wrap": false,
+                "variations": [],
+                "vertical": false,
+                "auto_spacing": true,
+                "auto_spacing_em": 0.25,
+                "ligatures": true,
+                "ot_features": [],
+                "list": "None",
+                "burasage": true
+              },
+              "area": null,
+              "next_frame": null
+            }
+          },
+          "transform": {
+            "x": 828.0,
+            "y": 522.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "fill_type": {
+              "Solid": [
+                0.0,
+                0.0,
+                0.0,
+                1.0
+              ]
+            },
+            "rule": "NonZero",
+            "overprint": false,
+            "spot": null
+          },
+          "stroke": null,
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        },
+        {
+          "id": "29de2478-49d3-4d16-b545-614f999339eb",
+          "name": "cell_1_3",
+          "object_type": {
+            "Rectangle": {
+              "width": 240.0,
+              "height": 60.0,
+              "corner_radius": 0.0
+            }
+          },
+          "transform": {
+            "x": 840.0,
+            "y": 480.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": null,
+          "stroke": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "width": 1.0,
+            "dash_pattern": null,
+            "cap": "Butt",
+            "join": "Miter",
+            "miter_limit": 4.0,
+            "arrow_start": "None",
+            "arrow_end": "None",
+            "overprint": false,
+            "spot": null
+          },
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        },
+        {
+          "id": "4d84e649-af97-4a57-95f0-5214cdfbef1e",
+          "name": "t_1_3",
+          "object_type": {
+            "Text": {
+              "text": "1",
+              "font_size": 22.0,
+              "style": {
+                "font_family": "Noto Sans JP",
+                "font_size": 22.0,
+                "font_weight": 400,
+                "font_style": "Normal",
+                "letter_spacing": 0.0,
+                "text_anchor": "End",
+                "line_height": null,
+                "max_width": null,
+                "word_wrap": false,
+                "variations": [],
+                "vertical": false,
+                "auto_spacing": true,
+                "auto_spacing_em": 0.25,
+                "ligatures": true,
+                "ot_features": [],
+                "list": "None",
+                "burasage": true
+              },
+              "area": null,
+              "next_frame": null
+            }
+          },
+          "transform": {
+            "x": 1068.0,
+            "y": 522.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "fill_type": {
+              "Solid": [
+                0.0,
+                0.0,
+                0.0,
+                1.0
+              ]
+            },
+            "rule": "NonZero",
+            "overprint": false,
+            "spot": null
+          },
+          "stroke": null,
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        },
+        {
+          "id": "97b42db9-42e1-43dd-a243-6be35d9f49c5",
+          "name": "cell_2_0",
+          "object_type": {
+            "Rectangle": {
+              "width": 420.0,
+              "height": 60.0,
+              "corner_radius": 0.0
+            }
+          },
+          "transform": {
+            "x": 100.0,
+            "y": 540.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": null,
+          "stroke": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "width": 1.0,
+            "dash_pattern": null,
+            "cap": "Butt",
+            "join": "Miter",
+            "miter_limit": 4.0,
+            "arrow_start": "None",
+            "arrow_end": "None",
+            "overprint": false,
+            "spot": null
+          },
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        },
+        {
+          "id": "b6b9903c-0b50-4612-ab78-1526eafd2a37",
+          "name": "t_2_0",
+          "object_type": {
+            "Text": {
+              "text": "組版データ作成",
+              "font_size": 22.0,
+              "style": {
+                "font_family": "Noto Sans JP",
+                "font_size": 22.0,
+                "font_weight": 400,
+                "font_style": "Normal",
+                "letter_spacing": 0.0,
+                "text_anchor": "Start",
+                "line_height": null,
+                "max_width": null,
+                "word_wrap": false,
+                "variations": [],
+                "vertical": false,
+                "auto_spacing": true,
+                "auto_spacing_em": 0.25,
+                "ligatures": true,
+                "ot_features": [],
+                "list": "None",
+                "burasage": true
+              },
+              "area": null,
+              "next_frame": null
+            }
+          },
+          "transform": {
+            "x": 112.0,
+            "y": 582.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "fill_type": {
+              "Solid": [
+                0.0,
+                0.0,
+                0.0,
+                1.0
+              ]
+            },
+            "rule": "NonZero",
+            "overprint": false,
+            "spot": null
+          },
+          "stroke": null,
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        },
+        {
+          "id": "40ce65e9-a6db-4019-964f-3b2300e93275",
+          "name": "cell_2_1",
+          "object_type": {
+            "Rectangle": {
+              "width": 120.0,
+              "height": 60.0,
+              "corner_radius": 0.0
+            }
+          },
+          "transform": {
+            "x": 520.0,
+            "y": 540.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": null,
+          "stroke": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "width": 1.0,
+            "dash_pattern": null,
+            "cap": "Butt",
+            "join": "Miter",
+            "miter_limit": 4.0,
+            "arrow_start": "None",
+            "arrow_end": "None",
+            "overprint": false,
+            "spot": null
+          },
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        },
+        {
+          "id": "2c9558d1-9720-4c75-a4bd-14fd9ca210a4",
+          "name": "t_2_1",
+          "object_type": {
+            "Text": {
+              "text": "1",
+              "font_size": 22.0,
+              "style": {
+                "font_family": "Noto Sans JP",
+                "font_size": 22.0,
+                "font_weight": 400,
+                "font_style": "Normal",
+                "letter_spacing": 0.0,
+                "text_anchor": "Start",
+                "line_height": null,
+                "max_width": null,
+                "word_wrap": false,
+                "variations": [],
+                "vertical": false,
+                "auto_spacing": true,
+                "auto_spacing_em": 0.25,
+                "ligatures": true,
+                "ot_features": [],
+                "list": "None",
+                "burasage": true
+              },
+              "area": null,
+              "next_frame": null
+            }
+          },
+          "transform": {
+            "x": 532.0,
+            "y": 582.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "fill_type": {
+              "Solid": [
+                0.0,
+                0.0,
+                0.0,
+                1.0
+              ]
+            },
+            "rule": "NonZero",
+            "overprint": false,
+            "spot": null
+          },
+          "stroke": null,
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        },
+        {
+          "id": "7eb58645-ffaa-4cb9-a6a7-649ef3a773a0",
+          "name": "cell_2_2",
+          "object_type": {
+            "Rectangle": {
+              "width": 200.0,
+              "height": 60.0,
+              "corner_radius": 0.0
+            }
+          },
+          "transform": {
+            "x": 640.0,
+            "y": 540.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": null,
+          "stroke": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "width": 1.0,
+            "dash_pattern": null,
+            "cap": "Butt",
+            "join": "Miter",
+            "miter_limit": 4.0,
+            "arrow_start": "None",
+            "arrow_end": "None",
+            "overprint": false,
+            "spot": null
+          },
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        },
+        {
+          "id": "7fd7eadf-ee46-4a06-bc66-c2b3067a4dea",
+          "name": "t_2_2",
+          "object_type": {
+            "Text": {
+              "text": "1",
+              "font_size": 22.0,
+              "style": {
+                "font_family": "Noto Sans JP",
+                "font_size": 22.0,
+                "font_weight": 400,
+                "font_style": "Normal",
+                "letter_spacing": 0.0,
+                "text_anchor": "End",
+                "line_height": null,
+                "max_width": null,
+                "word_wrap": false,
+                "variations": [],
+                "vertical": false,
+                "auto_spacing": true,
+                "auto_spacing_em": 0.25,
+                "ligatures": true,
+                "ot_features": [],
+                "list": "None",
+                "burasage": true
+              },
+              "area": null,
+              "next_frame": null
+            }
+          },
+          "transform": {
+            "x": 828.0,
+            "y": 582.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "fill_type": {
+              "Solid": [
+                0.0,
+                0.0,
+                0.0,
+                1.0
+              ]
+            },
+            "rule": "NonZero",
+            "overprint": false,
+            "spot": null
+          },
+          "stroke": null,
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        },
+        {
+          "id": "7a957500-ef63-4fc9-8de9-63895d6db971",
+          "name": "cell_2_3",
+          "object_type": {
+            "Rectangle": {
+              "width": 240.0,
+              "height": 60.0,
+              "corner_radius": 0.0
+            }
+          },
+          "transform": {
+            "x": 840.0,
+            "y": 540.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": null,
+          "stroke": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "width": 1.0,
+            "dash_pattern": null,
+            "cap": "Butt",
+            "join": "Miter",
+            "miter_limit": 4.0,
+            "arrow_start": "None",
+            "arrow_end": "None",
+            "overprint": false,
+            "spot": null
+          },
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        },
+        {
+          "id": "ed7e25ad-6656-4e6d-8170-b45a9331bd8f",
+          "name": "t_2_3",
+          "object_type": {
+            "Text": {
+              "text": "1",
+              "font_size": 22.0,
+              "style": {
+                "font_family": "Noto Sans JP",
+                "font_size": 22.0,
+                "font_weight": 400,
+                "font_style": "Normal",
+                "letter_spacing": 0.0,
+                "text_anchor": "End",
+                "line_height": null,
+                "max_width": null,
+                "word_wrap": false,
+                "variations": [],
+                "vertical": false,
+                "auto_spacing": true,
+                "auto_spacing_em": 0.25,
+                "ligatures": true,
+                "ot_features": [],
+                "list": "None",
+                "burasage": true
+              },
+              "area": null,
+              "next_frame": null
+            }
+          },
+          "transform": {
+            "x": 1068.0,
+            "y": 582.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "fill_type": {
+              "Solid": [
+                0.0,
+                0.0,
+                0.0,
+                1.0
+              ]
+            },
+            "rule": "NonZero",
+            "overprint": false,
+            "spot": null
+          },
+          "stroke": null,
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        },
+        {
+          "id": "b704cb4d-a9f1-4ced-b9a7-1571f59a5443",
+          "name": "cell_3_0",
+          "object_type": {
+            "Rectangle": {
+              "width": 420.0,
+              "height": 60.0,
+              "corner_radius": 0.0
+            }
+          },
+          "transform": {
+            "x": 100.0,
+            "y": 600.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": null,
+          "stroke": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "width": 1.0,
+            "dash_pattern": null,
+            "cap": "Butt",
+            "join": "Miter",
+            "miter_limit": 4.0,
+            "arrow_start": "None",
+            "arrow_end": "None",
+            "overprint": false,
+            "spot": null
+          },
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        },
+        {
+          "id": "e1c9e76a-e889-46e9-b68a-52e0b6734546",
+          "name": "t_3_0",
+          "object_type": {
+            "Text": {
+              "text": "組版データ作成",
+              "font_size": 22.0,
+              "style": {
+                "font_family": "Noto Sans JP",
+                "font_size": 22.0,
+                "font_weight": 400,
+                "font_style": "Normal",
+                "letter_spacing": 0.0,
+                "text_anchor": "Start",
+                "line_height": null,
+                "max_width": null,
+                "word_wrap": false,
+                "variations": [],
+                "vertical": false,
+                "auto_spacing": true,
+                "auto_spacing_em": 0.25,
+                "ligatures": true,
+                "ot_features": [],
+                "list": "None",
+                "burasage": true
+              },
+              "area": null,
+              "next_frame": null
+            }
+          },
+          "transform": {
+            "x": 112.0,
+            "y": 642.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "fill_type": {
+              "Solid": [
+                0.0,
+                0.0,
+                0.0,
+                1.0
+              ]
+            },
+            "rule": "NonZero",
+            "overprint": false,
+            "spot": null
+          },
+          "stroke": null,
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        },
+        {
+          "id": "159ba13a-b8f9-45fd-bb52-488fe490b579",
+          "name": "cell_3_1",
+          "object_type": {
+            "Rectangle": {
+              "width": 120.0,
+              "height": 60.0,
+              "corner_radius": 0.0
+            }
+          },
+          "transform": {
+            "x": 520.0,
+            "y": 600.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": null,
+          "stroke": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "width": 1.0,
+            "dash_pattern": null,
+            "cap": "Butt",
+            "join": "Miter",
+            "miter_limit": 4.0,
+            "arrow_start": "None",
+            "arrow_end": "None",
+            "overprint": false,
+            "spot": null
+          },
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        },
+        {
+          "id": "34543feb-621e-4fb9-9cef-c411ae8e8e6e",
+          "name": "t_3_1",
+          "object_type": {
+            "Text": {
+              "text": "1",
+              "font_size": 22.0,
+              "style": {
+                "font_family": "Noto Sans JP",
+                "font_size": 22.0,
+                "font_weight": 400,
+                "font_style": "Normal",
+                "letter_spacing": 0.0,
+                "text_anchor": "Start",
+                "line_height": null,
+                "max_width": null,
+                "word_wrap": false,
+                "variations": [],
+                "vertical": false,
+                "auto_spacing": true,
+                "auto_spacing_em": 0.25,
+                "ligatures": true,
+                "ot_features": [],
+                "list": "None",
+                "burasage": true
+              },
+              "area": null,
+              "next_frame": null
+            }
+          },
+          "transform": {
+            "x": 532.0,
+            "y": 642.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "fill_type": {
+              "Solid": [
+                0.0,
+                0.0,
+                0.0,
+                1.0
+              ]
+            },
+            "rule": "NonZero",
+            "overprint": false,
+            "spot": null
+          },
+          "stroke": null,
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        },
+        {
+          "id": "ac2d2735-2fde-4753-9566-a57eae870457",
+          "name": "cell_3_2",
+          "object_type": {
+            "Rectangle": {
+              "width": 200.0,
+              "height": 60.0,
+              "corner_radius": 0.0
+            }
+          },
+          "transform": {
+            "x": 640.0,
+            "y": 600.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": null,
+          "stroke": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "width": 1.0,
+            "dash_pattern": null,
+            "cap": "Butt",
+            "join": "Miter",
+            "miter_limit": 4.0,
+            "arrow_start": "None",
+            "arrow_end": "None",
+            "overprint": false,
+            "spot": null
+          },
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        },
+        {
+          "id": "0d7f478c-3490-4226-910e-349532a7f899",
+          "name": "t_3_2",
+          "object_type": {
+            "Text": {
+              "text": "1",
+              "font_size": 22.0,
+              "style": {
+                "font_family": "Noto Sans JP",
+                "font_size": 22.0,
+                "font_weight": 400,
+                "font_style": "Normal",
+                "letter_spacing": 0.0,
+                "text_anchor": "End",
+                "line_height": null,
+                "max_width": null,
+                "word_wrap": false,
+                "variations": [],
+                "vertical": false,
+                "auto_spacing": true,
+                "auto_spacing_em": 0.25,
+                "ligatures": true,
+                "ot_features": [],
+                "list": "None",
+                "burasage": true
+              },
+              "area": null,
+              "next_frame": null
+            }
+          },
+          "transform": {
+            "x": 828.0,
+            "y": 642.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "fill_type": {
+              "Solid": [
+                0.0,
+                0.0,
+                0.0,
+                1.0
+              ]
+            },
+            "rule": "NonZero",
+            "overprint": false,
+            "spot": null
+          },
+          "stroke": null,
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        },
+        {
+          "id": "11b298fb-ac61-460c-85e4-007b9f1e9fa4",
+          "name": "cell_3_3",
+          "object_type": {
+            "Rectangle": {
+              "width": 240.0,
+              "height": 60.0,
+              "corner_radius": 0.0
+            }
+          },
+          "transform": {
+            "x": 840.0,
+            "y": 600.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": null,
+          "stroke": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "width": 1.0,
+            "dash_pattern": null,
+            "cap": "Butt",
+            "join": "Miter",
+            "miter_limit": 4.0,
+            "arrow_start": "None",
+            "arrow_end": "None",
+            "overprint": false,
+            "spot": null
+          },
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        },
+        {
+          "id": "bbd2519e-0981-4a24-bd9c-9de3fb10b916",
+          "name": "t_3_3",
+          "object_type": {
+            "Text": {
+              "text": "1",
+              "font_size": 22.0,
+              "style": {
+                "font_family": "Noto Sans JP",
+                "font_size": 22.0,
+                "font_weight": 400,
+                "font_style": "Normal",
+                "letter_spacing": 0.0,
+                "text_anchor": "End",
+                "line_height": null,
+                "max_width": null,
+                "word_wrap": false,
+                "variations": [],
+                "vertical": false,
+                "auto_spacing": true,
+                "auto_spacing_em": 0.25,
+                "ligatures": true,
+                "ot_features": [],
+                "list": "None",
+                "burasage": true
+              },
+              "area": null,
+              "next_frame": null
+            }
+          },
+          "transform": {
+            "x": 1068.0,
+            "y": 642.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "fill_type": {
+              "Solid": [
+                0.0,
+                0.0,
+                0.0,
+                1.0
+              ]
+            },
+            "rule": "NonZero",
+            "overprint": false,
+            "spot": null
+          },
+          "stroke": null,
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        },
+        {
+          "id": "03524865-1d4a-4ce2-a91e-1883d29049ea",
+          "name": "total",
+          "object_type": {
+            "Rectangle": {
+              "width": 980.0,
+              "height": 90.0,
+              "corner_radius": 0.0
+            }
+          },
+          "transform": {
+            "x": 100.0,
+            "y": 660.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": null,
+          "stroke": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "width": 1.0,
+            "dash_pattern": null,
+            "cap": "Butt",
+            "join": "Miter",
+            "miter_limit": 4.0,
+            "arrow_start": "None",
+            "arrow_end": "None",
+            "overprint": false,
+            "spot": null
+          },
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        },
+        {
+          "id": "d2ca0df7-a114-46a3-9146-28cc81a9a9e9",
+          "name": "合計",
+          "object_type": {
+            "Text": {
+              "text": "合計  ¥120,000-",
+              "font_size": 28.0,
+              "style": {
+                "font_family": "Noto Sans JP",
+                "font_size": 28.0,
+                "font_weight": 700,
+                "font_style": "Normal",
+                "letter_spacing": 0.0,
+                "text_anchor": "End",
+                "line_height": null,
+                "max_width": null,
+                "word_wrap": false,
+                "variations": [],
+                "vertical": false,
+                "auto_spacing": true,
+                "auto_spacing_em": 0.25,
+                "ligatures": true,
+                "ot_features": [],
+                "list": "None",
+                "burasage": true
+              },
+              "area": null,
+              "next_frame": null
+            }
+          },
+          "transform": {
+            "x": 1056.0,
+            "y": 720.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "fill_type": {
+              "Solid": [
+                0.0,
+                0.0,
+                0.0,
+                1.0
+              ]
+            },
+            "rule": "NonZero",
+            "overprint": false,
+            "spot": null
+          },
+          "stroke": null,
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        },
+        {
+          "id": "862dacac-98ed-4d95-ab33-63cdb57dc6b1",
+          "name": "印影",
+          "object_type": {
+            "Ellipse": {
+              "rx": 70.0,
+              "ry": 70.0
+            }
+          },
+          "transform": {
+            "x": 980.0,
+            "y": 260.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "fill_type": {
+              "Solid": [
+                0.0,
+                0.0,
+                0.0,
+                1.0
+              ]
+            },
+            "rule": "NonZero",
+            "overprint": false,
+            "spot": null
+          },
+          "stroke": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "width": 1.0,
+            "dash_pattern": null,
+            "cap": "Butt",
+            "join": "Miter",
+            "miter_limit": 4.0,
+            "arrow_start": "None",
+            "arrow_end": "None",
+            "overprint": false,
+            "spot": null
+          },
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        }
+      ],
+      "visible": true,
+      "locked": false,
+      "opacity": 1.0
+    }
+  ],
+  "active_layer_idx": 0,
+  "width": 1240.0,
+  "height": 1754.0,
+  "symbols": [],
+  "timeline": {
+    "fps": 60.0,
+    "total_frames": 180,
+    "current_frame": 0,
+    "is_playing": false,
+    "loop_playback": true,
+    "tracks": []
+  },
+  "guides": [],
+  "color_mode": "Cmyk",
+  "spots": [
+    {
+      "name": "Spot Reflex Blue",
+      "cmyk": [
+        1.0,
+        0.72,
+        0.0,
+        0.04
+      ]
+    },
+    {
+      "name": "Spot Warm Red",
+      "cmyk": [
+        0.0,
+        0.91,
+        0.76,
+        0.0
+      ]
+    },
+    {
+      "name": "Spot Green",
+      "cmyk": [
+        0.95,
+        0.0,
+        1.0,
+        0.0
+      ]
+    }
+  ],
+  "bleed": 0.0,
+  "perspective": null,
+  "artboards": [
+    {
+      "id": "c493f999-a585-432c-b6f5-8dc5c087f4f1",
+      "name": "A4",
+      "x": 0.0,
+      "y": 0.0,
+      "width": 1240.0,
+      "height": 1754.0,
+      "layout_grid": null
+    }
+  ],
+  "trap_width": 0.0,
+  "toc_threshold": 18.0,
+  "paragraph_styles": [
+    {
+      "name": "見出し",
+      "style": {
+        "font_family": "Inter, sans-serif",
+        "font_size": 24.0,
+        "font_weight": 700,
+        "font_style": "Normal",
+        "letter_spacing": 0.0,
+        "text_anchor": "Start",
+        "line_height": null,
+        "max_width": null,
+        "word_wrap": false,
+        "variations": [],
+        "vertical": false,
+        "auto_spacing": true,
+        "auto_spacing_em": 0.25,
+        "ligatures": true,
+        "ot_features": [],
+        "list": "None",
+        "burasage": true
+      }
+    },
+    {
+      "name": "本文",
+      "style": {
+        "font_family": "Inter, sans-serif",
+        "font_size": 12.0,
+        "font_weight": 400,
+        "font_style": "Normal",
+        "letter_spacing": 0.0,
+        "text_anchor": "Start",
+        "line_height": null,
+        "max_width": null,
+        "word_wrap": false,
+        "variations": [],
+        "vertical": false,
+        "auto_spacing": true,
+        "auto_spacing_em": 0.25,
+        "ligatures": true,
+        "ot_features": [],
+        "list": "None",
+        "burasage": true
+      }
+    },
+    {
+      "name": "キャプション",
+      "style": {
+        "font_family": "Inter, sans-serif",
+        "font_size": 9.0,
+        "font_weight": 400,
+        "font_style": "Normal",
+        "letter_spacing": 0.0,
+        "text_anchor": "Start",
+        "line_height": null,
+        "max_width": null,
+        "word_wrap": false,
+        "variations": [],
+        "vertical": false,
+        "auto_spacing": true,
+        "auto_spacing_em": 0.25,
+        "ligatures": true,
+        "ot_features": [],
+        "list": "None",
+        "burasage": true
+      }
+    }
+  ]
+}

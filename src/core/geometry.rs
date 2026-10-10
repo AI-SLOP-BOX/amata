@@ -223,8 +223,7 @@ pub fn compute_corner_radius(
     } else {
         edge_bottom
     };
-    dx.min(dy)
-        .clamp(0.0, width.abs().min(height.abs()) * 0.5)
+    dx.min(dy).clamp(0.0, width.abs().min(height.abs()) * 0.5)
 }
 
 #[cfg(test)]

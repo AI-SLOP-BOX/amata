@@ -6,17 +6,33 @@ use egui::{RichText, Ui};
 
 pub struct PresetPanel;
 
+/// Shared "outline text" switch: outline mode converts glyphs to paths so
+/// OpenType features (和欧間 / palt / vertical `vert` forms) survive into
+/// SVG and PNG — the raster engine ignores `font-feature-settings`.
+fn outline_checkbox(ui: &mut Ui, state: &mut AppState, locale: &str) {
+    ui.checkbox(
+        &mut state.export_outline_text,
+        crate::ui::i18n::text(locale, "utility.outline_text"),
+    )
+    .on_hover_text(crate::ui::i18n::text(locale, "utility.outline_text_tip"));
+}
+
 impl PresetPanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
+        let locale = state.prefs.language.clone();
         let cx = state.document.width * 0.5;
         let cy = state.document.height * 0.5;
 
         // Every preset drops one shape in the middle of the canvas and
         // selects it, so the row below is pure shape-picking.
         ui.horizontal_wrapped(|ui| {
-            if icon_text_button(ui, icon_heart, "ハート")
-                .on_hover_text("ハートの形を追加")
-                .clicked()
+            if icon_text_button(
+                ui,
+                icon_heart,
+                crate::ui::i18n::text(&locale, "utility.heart").as_ref(),
+            )
+            .on_hover_text(crate::ui::i18n::text(&locale, "utility.heart_tip"))
+            .clicked()
             {
                 let obj = crate::core::presets::PresetLibrary::heart("Heart", cx, cy, 120.0);
                 let id = obj.id.clone();
@@ -25,9 +41,13 @@ impl PresetPanel {
                 state.selected_ids = vec![id];
             }
 
-            if icon_text_button(ui, icon_arrow, "矢印")
-                .on_hover_text("矢印シンボルを追加")
-                .clicked()
+            if icon_text_button(
+                ui,
+                icon_arrow,
+                crate::ui::i18n::text(&locale, "utility.arrow").as_ref(),
+            )
+            .on_hover_text(crate::ui::i18n::text(&locale, "utility.arrow_tip"))
+            .clicked()
             {
                 let obj = crate::core::presets::PresetLibrary::arrow("Arrow", cx, cy, 160.0, 40.0);
                 let id = obj.id.clone();
@@ -36,9 +56,13 @@ impl PresetPanel {
                 state.selected_ids = vec![id];
             }
 
-            if icon_text_button(ui, icon_gear, "歯車")
-                .on_hover_text("歯車（コグ）を追加")
-                .clicked()
+            if icon_text_button(
+                ui,
+                icon_gear,
+                crate::ui::i18n::text(&locale, "utility.gear").as_ref(),
+            )
+            .on_hover_text(crate::ui::i18n::text(&locale, "utility.gear_tip"))
+            .clicked()
             {
                 let obj = crate::core::presets::PresetLibrary::gear("Gear", cx, cy, 8, 40.0, 60.0);
                 let id = obj.id.clone();
@@ -47,9 +71,13 @@ impl PresetPanel {
                 state.selected_ids = vec![id];
             }
 
-            if icon_text_button(ui, icon_speech, "吹き出し")
-                .on_hover_text("吹き出しを追加")
-                .clicked()
+            if icon_text_button(
+                ui,
+                icon_speech,
+                crate::ui::i18n::text(&locale, "utility.speech").as_ref(),
+            )
+            .on_hover_text(crate::ui::i18n::text(&locale, "utility.speech_tip"))
+            .clicked()
             {
                 let obj = crate::core::presets::PresetLibrary::speech_bubble(
                     "Speech Bubble",
@@ -64,9 +92,13 @@ impl PresetPanel {
                 state.selected_ids = vec![id];
             }
 
-            if icon_text_button(ui, icon_portal, "VFXポータル")
-                .on_hover_text("SF風の六角VFXリングを追加")
-                .clicked()
+            if icon_text_button(
+                ui,
+                icon_portal,
+                crate::ui::i18n::text(&locale, "utility.portal").as_ref(),
+            )
+            .on_hover_text(crate::ui::i18n::text(&locale, "utility.portal_tip"))
+            .clicked()
             {
                 let obj =
                     crate::core::presets::PresetLibrary::vfx_portal("VFX Portal", cx, cy, 80.0);
@@ -83,24 +115,40 @@ pub struct SmartGuidesPanel;
 
 impl SmartGuidesPanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("スマートガイド").strong());
+        let locale = state.prefs.language.clone();
+        ui.heading(RichText::new(crate::ui::i18n::text(&locale, "utility.smart_guides")).strong());
         ui.add_space(4.0);
 
         // Snapping options
-        ui.label(RichText::new("スナップ対象:").strong());
-        ui.checkbox(&mut state.snap_to_grid, "グリッド");
-        ui.checkbox(&mut state.snap_to_objects, "オブジェクト");
-        ui.checkbox(&mut state.snap_to_guides, "ガイド");
-        ui.checkbox(&mut state.snap_to_points, "アンカーポイント");
-        ui.checkbox(&mut state.snap_to_pixels, "ピクセル（整数単位）");
+        ui.label(RichText::new(crate::ui::i18n::text(&locale, "utility.snap_targets")).strong());
+        ui.checkbox(
+            &mut state.snap_to_grid,
+            crate::ui::i18n::text(&locale, "utility.grid"),
+        );
+        ui.checkbox(
+            &mut state.snap_to_objects,
+            crate::ui::i18n::text(&locale, "utility.objects"),
+        );
+        ui.checkbox(
+            &mut state.snap_to_guides,
+            crate::ui::i18n::text(&locale, "utility.guides"),
+        );
+        ui.checkbox(
+            &mut state.snap_to_points,
+            crate::ui::i18n::text(&locale, "utility.anchor_points"),
+        );
+        ui.checkbox(
+            &mut state.snap_to_pixels,
+            crate::ui::i18n::text(&locale, "utility.pixels"),
+        );
 
         ui.add_space(4.0);
         ui.separator();
 
         // Grid settings
-        ui.label(RichText::new("グリッド").strong());
+        ui.label(RichText::new(crate::ui::i18n::text(&locale, "utility.grid")).strong());
         ui.horizontal(|ui| {
-            ui.label("間隔:");
+            ui.label(crate::ui::i18n::text(&locale, "utility.spacing"));
             ui.add(
                 egui::DragValue::new(&mut state.grid_size)
                     .speed(1.0)
@@ -113,15 +161,24 @@ impl SmartGuidesPanel {
         ui.separator();
 
         // Guides
-        ui.label(RichText::new("カスタムガイド").strong());
+        ui.label(RichText::new(crate::ui::i18n::text(&locale, "utility.custom_guides")).strong());
         ui.horizontal(|ui| {
-            if ui.button("水平ガイドを追加").clicked() {
+            if ui
+                .button(crate::ui::i18n::text(
+                    &locale,
+                    "utility.add_horizontal_guide",
+                ))
+                .clicked()
+            {
                 state.guides.push(crate::core::state::Guide {
                     orientation: crate::core::state::GuideOrientation::Horizontal,
                     position: state.pan_y as f64 / state.zoom as f64,
                 });
             }
-            if ui.button("垂直ガイドを追加").clicked() {
+            if ui
+                .button(crate::ui::i18n::text(&locale, "utility.add_vertical_guide"))
+                .clicked()
+            {
                 state.guides.push(crate::core::state::Guide {
                     orientation: crate::core::state::GuideOrientation::Vertical,
                     position: state.pan_x as f64 / state.zoom as f64,
@@ -147,7 +204,10 @@ impl SmartGuidesPanel {
             if let Some(idx) = to_remove {
                 state.guides.remove(idx);
             }
-            if ui.button("すべて削除").clicked() {
+            if ui
+                .button(crate::ui::i18n::text(&locale, "utility.delete_all"))
+                .clicked()
+            {
                 state.guides.clear();
             }
         }
@@ -162,11 +222,12 @@ pub struct ExportPanel;
 
 impl ExportPanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("書き出し").strong());
+        let locale = state.prefs.language.clone();
+        ui.heading(RichText::new(crate::ui::i18n::text(&locale, "utility.export")).strong());
         ui.add_space(4.0);
 
         // Export format
-        ui.label("形式:");
+        ui.label(crate::ui::i18n::text(&locale, "utility.format"));
         let mut format = state.export_format.clone();
 
         ui.horizontal_wrapped(|ui| {
@@ -184,20 +245,31 @@ impl ExportPanel {
         match format.as_str() {
             "PNG" => {
                 ui.horizontal(|ui| {
-                    ui.label("幅:");
+                    ui.label(crate::ui::i18n::text(&locale, "utility.width"));
                     ui.add(egui::DragValue::new(&mut state.export_width).range(16.0..=8192.0));
-                    ui.label("高さ:");
+                    ui.label(crate::ui::i18n::text(&locale, "utility.height"));
                     ui.add(egui::DragValue::new(&mut state.export_height).range(16.0..=8192.0));
                 });
                 ui.horizontal(|ui| {
-                    ui.label("倍率:");
+                    ui.label(crate::ui::i18n::text(&locale, "utility.scale"));
                     ui.add(egui::Slider::new(&mut state.export_scale, 0.1..=4.0).show_value(true));
                 });
-                ui.checkbox(&mut state.export_transparent, "背景を透過");
+                ui.checkbox(
+                    &mut state.export_transparent,
+                    crate::ui::i18n::text(&locale, "utility.transparent_bg"),
+                );
+                outline_checkbox(ui, state, &locale);
             }
             "SVG" => {
-                ui.checkbox(&mut state.export_svg_viewbox, "ViewBoxを含める");
-                ui.checkbox(&mut state.export_svg_embed_fonts, "フォントを埋め込む");
+                ui.checkbox(
+                    &mut state.export_svg_viewbox,
+                    crate::ui::i18n::text(&locale, "utility.viewbox"),
+                );
+                ui.checkbox(
+                    &mut state.export_svg_embed_fonts,
+                    crate::ui::i18n::text(&locale, "utility.embed_fonts"),
+                );
+                outline_checkbox(ui, state, &locale);
             }
             _ => {}
         }
@@ -206,16 +278,22 @@ impl ExportPanel {
         ui.separator();
 
         // Export scope
-        ui.label("範囲:");
+        ui.label(crate::ui::i18n::text(&locale, "utility.range"));
         ui.horizontal_wrapped(|ui| {
             if ui
-                .selectable_label(state.export_scope == "All", "すべてのオブジェクト")
+                .selectable_label(
+                    state.export_scope == "All",
+                    crate::ui::i18n::text(&locale, "utility.all_objects"),
+                )
                 .clicked()
             {
                 state.export_scope = "All".into();
             }
             if ui
-                .selectable_label(state.export_scope == "Selected", "選択したオブジェクトのみ")
+                .selectable_label(
+                    state.export_scope == "Selected",
+                    crate::ui::i18n::text(&locale, "utility.selected_objects"),
+                )
                 .clicked()
             {
                 state.export_scope = "Selected".into();
@@ -225,7 +303,10 @@ impl ExportPanel {
         ui.add_space(8.0);
 
         // Export button
-        if ui.button("書き出し...").clicked() {
+        if ui
+            .button(crate::ui::i18n::text(&locale, "utility.export_button"))
+            .clicked()
+        {
             let filter = match format.as_str() {
                 "JSON" => &["json"][..],
                 "PNG" => &["png"][..],
@@ -234,7 +315,7 @@ impl ExportPanel {
                 _ => &["svg"][..],
             };
             if let Some(path) = rfd::FileDialog::new()
-                .set_title("名前を付けて書き出し")
+                .set_title(crate::ui::i18n::text(&locale, "utility.export_dialog_title").as_ref())
                 .add_filter(format.as_str(), filter)
                 .save_file()
             {
@@ -242,14 +323,11 @@ impl ExportPanel {
                 // "Selected Only" previously did nothing and exported the
                 // whole document anyway.
                 let mut export_doc;
-                let doc_ref = if state.export_scope == "Selected"
-                    && !state.selected_ids.is_empty()
+                let doc_ref = if state.export_scope == "Selected" && !state.selected_ids.is_empty()
                 {
                     export_doc = state.document.clone();
                     for layer in &mut export_doc.layers {
-                        layer
-                            .objects
-                            .retain(|o| state.selected_ids.contains(&o.id));
+                        layer.objects.retain(|o| state.selected_ids.contains(&o.id));
                     }
                     &export_doc
                 } else {
@@ -260,26 +338,44 @@ impl ExportPanel {
                         doc_ref,
                         state.export_svg_embed_fonts,
                         None,
+                        state.export_outline_text,
                     );
                     match crate::io::atomic::atomic_write_str(&path, &svg) {
-                        Ok(_) => state.notify_info("SVGを書き出しました"),
-                        Err(e) => state.notify_error(format!("SVG書き出しに失敗しました: {e}")),
+                        Ok(_) => state.notify_info(
+                            crate::ui::i18n::text(&locale, "utility.svg_exported").into_owned(),
+                        ),
+                        Err(e) => state.notify_error(crate::ui::i18n::format(
+                            &locale,
+                            "utility.svg_failed",
+                            &[("error", &e.to_string())],
+                        )),
                     }
                 } else if format == "PNG" {
-                    match crate::io::raster::export_png(
+                    match crate::io::raster::export_png_with_outline(
                         doc_ref,
                         state.export_scale,
                         state.export_transparent,
+                        state.export_outline_text,
                     ) {
                         Ok(png_bytes) => {
                             match crate::io::atomic::atomic_write_bytes(&path, &png_bytes) {
-                                Ok(_) => state.notify_info("PNGを書き出しました"),
-                                Err(e) => {
-                                    state.notify_error(format!("PNG保存に失敗しました: {e}"))
-                                }
+                                Ok(_) => state.notify_info(crate::ui::i18n::format(
+                                    &locale,
+                                    "utility.raster_exported",
+                                    &[("format", "PNG")],
+                                )),
+                                Err(e) => state.notify_error(crate::ui::i18n::format(
+                                    &locale,
+                                    "utility.save_failed",
+                                    &[("format", "PNG"), ("error", &e.to_string())],
+                                )),
                             }
                         }
-                        Err(e) => state.notify_error(format!("ラスタライズに失敗しました: {e}")),
+                        Err(e) => state.notify_error(crate::ui::i18n::format(
+                            &locale,
+                            "utility.raster_failed",
+                            &[("error", &e.to_string())],
+                        )),
                     }
                 } else if format == "WEBP" {
                     match crate::io::raster::export_webp(
@@ -289,13 +385,23 @@ impl ExportPanel {
                     ) {
                         Ok(webp_bytes) => {
                             match crate::io::atomic::atomic_write_bytes(&path, &webp_bytes) {
-                                Ok(_) => state.notify_info("WebPを書き出しました"),
-                                Err(e) => {
-                                    state.notify_error(format!("WebP保存に失敗しました: {e}"))
-                                }
+                                Ok(_) => state.notify_info(crate::ui::i18n::format(
+                                    &locale,
+                                    "utility.raster_exported",
+                                    &[("format", "WebP")],
+                                )),
+                                Err(e) => state.notify_error(crate::ui::i18n::format(
+                                    &locale,
+                                    "utility.save_failed",
+                                    &[("format", "WebP"), ("error", &e.to_string())],
+                                )),
                             }
                         }
-                        Err(e) => state.notify_error(format!("ラスタライズに失敗しました: {e}")),
+                        Err(e) => state.notify_error(crate::ui::i18n::format(
+                            &locale,
+                            "utility.raster_failed",
+                            &[("error", &e.to_string())],
+                        )),
                     }
                 } else if format == "AVIF" {
                     match crate::io::raster::export_avif(
@@ -305,21 +411,41 @@ impl ExportPanel {
                     ) {
                         Ok(avif_bytes) => {
                             match crate::io::atomic::atomic_write_bytes(&path, &avif_bytes) {
-                                Ok(_) => state.notify_info("AVIFを書き出しました"),
-                                Err(e) => {
-                                    state.notify_error(format!("AVIF保存に失敗しました: {e}"))
-                                }
+                                Ok(_) => state.notify_info(crate::ui::i18n::format(
+                                    &locale,
+                                    "utility.raster_exported",
+                                    &[("format", "AVIF")],
+                                )),
+                                Err(e) => state.notify_error(crate::ui::i18n::format(
+                                    &locale,
+                                    "utility.save_failed",
+                                    &[("format", "AVIF"), ("error", &e.to_string())],
+                                )),
                             }
                         }
-                        Err(e) => state.notify_error(format!("ラスタライズに失敗しました: {e}")),
+                        Err(e) => state.notify_error(crate::ui::i18n::format(
+                            &locale,
+                            "utility.raster_failed",
+                            &[("error", &e.to_string())],
+                        )),
                     }
                 } else if format == "JSON" {
                     match serde_json::to_string_pretty(doc_ref) {
                         Ok(json) => match crate::io::atomic::atomic_write_str(&path, &json) {
-                            Ok(_) => state.notify_info("JSONを保存しました"),
-                            Err(e) => state.notify_error(format!("保存に失敗しました: {e}")),
+                            Ok(_) => state.notify_info(
+                                crate::ui::i18n::text(&locale, "utility.json_saved").into_owned(),
+                            ),
+                            Err(e) => state.notify_error(crate::ui::i18n::format(
+                                &locale,
+                                "utility.json_save_failed",
+                                &[("error", &e.to_string())],
+                            )),
                         },
-                        Err(e) => state.notify_error(format!("シリアライズに失敗しました: {e}")),
+                        Err(e) => state.notify_error(crate::ui::i18n::format(
+                            &locale,
+                            "utility.serialize_failed",
+                            &[("error", &e.to_string())],
+                        )),
                     }
                 }
                 state.export_path = Some(path.to_string_lossy().to_string());
@@ -340,52 +466,57 @@ impl ExportPanel {
 pub struct ShortcutsHelpPanel;
 
 impl ShortcutsHelpPanel {
-    pub fn show(ui: &mut Ui, _state: &mut AppState) {
-        ui.heading(RichText::new("キーボードショートカット").strong());
+    pub fn show(ui: &mut Ui, state: &mut AppState) {
+        let locale = state.prefs.language.clone();
+        ui.heading(RichText::new(crate::ui::i18n::text(&locale, "shortcuts.title")).strong());
         ui.add_space(4.0);
 
         let mk = crate::app::control_bar::mod_key();
         let shortcuts: [(&str, &str); 32] = [
-            ("V", "選択ツール"),
-            ("A", "ノード（ダイレクト選択）"),
-            ("P", "ペンツール"),
-            ("N", "鉛筆ツール"),
-            ("U", "長方形ツール"),
-            ("O", "楕円ツール"),
-            ("S", "星形ツール"),
-            ("G", "多角形ツール"),
-            ("L", "ラインツール"),
-            ("T", "テキストツール"),
-            ("I", "スポイトツール"),
-            ("H", "ハンドツール（スクロール）"),
-            ("B", "ブラシツール"),
-            ("E", "消しゴムツール"),
-            ("D", "塗りと線をデフォルトに"),
-            ("/", "塗りをなしに"),
-            ("Shift+X", "塗りと線を入れ替え"),
-            ("Delete", "選択を削除"),
-            ("Escape", "選択解除／キャンセル"),
-            ("Enter", "ペンのパスを確定"),
-            ("__MK__+Z", "元に戻す"),
-            ("__MK__+Y", "やり直す"),
-            ("__MK__+A", "すべて選択"),
-            ("__MK__+G", "グループ化"),
-            ("__MK__+Shift+G", "グループ解除"),
-            ("__MK__+D", "複製"),
-            ("__MK__+C", "コピー"),
-            ("__MK__+V", "ペースト"),
-            ("__MK__+0", "画面に合わせて表示"),
-            ("__MK__+1", "100%表示"),
-            ("__MK__+7", "クリッピングマスク"),
-            ("矢印キー", "微調整（Shiftで10倍）"),
+            ("V", "shortcut.select_tool"),
+            ("A", "shortcut.node_tool"),
+            ("P", "shortcut.pen_tool"),
+            ("N", "shortcut.pencil_tool"),
+            ("U", "shortcut.rectangle_tool"),
+            ("O", "shortcut.ellipse_tool"),
+            ("S", "shortcut.star_tool"),
+            ("G", "shortcut.polygon_tool"),
+            ("L", "shortcut.line_tool"),
+            ("T", "shortcut.text_tool"),
+            ("I", "shortcut.eyedropper_tool"),
+            ("H", "shortcut.hand_tool"),
+            ("B", "shortcut.brush_tool"),
+            ("E", "shortcut.eraser_tool"),
+            ("D", "shortcut.default_colors"),
+            ("/", "shortcut.no_fill"),
+            ("Shift+X", "shortcut.swap_fill_stroke"),
+            ("Delete", "shortcut.delete_selection"),
+            ("Escape", "shortcut.cancel"),
+            ("Enter", "shortcut.commit_pen"),
+            ("__MK__+Z", "shortcut.undo"),
+            ("__MK__+Y", "shortcut.redo"),
+            ("__MK__+A", "shortcut.select_all"),
+            ("__MK__+G", "shortcut.group"),
+            ("__MK__+Shift+G", "shortcut.ungroup"),
+            ("__MK__+D", "shortcut.duplicate"),
+            ("__MK__+C", "shortcut.copy"),
+            ("__MK__+V", "shortcut.paste"),
+            ("__MK__+0", "shortcut.fit_view"),
+            ("__MK__+1", "shortcut.zoom_100"),
+            ("__MK__+7", "shortcut.clipping_mask"),
+            ("__ARROWS__", "shortcut.nudge"),
         ];
 
         for (key, action) in shortcuts {
-            let key = key.replace("__MK__", mk);
+            let key = if key == "__ARROWS__" {
+                crate::ui::i18n::text(&locale, "shortcut.arrow_keys").into_owned()
+            } else {
+                key.replace("__MK__", mk)
+            };
             ui.horizontal(|ui| {
                 ui.label(RichText::new(key).strong().monospace().size(11.0));
                 ui.separator();
-                ui.label(RichText::new(action).size(11.0));
+                ui.label(RichText::new(crate::ui::i18n::text(&locale, action)).size(11.0));
             });
         }
     }

@@ -5,9 +5,10 @@ pub struct ComponentPanel;
 
 impl ComponentPanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("コンポーネント (Component / Symbol)").strong());
+        let locale = state.prefs.language.clone();
+        ui.heading(RichText::new(crate::ui::i18n::text(&locale, "components.title")).strong());
         ui.label(
-            RichText::new("SVG <symbol> / <use> によるマスター再利用システム")
+            RichText::new(crate::ui::i18n::text(&locale, "components.description"))
                 .weak()
                 .size(11.0),
         );
@@ -17,16 +18,26 @@ impl ComponentPanel {
 
         // 1. Create Component from selection
         ui.group(|ui| {
-            ui.label(RichText::new("マスター作成").strong().size(11.5));
             ui.label(
-                RichText::new("選択した図形をSVG <symbol> コンポーネントとして定義")
+                RichText::new(crate::ui::i18n::text(&locale, "components.create_master"))
+                    .strong()
+                    .size(11.5),
+            );
+            ui.label(
+                RichText::new(crate::ui::i18n::text(&locale, "components.define_selected"))
                     .weak()
                     .size(10.5),
             );
             ui.add_space(2.0);
 
             if ui
-                .add_enabled(has_sel, egui::Button::new("選択からコンポーネントを作成"))
+                .add_enabled(
+                    has_sel,
+                    egui::Button::new(crate::ui::i18n::text(
+                        &locale,
+                        "components.create_from_selection",
+                    )),
+                )
                 .clicked()
             {
                 // Snapshot selected objects first: create_component removes
@@ -52,9 +63,10 @@ impl ComponentPanel {
                         &mut state.document,
                     );
                     state.selected_ids.clear();
-                    state.notify_info(format!(
-                        "コンポーネント <symbol id=\"{}\"> を作成しました",
-                        symbol_id
+                    state.notify_info(crate::ui::i18n::format(
+                        &locale,
+                        "components.created",
+                        &[("id", &symbol_id)],
                     ));
                 }
             }
@@ -64,11 +76,18 @@ impl ComponentPanel {
 
         // 2. Component library & instantiation
         let symbol_count = state.document.symbols.len();
-        ui.label(RichText::new(format!("マスター一覧 ({} 件)", symbol_count)).strong());
+        ui.label(
+            RichText::new(crate::ui::i18n::format(
+                &locale,
+                "components.master_list",
+                &[("count", &symbol_count.to_string())],
+            ))
+            .strong(),
+        );
         ui.separator();
 
         if symbol_count == 0 {
-            ui.label(RichText::new("定義されたコンポーネントはありません").weak());
+            ui.label(RichText::new(crate::ui::i18n::text(&locale, "components.empty")).weak());
             return;
         }
 
@@ -105,12 +124,24 @@ impl ComponentPanel {
                             ui.with_layout(
                                 egui::Layout::right_to_left(egui::Align::Center),
                                 |ui| {
-                                    if ui.small_button("×").on_hover_text("マスター削除").clicked()
+                                    if ui
+                                        .small_button("×")
+                                        .on_hover_text(crate::ui::i18n::text(
+                                            &locale,
+                                            "components.delete_master",
+                                        ))
+                                        .clicked()
                                     {
                                         to_remove_id = Some(sym.id.clone());
                                     }
                                     if ui
-                                        .button(RichText::new("＋ インスタンス配置").size(11.0))
+                                        .button(
+                                            RichText::new(crate::ui::i18n::text(
+                                                &locale,
+                                                "components.place_instance",
+                                            ))
+                                            .size(11.0),
+                                        )
                                         .clicked()
                                     {
                                         to_instantiate = Some(sym.id.clone());
@@ -133,7 +164,7 @@ impl ComponentPanel {
                 after,
             ));
             state.undo_manager.execute(cmd, &mut state.document);
-            state.notify_info("コンポーネント定義を削除しました");
+            state.notify_info(crate::ui::i18n::text(&locale, "components.deleted").into_owned());
         }
 
         if let Some(id) = to_instantiate {
@@ -144,7 +175,11 @@ impl ComponentPanel {
                 let cmd = Box::new(crate::core::history::AddObjectCommand::new(instance));
                 state.undo_manager.execute(cmd, &mut state.document);
                 state.selected_ids = vec![inst_id];
-                state.notify_info(format!("<use href=\"#{}\"> インスタンスを配置しました", id));
+                state.notify_info(crate::ui::i18n::format(
+                    &locale,
+                    "components.instance_placed",
+                    &[("id", &id)],
+                ));
             }
         }
     }

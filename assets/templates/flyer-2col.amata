@@ -1,0 +1,373 @@
+{
+  "name": "A4横2段チラシ",
+  "layers": [
+    {
+      "id": "01265b1c-bd34-4e0d-abb8-e7f8fd29d133",
+      "name": "Layer 1",
+      "objects": [
+        {
+          "id": "ec18d425-eeb5-458b-9d9a-88b1f2106b82",
+          "name": "タイトル",
+          "object_type": {
+            "Text": {
+              "text": "秋の｜作品《さくひん》展",
+              "font_size": 64.0,
+              "style": {
+                "font_family": "Noto Sans JP",
+                "font_size": 64.0,
+                "font_weight": 700,
+                "font_style": "Normal",
+                "letter_spacing": 0.0,
+                "text_anchor": "Start",
+                "line_height": null,
+                "max_width": null,
+                "word_wrap": false,
+                "variations": [],
+                "vertical": false,
+                "auto_spacing": true,
+                "auto_spacing_em": 0.25,
+                "ligatures": true,
+                "ot_features": [],
+                "list": "None",
+                "burasage": true
+              },
+              "area": null,
+              "next_frame": null
+            }
+          },
+          "transform": {
+            "x": 120.0,
+            "y": 100.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "fill_type": {
+              "Solid": [
+                0.0,
+                0.0,
+                0.0,
+                1.0
+              ]
+            },
+            "rule": "NonZero",
+            "overprint": false,
+            "spot": null
+          },
+          "stroke": null,
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        },
+        {
+          "id": "dce95cf5-dcca-4432-ba56-df1a512b8308",
+          "name": "カラム0",
+          "object_type": {
+            "Text": {
+              "text": "｜第一《第一》の部\n\n組みのテストです。\n和欧間A・12・Bが\n読みやすい並びに\nなります。",
+              "font_size": 28.0,
+              "style": {
+                "font_family": "Noto Sans JP",
+                "font_size": 28.0,
+                "font_weight": 400,
+                "font_style": "Normal",
+                "letter_spacing": 0.0,
+                "text_anchor": "Start",
+                "line_height": 1.7,
+                "max_width": null,
+                "word_wrap": true,
+                "variations": [],
+                "vertical": false,
+                "auto_spacing": true,
+                "auto_spacing_em": 0.25,
+                "ligatures": true,
+                "ot_features": [],
+                "list": "None",
+                "burasage": true
+              },
+              "area": {
+                "x": 120.0,
+                "y": 300.0,
+                "width": 760.0,
+                "height": 800.0,
+                "cols": 1,
+                "gutter": 12.0
+              },
+              "next_frame": null
+            }
+          },
+          "transform": {
+            "x": 120.0,
+            "y": 300.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "fill_type": {
+              "Solid": [
+                0.0,
+                0.0,
+                0.0,
+                1.0
+              ]
+            },
+            "rule": "NonZero",
+            "overprint": false,
+            "spot": null
+          },
+          "stroke": null,
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        },
+        {
+          "id": "80747d05-7e0a-43cb-9395-07438d36dd4f",
+          "name": "カラム1",
+          "object_type": {
+            "Text": {
+              "text": "｜第二《第二》の部\n\n組みのテストです。\n和欧間A・12・Bが\n読みやすい並びに\nなります。",
+              "font_size": 28.0,
+              "style": {
+                "font_family": "Noto Sans JP",
+                "font_size": 28.0,
+                "font_weight": 400,
+                "font_style": "Normal",
+                "letter_spacing": 0.0,
+                "text_anchor": "Start",
+                "line_height": 1.7,
+                "max_width": null,
+                "word_wrap": true,
+                "variations": [],
+                "vertical": false,
+                "auto_spacing": true,
+                "auto_spacing_em": 0.25,
+                "ligatures": true,
+                "ot_features": [],
+                "list": "None",
+                "burasage": true
+              },
+              "area": {
+                "x": 980.0,
+                "y": 300.0,
+                "width": 760.0,
+                "height": 800.0,
+                "cols": 1,
+                "gutter": 12.0
+              },
+              "next_frame": null
+            }
+          },
+          "transform": {
+            "x": 980.0,
+            "y": 300.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "fill_type": {
+              "Solid": [
+                0.0,
+                0.0,
+                0.0,
+                1.0
+              ]
+            },
+            "rule": "NonZero",
+            "overprint": false,
+            "spot": null
+          },
+          "stroke": null,
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        }
+      ],
+      "visible": true,
+      "locked": false,
+      "opacity": 1.0
+    }
+  ],
+  "active_layer_idx": 0,
+  "width": 1754.0,
+  "height": 1240.0,
+  "symbols": [],
+  "timeline": {
+    "fps": 60.0,
+    "total_frames": 180,
+    "current_frame": 0,
+    "is_playing": false,
+    "loop_playback": true,
+    "tracks": []
+  },
+  "guides": [],
+  "color_mode": "Rgb",
+  "spots": [
+    {
+      "name": "Spot Reflex Blue",
+      "cmyk": [
+        1.0,
+        0.72,
+        0.0,
+        0.04
+      ]
+    },
+    {
+      "name": "Spot Warm Red",
+      "cmyk": [
+        0.0,
+        0.91,
+        0.76,
+        0.0
+      ]
+    },
+    {
+      "name": "Spot Green",
+      "cmyk": [
+        0.95,
+        0.0,
+        1.0,
+        0.0
+      ]
+    }
+  ],
+  "bleed": 0.0,
+  "perspective": null,
+  "artboards": [
+    {
+      "id": "a89c4463-e599-4975-bb97-f785211c0c1e",
+      "name": "A4横",
+      "x": 0.0,
+      "y": 0.0,
+      "width": 1754.0,
+      "height": 1240.0,
+      "layout_grid": null
+    }
+  ],
+  "trap_width": 0.0,
+  "toc_threshold": 18.0,
+  "paragraph_styles": [
+    {
+      "name": "見出し",
+      "style": {
+        "font_family": "Inter, sans-serif",
+        "font_size": 24.0,
+        "font_weight": 700,
+        "font_style": "Normal",
+        "letter_spacing": 0.0,
+        "text_anchor": "Start",
+        "line_height": null,
+        "max_width": null,
+        "word_wrap": false,
+        "variations": [],
+        "vertical": false,
+        "auto_spacing": true,
+        "auto_spacing_em": 0.25,
+        "ligatures": true,
+        "ot_features": [],
+        "list": "None",
+        "burasage": true
+      }
+    },
+    {
+      "name": "本文",
+      "style": {
+        "font_family": "Inter, sans-serif",
+        "font_size": 12.0,
+        "font_weight": 400,
+        "font_style": "Normal",
+        "letter_spacing": 0.0,
+        "text_anchor": "Start",
+        "line_height": null,
+        "max_width": null,
+        "word_wrap": false,
+        "variations": [],
+        "vertical": false,
+        "auto_spacing": true,
+        "auto_spacing_em": 0.25,
+        "ligatures": true,
+        "ot_features": [],
+        "list": "None",
+        "burasage": true
+      }
+    },
+    {
+      "name": "キャプション",
+      "style": {
+        "font_family": "Inter, sans-serif",
+        "font_size": 9.0,
+        "font_weight": 400,
+        "font_style": "Normal",
+        "letter_spacing": 0.0,
+        "text_anchor": "Start",
+        "line_height": null,
+        "max_width": null,
+        "word_wrap": false,
+        "variations": [],
+        "vertical": false,
+        "auto_spacing": true,
+        "auto_spacing_em": 0.25,
+        "ligatures": true,
+        "ot_features": [],
+        "list": "None",
+        "burasage": true
+      }
+    }
+  ]
+}

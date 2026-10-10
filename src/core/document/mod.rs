@@ -1,11 +1,21 @@
 pub mod object;
-pub use object::{
-    char_advance_estimate, collect_toc_entries, layout_text, layout_text_full, render_toc_text,
-    BlendMode, FontStyle, ListStyle, Object, ObjectType, TextAnchor, TextArea, TextLayout,
-    TextStyle, TextPathSide, Transform, VariationSetting,
-};
+#[allow(unused_imports)]
+pub use object::burasage_hang;
 #[allow(unused_imports)]
 pub use object::compute_wrapped_lines;
+#[allow(unused_imports)]
+pub use object::ja_latin_gap;
+#[allow(unused_imports)]
+pub use object::parse_ruby_markup;
+pub use object::{
+    char_advance_estimate, collect_toc_entries, has_ja_latin_boundary, is_fullwidth_char,
+    is_ja_latin_boundary, is_vert_rotated_char, ja_latin_gap_em, layout_text, layout_text_full,
+    normalize_text, parse_ruby, render_toc_text, split_ja_latin_segments, tatechuyoko_run,
+    tatechuyoko_scale, text_advance_estimate, BlendMode, FontStyle, ListStyle, Object, ObjectType,
+    RubyAnnotation, TextAnchor, TextArea, TextLayout, TextPathSide, TextStyle, Transform,
+    VariationSetting, RUBY_SCALE,
+};
+pub use object::{RUBY_ABOVE_EM, RUBY_STRIP_CENTER_EM};
 
 /// Canvas guide (moved here from AppState so guides persist with the
 /// document instead of evaporating on every save/reload).
@@ -64,14 +74,12 @@ impl Artboard {
 /// Color mode of the document. Affects which color picker is primary and
 /// how SVG export communicates color space (CMYK values are exported as
 /// ICC-based `<color-profile>` elements).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum ColorMode {
     #[default]
     Rgb,
     Cmyk,
 }
-
 
 impl std::fmt::Display for ColorMode {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -236,7 +244,13 @@ impl Document {
     /// a single implicit artboard derived from `width`/`height`.
     pub fn effective_artboards(&self) -> Vec<Artboard> {
         if self.artboards.is_empty() {
-            vec![Artboard::new("Artboard 1", 0.0, 0.0, self.width, self.height)]
+            vec![Artboard::new(
+                "Artboard 1",
+                0.0,
+                0.0,
+                self.width,
+                self.height,
+            )]
         } else {
             self.artboards.clone()
         }
@@ -533,11 +547,7 @@ fn parent_in_objects(objs: &[Object], id: &str) -> Option<(String, usize)> {
     parent_in_objects_depth(objs, id, 0)
 }
 
-fn parent_in_objects_depth(
-    objs: &[Object],
-    id: &str,
-    depth: usize,
-) -> Option<(String, usize)> {
+fn parent_in_objects_depth(objs: &[Object], id: &str, depth: usize) -> Option<(String, usize)> {
     if depth > MAX_NESTING_DEPTH {
         return None;
     }

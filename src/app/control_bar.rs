@@ -87,9 +87,12 @@ impl IrasuApp {
                             )) = snap
                             {
                                 ui.label(
-                                    egui::RichText::new("選択したオブジェクト")
-                                        .weak()
-                                        .size(11.0),
+                                    egui::RichText::new(crate::ui::i18n::text(
+                                        &self.state.prefs.language,
+                                        "control.selection",
+                                    ))
+                                    .weak()
+                                    .size(11.0),
                                 );
                                 ui.separator();
 
@@ -100,8 +103,12 @@ impl IrasuApp {
                                     (obj_fill[2] * 255.0) as u8,
                                     (obj_fill[3] * 255.0) as u8,
                                 ];
-                                let fill_resp =
-                                    color_edit_srgba_u8(ui, &mut fill_c).on_hover_text("塗り");
+                                let fill_resp = color_edit_srgba_u8(ui, &mut fill_c).on_hover_text(
+                                    crate::ui::i18n::text(
+                                        &self.state.prefs.language,
+                                        "control.fill",
+                                    ),
+                                );
                                 if fill_resp.changed() {
                                     let new_fill = [
                                         fill_c[0] as f32 / 255.0,
@@ -134,7 +141,10 @@ impl IrasuApp {
                                     (obj_stroke[3] * 255.0) as u8,
                                 ];
                                 let stroke_resp = color_edit_srgba_u8(ui, &mut stroke_c)
-                                    .on_hover_text("線カラー");
+                                    .on_hover_text(crate::ui::i18n::text(
+                                        &self.state.prefs.language,
+                                        "control.stroke_color",
+                                    ));
                                 if stroke_resp.changed() {
                                     let new_sc = [
                                         stroke_c[0] as f32 / 255.0,
@@ -171,7 +181,13 @@ impl IrasuApp {
                                 // Stroke Width (label drops first at the
                                 // tightest tier; the unit suffix remains)
                                 if show_more {
-                                    ui.label(egui::RichText::new("線:").size(11.0));
+                                    ui.label(
+                                        egui::RichText::new(crate::ui::i18n::text(
+                                            &self.state.prefs.language,
+                                            "control.stroke",
+                                        ))
+                                        .size(11.0),
+                                    );
                                 }
                                 let su = self.state.prefs.stroke_unit;
                                 let mut sw = su.from_px(obj_sw);
@@ -213,7 +229,7 @@ impl IrasuApp {
                                         .map(profile_display_name)
                                         .unwrap_or_else(|| "均等".to_string());
                                     egui::ComboBox::from_id_salt("ctrl_profile_sel")
-                                .selected_text(&profile_name)
+                                        .selected_text(&profile_name)
                                         .width(60.0)
                                         .show_ui(ui, |ui| {
                                             let selected = self
@@ -296,7 +312,13 @@ impl IrasuApp {
                                 // Opacity
                                 let mut op = self.state.opacity;
                                 if show_more {
-                                    ui.label(egui::RichText::new("不透明度:").size(11.0));
+                                    ui.label(
+                                        egui::RichText::new(crate::ui::i18n::text(
+                                            &self.state.prefs.language,
+                                            "control.opacity",
+                                        ))
+                                        .size(11.0),
+                                    );
                                 }
                                 let op_resp = ui.add(
                                     egui::Slider::new(&mut op, 0.0..=1.0)
@@ -322,7 +344,13 @@ impl IrasuApp {
                                     ui.separator();
 
                                     // Style
-                                    ui.label(egui::RichText::new("スタイル:").size(11.0));
+                                    ui.label(
+                                        egui::RichText::new(crate::ui::i18n::text(
+                                            &self.state.prefs.language,
+                                            "control.style",
+                                        ))
+                                        .size(11.0),
+                                    );
                                     let (sq_rect, _) = ui.allocate_exact_size(
                                         Vec2::new(16.0, 16.0),
                                         egui::Sense::hover(),
@@ -360,9 +388,7 @@ impl IrasuApp {
                                         let sel = self.state.selected_ids.clone();
                                         for id in &sel {
                                             self.state.ensure_object_snapshot(id);
-                                            for (_, o) in
-                                                self.state.document.all_objects_mut()
-                                            {
+                                            for (_, o) in self.state.document.all_objects_mut() {
                                                 if &o.id == id {
                                                     o.transform.x = tx;
                                                 }
@@ -386,9 +412,7 @@ impl IrasuApp {
                                         let sel = self.state.selected_ids.clone();
                                         for id in &sel {
                                             self.state.ensure_object_snapshot(id);
-                                            for (_, o) in
-                                                self.state.document.all_objects_mut()
-                                            {
+                                            for (_, o) in self.state.document.all_objects_mut() {
                                                 if &o.id == id {
                                                     o.transform.y = ty;
                                                 }
@@ -452,17 +476,36 @@ impl IrasuApp {
                                 }
 
                                 ui.separator();
-                                if ui.small_button("シェイプを編集").clicked() {
+                                if ui
+                                    .small_button(crate::ui::i18n::text(
+                                        &self.state.prefs.language,
+                                        "control.edit_shape",
+                                    ))
+                                    .clicked()
+                                {
                                     self.state.current_tool = Tool::Node;
                                 }
-                                if ui.small_button("変形").clicked() {
+                                if ui
+                                    .small_button(crate::ui::i18n::text(
+                                        &self.state.prefs.language,
+                                        "control.transform",
+                                    ))
+                                    .clicked()
+                                {
                                     self.active_tab = ActiveTab::Properties;
                                 }
                             }
                         }
                     } else {
                         // Illustrator CC Signature Unselected Control Bar (Image 1 & Image 3)
-                        ui.label(egui::RichText::new("選択なし").weak().size(11.0));
+                        ui.label(
+                            egui::RichText::new(crate::ui::i18n::text(
+                                &self.state.prefs.language,
+                                "control.none_selected",
+                            ))
+                            .weak()
+                            .size(11.0),
+                        );
                         ui.separator();
 
                         // Fill Swatch Picker button
@@ -473,7 +516,10 @@ impl IrasuApp {
                             (self.state.fill_color[3] * 255.0) as u8,
                         ];
                         if color_edit_srgba_u8(ui, &mut fill_c)
-                            .on_hover_text("塗りカラー")
+                            .on_hover_text(crate::ui::i18n::text(
+                                &self.state.prefs.language,
+                                "control.fill_color",
+                            ))
                             .changed()
                         {
                             self.state.fill_color = [
@@ -492,7 +538,10 @@ impl IrasuApp {
                             (self.state.stroke_color[3] * 255.0) as u8,
                         ];
                         if color_edit_srgba_u8(ui, &mut stroke_c)
-                            .on_hover_text("線カラー")
+                            .on_hover_text(crate::ui::i18n::text(
+                                &self.state.prefs.language,
+                                "control.stroke_color",
+                            ))
                             .changed()
                         {
                             self.state.stroke_color = [
@@ -506,7 +555,13 @@ impl IrasuApp {
                         // Stroke Width
                         let su = self.state.prefs.stroke_unit;
                         if show_more {
-                            ui.label(egui::RichText::new("線:").size(11.0));
+                            ui.label(
+                                egui::RichText::new(crate::ui::i18n::text(
+                                    &self.state.prefs.language,
+                                    "control.stroke",
+                                ))
+                                .size(11.0),
+                            );
                         }
                         let mut sw = su.from_px(self.state.stroke_width);
                         if ui
@@ -539,8 +594,7 @@ impl IrasuApp {
                                 .width(65.0)
                                 .show_ui(ui, |ui| {
                                     let selected = profile_name.clone();
-                                    for name in
-                                        ["均等", "線幅プロファイル 1", "線幅プロファイル 2"]
+                                    for name in ["均等", "線幅プロファイル 1", "線幅プロファイル 2"]
                                     {
                                         if ui.selectable_label(selected == name, name).clicked() {
                                             apply_width_profile_preset(&mut self.state, name);
@@ -600,7 +654,13 @@ impl IrasuApp {
                         // Opacity
                         let mut op = self.state.opacity;
                         if show_more {
-                            ui.label(egui::RichText::new("不透明度:").size(11.0));
+                            ui.label(
+                                egui::RichText::new(crate::ui::i18n::text(
+                                    &self.state.prefs.language,
+                                    "control.opacity",
+                                ))
+                                .size(11.0),
+                            );
                         }
                         if ui
                             .add(
@@ -616,7 +676,13 @@ impl IrasuApp {
                             ui.separator();
 
                             // Graphic Style Picker
-                            ui.label(egui::RichText::new("スタイル:").size(11.0));
+                            ui.label(
+                                egui::RichText::new(crate::ui::i18n::text(
+                                    &self.state.prefs.language,
+                                    "control.style",
+                                ))
+                                .size(11.0),
+                            );
                             let (sq_rect, _) =
                                 ui.allocate_exact_size(Vec2::new(18.0, 16.0), egui::Sense::hover());
                             ui.painter().rect_filled(sq_rect, 2.0, Color32::WHITE);
@@ -632,15 +698,28 @@ impl IrasuApp {
                     // Right side of Control Bar (Document Setup, Preferences)
                     ui.separator();
                     if ui
-                        .small_button("ドキュメント設定")
-                        .on_hover_text("アートボードおよびドキュメント寸法の変更")
+                        .small_button(crate::ui::i18n::text(
+                            &self.state.prefs.language,
+                            "control.document_settings",
+                        ))
+                        .on_hover_text(crate::ui::i18n::text(
+                            &self.state.prefs.language,
+                            "control.document_settings_tip",
+                        ))
                         .clicked()
                     {
                         self.active_tab = ActiveTab::Properties;
                     }
                     if ui
-                        .small_button("環境設定")
-                        .on_hover_text(format!("環境設定ダイアログを開く ({}+K)", mod_key()))
+                        .small_button(crate::ui::i18n::text(
+                            &self.state.prefs.language,
+                            "control.preferences",
+                        ))
+                        .on_hover_text(crate::ui::i18n::format(
+                            &self.state.prefs.language,
+                            "control.preferences_tip",
+                            &[("key", mod_key())],
+                        ))
                         .clicked()
                     {
                         self.preferences_dialog.is_open = true;
@@ -669,16 +748,40 @@ fn apply_width_profile_preset(state: &mut crate::core::state::AppState, name: &s
     let preset: WidthProfile = match name {
         "線幅プロファイル 1" => WidthProfile {
             points: vec![
-                WidthPoint { position: 0.0, width: 0.3, side: WidthSide::Both },
-                WidthPoint { position: 0.5, width: 1.4, side: WidthSide::Both },
-                WidthPoint { position: 1.0, width: 0.6, side: WidthSide::Both },
+                WidthPoint {
+                    position: 0.0,
+                    width: 0.3,
+                    side: WidthSide::Both,
+                },
+                WidthPoint {
+                    position: 0.5,
+                    width: 1.4,
+                    side: WidthSide::Both,
+                },
+                WidthPoint {
+                    position: 1.0,
+                    width: 0.6,
+                    side: WidthSide::Both,
+                },
             ],
         },
         "線幅プロファイル 2" => WidthProfile {
             points: vec![
-                WidthPoint { position: 0.0, width: 1.5, side: WidthSide::Both },
-                WidthPoint { position: 0.5, width: 0.5, side: WidthSide::Both },
-                WidthPoint { position: 1.0, width: 1.2, side: WidthSide::Both },
+                WidthPoint {
+                    position: 0.0,
+                    width: 1.5,
+                    side: WidthSide::Both,
+                },
+                WidthPoint {
+                    position: 0.5,
+                    width: 0.5,
+                    side: WidthSide::Both,
+                },
+                WidthPoint {
+                    position: 1.0,
+                    width: 1.2,
+                    side: WidthSide::Both,
+                },
             ],
         },
         _ => WidthProfile::default(),

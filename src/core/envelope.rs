@@ -48,7 +48,11 @@ pub fn envelope_point(
         // the radial lattice falloff, this moves silhouettes, not just
         // interiors.
         EnvelopeKind::Bulge | EnvelopeKind::Pinch => {
-            let signed = if kind == EnvelopeKind::Bulge { amount } else { -amount };
+            let signed = if kind == EnvelopeKind::Bulge {
+                amount
+            } else {
+                -amount
+            };
             let k = signed * 0.5;
             let nx = dx * (1.0 + k * (1.0 - dy * dy));
             let ny = dy * (1.0 + k * (1.0 - dx * dx));
@@ -156,7 +160,8 @@ pub fn apply_envelope_distort(art_obj: &Object, envelope_obj: &Object) -> Object
 /// points to bend and warps would be invisible.
 pub fn subdivide_path(path: &super::path::PathData, iterations: usize) -> super::path::PathData {
     use super::path::{AnchorPoint, BezierSegment, PathElement};
-    let mid = |a: AnchorPoint, b: AnchorPoint| AnchorPoint::new((a.x + b.x) / 2.0, (a.y + b.y) / 2.0);
+    let mid =
+        |a: AnchorPoint, b: AnchorPoint| AnchorPoint::new((a.x + b.x) / 2.0, (a.y + b.y) / 2.0);
     let mut current = path.clone();
     for _ in 0..iterations.min(4) {
         let mut out = super::path::PathData::new();

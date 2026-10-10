@@ -6,7 +6,9 @@ use irasu_illustrator::core::envelope::EnvelopeKind;
 
 fn rect() -> Object {
     let mut r = Object::new_rect("R", 0.0, 0.0, 100.0, 50.0, 0.0);
-    r.fill = Some(irasu_illustrator::core::path::FillStyle::solid([1.0, 0.0, 0.0, 1.0]));
+    r.fill = Some(irasu_illustrator::core::path::FillStyle::solid([
+        1.0, 0.0, 0.0, 1.0,
+    ]));
     r
 }
 

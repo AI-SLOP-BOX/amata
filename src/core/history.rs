@@ -396,7 +396,11 @@ impl Command for RemoveLayerCommand {
         if !doc.layers.iter().any(|l| l.id == self.layer.id) {
             doc.layers.insert(pos, self.layer.clone());
         }
-        clamp_active(doc, pos);
+        // Preserve the active layer (a batch sibling may have just restored
+        // it); clamp only when it actually points out of range.
+        if doc.active_layer_idx >= doc.layers.len() {
+            clamp_active(doc, pos);
+        }
     }
 
     fn name(&self) -> &str {
@@ -470,7 +474,13 @@ pub fn collect_located_objects(
             match &object.object_type {
                 super::document::ObjectType::Group(children)
                 | super::document::ObjectType::ClippingMask { children } => {
-                    walk(children, layer_idx, &Some(object.id.clone()), selected_ids, out);
+                    walk(
+                        children,
+                        layer_idx,
+                        &Some(object.id.clone()),
+                        selected_ids,
+                        out,
+                    );
                 }
                 _ => {}
             }
@@ -926,8 +936,16 @@ pub struct SetSymbolsCommand {
 }
 
 impl SetSymbolsCommand {
-    pub fn new(name: impl Into<String>, before: Vec<super::document::Symbol>, after: Vec<super::document::Symbol>) -> Self {
-        Self { name: name.into(), before, after }
+    pub fn new(
+        name: impl Into<String>,
+        before: Vec<super::document::Symbol>,
+        after: Vec<super::document::Symbol>,
+    ) -> Self {
+        Self {
+            name: name.into(),
+            before,
+            after,
+        }
     }
 }
 

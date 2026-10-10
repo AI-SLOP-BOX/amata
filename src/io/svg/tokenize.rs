@@ -83,8 +83,7 @@ pub(super) fn tokenize_svg_tags(svg_text: &str) -> Vec<String> {
                 // Flush accumulated text (with tspan/br line breaks) into
                 // the <text> tag so content extraction below just works.
                 // Presentational hints ride along as marker attributes.
-                if let (Some(idx), buf) = (open_text_idx, std::mem::take(&mut open_text_buf))
-                {
+                if let (Some(idx), buf) = (open_text_idx, std::mem::take(&mut open_text_buf)) {
                     if let Some(tag) = tags.get_mut(idx) {
                         tag.push_str(&buf);
                         if text_had_bold {
@@ -117,9 +116,11 @@ pub(super) fn tokenize_svg_tags(svg_text: &str) -> Vec<String> {
                     }
                     tspan_break_pending = false;
                 } else if (tag_head.starts_with("<br") || tag_head.starts_with("</br"))
-                    && !open_text_buf.is_empty() && !open_text_buf.ends_with('\n') {
-                        open_text_buf.push('\n');
-                    }
+                    && !open_text_buf.is_empty()
+                    && !open_text_buf.ends_with('\n')
+                {
+                    open_text_buf.push('\n');
+                }
             }
             current_tag.clear();
             i += 1;
@@ -145,4 +146,3 @@ pub(super) fn tokenize_svg_tags(svg_text: &str) -> Vec<String> {
     }
     tags
 }
-

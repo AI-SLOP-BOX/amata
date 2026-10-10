@@ -15,6 +15,10 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Prefs {
+    /// UI language (defaults to Japanese for existing installations).
+    /// BCP-47 locale tag (`ja`, `en`, `pt-BR`, …). Kept as a string so adding
+    /// a catalog never requires changing the preference schema.
+    pub language: String,
     // ── 一般: startup & files ────────────────────────────────────────────
     /// Show the home screen on launch.
     pub show_home_on_startup: bool,
@@ -48,13 +52,13 @@ pub struct Prefs {
     /// Selection outline width in px.
     pub selection_line_width: f32,
     /// `point_handle_color_mode`: `"デフォルト"` or `"ハイコントラスト"`.
-    pub point_handle_color_mode: String,
+    pub point_handle_color_mode: HandleColorMode,
     /// `color_theme`: `"ダーク"`, `"ミディアムダーク"` or `"ライト"`.
-    pub color_theme: String,
+    pub color_theme: ColorTheme,
     /// `ui_scale`: `"100%"`, `"125%"` or `"150%"`.
     pub ui_scale: String,
     /// `artboard_bg_mode`: `"ホワイト"` or `"透明グリッド"`.
-    pub artboard_bg_mode: String,
+    pub artboard_bg_mode: ArtboardBgMode,
     /// Draw the outline around each artboard.
     pub show_boundary_lines: bool,
     /// Show `name (W × H px)` on the artboard header.
@@ -129,6 +133,7 @@ pub struct Prefs {
 impl Default for Prefs {
     fn default() -> Self {
         Self {
+            language: "ja".to_string(),
             show_home_on_startup: true,
             open_last_doc: true,
             show_new_doc_dialog: true,
@@ -143,11 +148,11 @@ impl Default for Prefs {
             anchor_point_size: 6.0,
             handle_size: 8.0,
             selection_line_width: 1.0,
-            point_handle_color_mode: "デフォルト".to_string(),
-            color_theme: "ダーク".to_string(),
+            point_handle_color_mode: HandleColorMode::Default,
+            color_theme: ColorTheme::Dark,
             ui_scale: "100%".to_string(),
             // Matches the checkerboard artboards have always been drawn with.
-            artboard_bg_mode: "透明グリッド".to_string(),
+            artboard_bg_mode: ArtboardBgMode::Checker,
             show_boundary_lines: true,
             show_dimension_labels: true,
             // Defaults mirror `AppState`'s so applying them at startup
@@ -195,24 +200,30 @@ impl Prefs {
         }
         #[cfg(not(target_os = "windows"))]
         {
-            std::env::var("HOME")
-                .ok()
-                .map(|h| {
-                    std::path::PathBuf::from(h)
-                        .join(".config")
-                        .join("amata")
-                        .join("preferences.json")
-                })
+            std::env::var("HOME").ok().map(|h| {
+                std::path::PathBuf::from(h)
+                    .join(".config")
+                    .join("amata")
+                    .join("preferences.json")
+            })
         }
     }
 
     /// Read the saved preferences, falling back to [`Default`] when the file
     /// is missing or unreadable (a corrupt file must not block startup).
     pub fn load() -> Self {
-        Self::path()
+        let mut prefs: Self = Self::path()
             .and_then(|p| std::fs::read_to_string(p).ok())
             .and_then(|text| serde_json::from_str(&text).ok())
-            .unwrap_or_default()
+            .unwrap_or_default();
+        // Accept names written by the short-lived enum-based language
+        // preference so upgrades keep the selected locale.
+        match prefs.language.to_ascii_lowercase().as_str() {
+            "japanese" => prefs.language = "ja".to_string(),
+            "english" => prefs.language = "en".to_string(),
+            _ => {}
+        }
+        prefs
     }
 
     pub fn save(&self) {
@@ -239,11 +250,126 @@ impl Prefs {
     /// True when artboards are painted opaque white instead of the
     /// transparency checkerboard.
     pub fn artboard_is_white(&self) -> bool {
-        self.artboard_bg_mode == "ホワイト"
+        self.artboard_bg_mode == ArtboardBgMode::White
     }
 
     /// True when points and handles use the high-contrast palette.
     pub fn high_contrast_handles(&self) -> bool {
-        self.point_handle_color_mode == "ハイコントラスト"
+        self.point_handle_color_mode == HandleColorMode::HighContrast
+    }
+}
+
+/// Locale-independent color theme. Serializes as the legacy Japanese
+/// label so existing `preferences.json` files keep working.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ColorTheme {
+    #[default]
+    Dark,
+    MediumDark,
+    Light,
+}
+
+impl ColorTheme {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Dark => "ダーク",
+            Self::MediumDark => "ミディアムダーク",
+            Self::Light => "ライト",
+        }
+    }
+
+    pub fn parse(label: &str) -> Self {
+        match label {
+            "ミディアムダーク" => Self::MediumDark,
+            "ライト" | "Light" => Self::Light,
+            _ => Self::Dark,
+        }
+    }
+}
+
+impl Serialize for ColorTheme {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        s.serialize_str(self.label())
+    }
+}
+
+impl<'de> Deserialize<'de> for ColorTheme {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let raw = String::deserialize(d)?;
+        Ok(Self::parse(&raw))
+    }
+}
+
+/// Locale-independent handle palette selector (same legacy-label serde).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum HandleColorMode {
+    #[default]
+    Default,
+    HighContrast,
+}
+
+impl HandleColorMode {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Default => "デフォルト",
+            Self::HighContrast => "ハイコントラスト",
+        }
+    }
+
+    pub fn parse(label: &str) -> Self {
+        match label {
+            "ハイコントラスト" | "High contrast" => Self::HighContrast,
+            _ => Self::Default,
+        }
+    }
+}
+
+impl Serialize for HandleColorMode {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        s.serialize_str(self.label())
+    }
+}
+
+impl<'de> Deserialize<'de> for HandleColorMode {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let raw = String::deserialize(d)?;
+        Ok(Self::parse(&raw))
+    }
+}
+
+/// Locale-independent artboard background selector.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ArtboardBgMode {
+    White,
+    #[default]
+    Checker,
+}
+
+impl ArtboardBgMode {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::White => "ホワイト",
+            Self::Checker => "透明グリッド",
+        }
+    }
+
+    pub fn parse(label: &str) -> Self {
+        match label {
+            "ホワイト" | "White" => Self::White,
+            _ => Self::Checker,
+        }
+    }
+}
+
+impl Serialize for ArtboardBgMode {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        s.serialize_str(self.label())
+    }
+}
+
+impl<'de> Deserialize<'de> for ArtboardBgMode {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let raw = String::deserialize(d)?;
+        Ok(Self::parse(&raw))
     }
 }

@@ -20,6 +20,8 @@ mod util;
 // independently of the library and may not consume every item, hence the
 // allow on the re-export block.
 #[allow(unused_imports)]
+pub use attrs::parse_font_feature_settings as parse_font_feature_settings_public;
+#[allow(unused_imports)]
 pub use export::{export_svg, export_svg_with_options, export_svg_with_profile};
 #[allow(unused_imports)]
 pub use parse::{

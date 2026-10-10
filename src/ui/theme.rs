@@ -75,9 +75,15 @@ pub fn build_ui_font_definitions() -> UiFontSet {
         jp_candidates.push(home_p.join(".local/share/fonts/NotoSansJP-Regular.ttf"));
         jp_candidates.push(home_p.join(".fonts/NotoSansJP-Regular.ttf"));
     }
-    jp_candidates.push(std::path::PathBuf::from("assets/fonts/NotoSansJP-Regular.ttf"));
-    jp_candidates.push(std::path::PathBuf::from("/Library/Fonts/LINESeedJP_OTF_Rg.otf"));
-    jp_candidates.push(std::path::PathBuf::from("/usr/share/fonts/NotoSansJP-Regular.ttf"));
+    jp_candidates.push(std::path::PathBuf::from(
+        "assets/fonts/NotoSansJP-Regular.ttf",
+    ));
+    jp_candidates.push(std::path::PathBuf::from(
+        "/Library/Fonts/LINESeedJP_OTF_Rg.otf",
+    ));
+    jp_candidates.push(std::path::PathBuf::from(
+        "/usr/share/fonts/NotoSansJP-Regular.ttf",
+    ));
 
     let mut jp_bytes: Option<(Vec<u8>, String)> = jp_candidates.iter().find_map(|p| {
         // Collections need a face index egui can't address reliably;
@@ -198,11 +204,12 @@ struct Palette {
     window_stroke: Color32,
 }
 
-/// Palette per `Prefs::color_theme`: *ダーク* (default, the Creative Cloud
-/// Charcoal reference), *ミディアムダーク* or *ライト*.
-fn palette(theme: &str) -> Palette {
+/// Palette per `Prefs::color_theme`: Dark (default, the Creative Cloud
+/// Charcoal reference), MediumDark or Light.
+fn palette(theme: crate::core::prefs::ColorTheme) -> Palette {
+    use crate::core::prefs::ColorTheme as T;
     match theme {
-        "ミディアムダーク" => Palette {
+        T::MediumDark => Palette {
             panel: Color32::from_rgb(45, 45, 45),
             window: Color32::from_rgb(54, 54, 54),
             faint: Color32::from_rgb(38, 38, 38),
@@ -219,7 +226,7 @@ fn palette(theme: &str) -> Palette {
             noninteractive_fg: Color32::from_rgb(196, 196, 196),
             window_stroke: Color32::from_rgb(70, 70, 70),
         },
-        "ライト" => Palette {
+        T::Light => Palette {
             panel: Color32::from_rgb(232, 232, 232),
             window: Color32::from_rgb(245, 245, 245),
             faint: Color32::from_rgb(238, 238, 238),
@@ -236,8 +243,8 @@ fn palette(theme: &str) -> Palette {
             noninteractive_fg: Color32::from_rgb(92, 92, 92),
             window_stroke: Color32::from_rgb(176, 176, 176),
         },
-        // "ダーク"
-        _ => Palette {
+        // Dark
+        T::Dark => Palette {
             panel: Color32::from_rgb(30, 30, 30),
             window: Color32::from_rgb(38, 38, 38),
             faint: Color32::from_rgb(26, 26, 26),
@@ -257,10 +264,14 @@ fn palette(theme: &str) -> Palette {
     }
 }
 
-pub fn apply_adobe_theme(ctx: &egui::Context, theme: &str) {
+pub fn apply_adobe_theme(ctx: &egui::Context, theme: crate::core::prefs::ColorTheme) {
     let p = palette(theme);
-    let light = theme == "ライト";
-    let mut visuals = if light { Visuals::light() } else { Visuals::dark() };
+    let light = theme == crate::core::prefs::ColorTheme::Light;
+    let mut visuals = if light {
+        Visuals::light()
+    } else {
+        Visuals::dark()
+    };
     // Foreground for surfaces whose fill is *not* the accent blue.
     let strong_fg = if light {
         Color32::from_rgb(24, 24, 24)
@@ -325,10 +336,8 @@ pub fn apply_adobe_theme(ctx: &egui::Context, theme: &str) {
 
     // Noninteractive (labels, static frames)
     visuals.widgets.noninteractive.bg_fill = p.noninteractive;
-    visuals.widgets.noninteractive.bg_stroke =
-        Stroke::new(1.0_f32, p.noninteractive_stroke);
-    visuals.widgets.noninteractive.fg_stroke =
-        Stroke::new(1.0_f32, p.noninteractive_fg);
+    visuals.widgets.noninteractive.bg_stroke = Stroke::new(1.0_f32, p.noninteractive_stroke);
+    visuals.widgets.noninteractive.fg_stroke = Stroke::new(1.0_f32, p.noninteractive_fg);
 
     visuals.window_stroke = Stroke::new(1.0_f32, p.window_stroke);
 
@@ -381,7 +390,10 @@ mod tests {
     fn bundled_fonts_cover_their_scripts() {
         let inter = include_bytes!("../../assets/fonts/Inter.ttf");
         assert!(font_covers(inter, 'A'), "Inter must cover Latin");
-        assert!(!font_covers(inter, 'あ'), "Inter has no kana (fallback required)");
+        assert!(
+            !font_covers(inter, 'あ'),
+            "Inter has no kana (fallback required)"
+        );
         let noto = include_bytes!("../../assets/fonts/NotoSansJP-Regular.ttf");
         assert!(font_covers(noto, 'A'), "Noto JP must cover Latin");
         assert!(font_covers(noto, 'あ'), "Noto JP must cover hiragana");
@@ -399,7 +411,10 @@ mod tests {
         assert_eq!(prop[0], "inter");
         assert_eq!(prop[1], "jp_ui_font");
         let mono = &set.defs.families[&FontFamily::Monospace];
-        assert!(mono.contains(&"jp_ui_font".to_owned()), "mono needs CJK too: {mono:?}");
+        assert!(
+            mono.contains(&"jp_ui_font".to_owned()),
+            "mono needs CJK too: {mono:?}"
+        );
     }
 
     #[test]

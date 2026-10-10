@@ -110,10 +110,7 @@ impl PathData {
                 let Some(prev) = self.element_anchor(elem_idx - 1) else {
                     return false;
                 };
-                let m = AnchorPoint::new(
-                    prev.x + (p.x - prev.x) * t,
-                    prev.y + (p.y - prev.y) * t,
-                );
+                let m = AnchorPoint::new(prev.x + (p.x - prev.x) * t, prev.y + (p.y - prev.y) * t);
                 self.elements[elem_idx] = PathElement::LineTo(m);
                 self.elements.insert(elem_idx + 1, PathElement::LineTo(p));
                 true

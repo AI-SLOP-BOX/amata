@@ -25,17 +25,15 @@ fn execute_moves(state: &mut AppState, label: &str, moves: Vec<(String, f64, f64
     } else {
         let cmds: Vec<Box<dyn Command>> = moves
             .into_iter()
-            .map(
-                |(id, old_x, old_y, new_x, new_y)| {
-                    Box::new(MoveObjectCommand {
-                        object_id: id,
-                        old_x,
-                        old_y,
-                        new_x,
-                        new_y,
-                    }) as Box<dyn Command>
-                },
-            )
+            .map(|(id, old_x, old_y, new_x, new_y)| {
+                Box::new(MoveObjectCommand {
+                    object_id: id,
+                    old_x,
+                    old_y,
+                    new_x,
+                    new_y,
+                }) as Box<dyn Command>
+            })
             .collect();
         state.undo_manager.execute(
             Box::new(BatchCommand::new(label, cmds)),
@@ -48,22 +46,48 @@ pub struct AlignPanel;
 
 impl AlignPanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
+        let locale = state.prefs.language.clone();
         let sel = state.selected_ids.clone();
         let multi = sel.len() >= 2;
 
-        ui.label(RichText::new("整列:").weak().size(11.0));
+        ui.label(
+            RichText::new(crate::ui::i18n::text(&locale, "transform.align"))
+                .weak()
+                .size(11.0),
+        );
         ui.horizontal(|ui| {
-            if ui.add_enabled(multi, egui::Button::new("⇤ Left")).clicked() {
+            if ui
+                .add_enabled(
+                    multi,
+                    egui::Button::new(crate::ui::i18n::text(
+                        &locale,
+                        "transform.align_left_button",
+                    )),
+                )
+                .clicked()
+            {
                 align_left(state, &sel);
             }
             if ui
-                .add_enabled(multi, egui::Button::new("⇹ Center H"))
+                .add_enabled(
+                    multi,
+                    egui::Button::new(crate::ui::i18n::text(
+                        &locale,
+                        "transform.align_center_h_button",
+                    )),
+                )
                 .clicked()
             {
                 align_center_h(state, &sel);
             }
             if ui
-                .add_enabled(multi, egui::Button::new("⇥ Right"))
+                .add_enabled(
+                    multi,
+                    egui::Button::new(crate::ui::i18n::text(
+                        &locale,
+                        "transform.align_right_button",
+                    )),
+                )
                 .clicked()
             {
                 align_right(state, &sel);
@@ -71,17 +95,35 @@ impl AlignPanel {
         });
 
         ui.horizontal(|ui| {
-            if ui.add_enabled(multi, egui::Button::new("⤒ Top")).clicked() {
+            if ui
+                .add_enabled(
+                    multi,
+                    egui::Button::new(crate::ui::i18n::text(&locale, "transform.align_top_button")),
+                )
+                .clicked()
+            {
                 align_top(state, &sel);
             }
             if ui
-                .add_enabled(multi, egui::Button::new("⇕ Center V"))
+                .add_enabled(
+                    multi,
+                    egui::Button::new(crate::ui::i18n::text(
+                        &locale,
+                        "transform.align_center_v_button",
+                    )),
+                )
                 .clicked()
             {
                 align_center_v(state, &sel);
             }
             if ui
-                .add_enabled(multi, egui::Button::new("⤓ Bottom"))
+                .add_enabled(
+                    multi,
+                    egui::Button::new(crate::ui::i18n::text(
+                        &locale,
+                        "transform.align_bottom_button",
+                    )),
+                )
                 .clicked()
             {
                 align_bottom(state, &sel);
@@ -89,16 +131,26 @@ impl AlignPanel {
         });
 
         ui.add_space(4.0);
-        ui.label(RichText::new("等間隔:").weak().size(11.0));
+        ui.label(
+            RichText::new(crate::ui::i18n::text(&locale, "transform.distribute"))
+                .weak()
+                .size(11.0),
+        );
         ui.horizontal(|ui| {
             if ui
-                .add_enabled(sel.len() >= 3, egui::Button::new("水平に等間隔"))
+                .add_enabled(
+                    sel.len() >= 3,
+                    egui::Button::new(crate::ui::i18n::text(&locale, "transform.distribute_h")),
+                )
                 .clicked()
             {
                 distribute_h(state, &sel);
             }
             if ui
-                .add_enabled(sel.len() >= 3, egui::Button::new("垂直に等間隔"))
+                .add_enabled(
+                    sel.len() >= 3,
+                    egui::Button::new(crate::ui::i18n::text(&locale, "transform.distribute_v")),
+                )
                 .clicked()
             {
                 distribute_v(state, &sel);
@@ -106,10 +158,17 @@ impl AlignPanel {
         });
 
         ui.add_space(4.0);
-        ui.label(RichText::new("反転と配置:").weak().size(11.0));
+        ui.label(
+            RichText::new(crate::ui::i18n::text(&locale, "transform.flip_arrange"))
+                .weak()
+                .size(11.0),
+        );
         ui.horizontal(|ui| {
             if ui
-                .add_enabled(!sel.is_empty(), egui::Button::new("⇆ Flip H"))
+                .add_enabled(
+                    !sel.is_empty(),
+                    egui::Button::new(crate::ui::i18n::text(&locale, "transform.flip_h_button")),
+                )
                 .clicked()
             {
                 let ids = sel.clone();
@@ -122,7 +181,10 @@ impl AlignPanel {
                 });
             }
             if ui
-                .add_enabled(!sel.is_empty(), egui::Button::new("⇅ Flip V"))
+                .add_enabled(
+                    !sel.is_empty(),
+                    egui::Button::new(crate::ui::i18n::text(&locale, "transform.flip_v_button")),
+                )
                 .clicked()
             {
                 let ids = sel.clone();
@@ -137,20 +199,26 @@ impl AlignPanel {
         });
 
         ui.add_space(4.0);
-        ui.label(RichText::new("配置:").weak().size(11.0));
+        ui.label(
+            RichText::new(crate::ui::i18n::text(&locale, "transform.arrange"))
+                .weak()
+                .size(11.0),
+        );
         ui.horizontal(|ui| {
             let mk = mod_key();
             let has_sel = !sel.is_empty();
             if ui
-                .add_enabled(has_sel, egui::Button::new("最前面へ"))
+                .add_enabled(
+                    has_sel,
+                    egui::Button::new(crate::ui::i18n::text(&locale, "transform.front")),
+                )
                 .on_hover_text(format!("{mk}+Shift+]"))
                 .clicked()
             {
                 state.reorder_objects_undoable("Bring to Front", |doc| {
                     for id in &sel {
                         for layer in doc.layers.iter_mut() {
-                            if let Some(pos) = layer.objects.iter().position(|o| &o.id == id)
-                            {
+                            if let Some(pos) = layer.objects.iter().position(|o| &o.id == id) {
                                 let obj = layer.objects.remove(pos);
                                 layer.objects.push(obj);
                                 break;
@@ -160,15 +228,17 @@ impl AlignPanel {
                 });
             }
             if ui
-                .add_enabled(has_sel, egui::Button::new("↑ Forward"))
+                .add_enabled(
+                    has_sel,
+                    egui::Button::new(crate::ui::i18n::text(&locale, "transform.forward_button")),
+                )
                 .on_hover_text(format!("{mk}+]"))
                 .clicked()
             {
                 state.reorder_objects_undoable("Bring Forward", |doc| {
                     for id in &sel {
                         for layer in doc.layers.iter_mut() {
-                            if let Some(pos) = layer.objects.iter().position(|o| &o.id == id)
-                            {
+                            if let Some(pos) = layer.objects.iter().position(|o| &o.id == id) {
                                 if pos + 1 < layer.objects.len() {
                                     layer.objects.swap(pos, pos + 1);
                                 }
@@ -179,15 +249,17 @@ impl AlignPanel {
                 });
             }
             if ui
-                .add_enabled(has_sel, egui::Button::new("↓ Backward"))
+                .add_enabled(
+                    has_sel,
+                    egui::Button::new(crate::ui::i18n::text(&locale, "transform.backward_button")),
+                )
                 .on_hover_text(format!("{mk}+["))
                 .clicked()
             {
                 state.reorder_objects_undoable("Send Backward", |doc| {
                     for id in &sel {
                         for layer in doc.layers.iter_mut() {
-                            if let Some(pos) = layer.objects.iter().position(|o| &o.id == id)
-                            {
+                            if let Some(pos) = layer.objects.iter().position(|o| &o.id == id) {
                                 if pos > 0 {
                                     layer.objects.swap(pos, pos - 1);
                                 }
@@ -198,15 +270,17 @@ impl AlignPanel {
                 });
             }
             if ui
-                .add_enabled(has_sel, egui::Button::new("最背面へ"))
+                .add_enabled(
+                    has_sel,
+                    egui::Button::new(crate::ui::i18n::text(&locale, "transform.back")),
+                )
                 .on_hover_text(format!("{mk}+Shift+["))
                 .clicked()
             {
                 state.reorder_objects_undoable("Send to Back", |doc| {
                     for id in &sel {
                         for layer in doc.layers.iter_mut() {
-                            if let Some(pos) = layer.objects.iter().position(|o| &o.id == id)
-                            {
+                            if let Some(pos) = layer.objects.iter().position(|o| &o.id == id) {
                                 let obj = layer.objects.remove(pos);
                                 layer.objects.insert(0, obj);
                                 break;
@@ -484,8 +558,11 @@ pub struct TransformPanel;
 
 impl TransformPanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
+        let locale = state.prefs.language.clone();
         if state.selected_ids.is_empty() {
-            ui.label(RichText::new("Select an object to transform").weak());
+            ui.label(
+                RichText::new(crate::ui::i18n::text(&locale, "transform.select_object")).weak(),
+            );
             return;
         }
 
@@ -522,7 +599,7 @@ impl TransformPanel {
         }
 
         // Position
-        ui.collapsing("Position", |ui| {
+        ui.collapsing(crate::ui::i18n::text(&locale, "transform.position"), |ui| {
             ui.horizontal(|ui| {
                 ui.label("X:");
                 let tx_resp = ui.add(egui::DragValue::new(&mut tx).speed(1.0));
@@ -544,7 +621,7 @@ impl TransformPanel {
         });
 
         // Scale
-        ui.collapsing("Scale", |ui| {
+        ui.collapsing(crate::ui::i18n::text(&locale, "transform.scale"), |ui| {
             ui.horizontal(|ui| {
                 ui.label("W:");
                 let sx_resp = ui.add(
@@ -572,7 +649,10 @@ impl TransformPanel {
                 }
             });
             ui.horizontal(|ui| {
-                if ui.button("縦横比を固定").clicked() {
+                if ui
+                    .button(crate::ui::i18n::text(&locale, "transform.lock_aspect"))
+                    .clicked()
+                {
                     let avg = (sx + sy) / 2.0;
                     Self::set_transform(state, &id, |t| {
                         t.scale_x = avg;
@@ -580,7 +660,10 @@ impl TransformPanel {
                     });
                     Self::commit_transform(state);
                 }
-                if ui.button("拡大縮小をリセット").clicked() {
+                if ui
+                    .button(crate::ui::i18n::text(&locale, "transform.reset_scale"))
+                    .clicked()
+                {
                     Self::set_transform(state, &id, |t| {
                         t.scale_x = 1.0;
                         t.scale_y = 1.0;
@@ -591,7 +674,7 @@ impl TransformPanel {
         });
 
         // Rotation
-        ui.collapsing("Rotation", |ui| {
+        ui.collapsing(crate::ui::i18n::text(&locale, "transform.rotation"), |ui| {
             ui.horizontal(|ui| {
                 ui.label("°");
                 let rot_resp = ui.add(
@@ -601,9 +684,7 @@ impl TransformPanel {
                         .suffix("°"),
                 );
                 if rot_resp.changed() {
-                    Self::transform_drag(state, &id, &rot_resp, |t| {
-                        t.rotation = rot.to_radians()
-                    });
+                    Self::transform_drag(state, &id, &rot_resp, |t| t.rotation = rot.to_radians());
                 }
                 if rot_resp.drag_stopped() {
                     Self::commit_transform(state);
@@ -630,9 +711,9 @@ impl TransformPanel {
         });
 
         // Skew
-        ui.collapsing("Skew", |ui| {
+        ui.collapsing(crate::ui::i18n::text(&locale, "transform.skew"), |ui| {
             ui.horizontal(|ui| {
-                ui.label("傾斜X:");
+                ui.label(crate::ui::i18n::text(&locale, "transform.skew_x"));
                 let skx_resp = ui.add(
                     egui::DragValue::new(&mut skew_x)
                         .speed(1.0)
@@ -647,7 +728,7 @@ impl TransformPanel {
                 }
             });
             ui.horizontal(|ui| {
-                ui.label("傾斜Y:");
+                ui.label(crate::ui::i18n::text(&locale, "transform.skew_y"));
                 let sky_resp = ui.add(
                     egui::DragValue::new(&mut skew_y)
                         .speed(1.0)
@@ -666,15 +747,24 @@ impl TransformPanel {
         // Quick actions
         ui.separator();
         ui.horizontal(|ui| {
-            if ui.button("左右反転").clicked() {
+            if ui
+                .button(crate::ui::i18n::text(&locale, "transform.flip_h"))
+                .clicked()
+            {
                 Self::set_transform(state, &id, |t| t.scale_x = -t.scale_x);
                 Self::commit_transform(state);
             }
-            if ui.button("上下反転").clicked() {
+            if ui
+                .button(crate::ui::i18n::text(&locale, "transform.flip_v"))
+                .clicked()
+            {
                 Self::set_transform(state, &id, |t| t.scale_y = -t.scale_y);
                 Self::commit_transform(state);
             }
-            if ui.button("すべてリセット").clicked() {
+            if ui
+                .button(crate::ui::i18n::text(&locale, "transform.reset_all"))
+                .clicked()
+            {
                 Self::set_transform(state, &id, |t| {
                     t.x = 0.0;
                     t.y = 0.0;

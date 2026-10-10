@@ -28,6 +28,11 @@ pub enum Commands {
         height: Option<u32>,
         #[arg(short, long)]
         background: Option<String>,
+        /// Outline text to glyph paths so OpenType features (palt / vert /
+        /// 和欧間) survive into the render — the raster engine ignores
+        /// `font-feature-settings`.
+        #[arg(long)]
+        outline_text: bool,
     },
 
     /// Inspect document hierarchy, objects, resources, and warnings
@@ -64,6 +69,9 @@ pub enum Commands {
         output: PathBuf,
         #[arg(short, long, default_value_t = 1.0)]
         scale: f32,
+        /// Outline text to glyph paths (see `render --outline-text`).
+        #[arg(long)]
+        outline_text: bool,
     },
 
     /// Export vector artwork to AEVFX Studio Composition (.json / .aevfx)

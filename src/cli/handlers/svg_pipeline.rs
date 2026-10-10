@@ -3,6 +3,7 @@ use std::collections::HashSet;
 use std::path::Path;
 
 /// Direct render handler for SVG and Amata documents
+#[allow(clippy::too_many_arguments)]
 pub fn handle_render(
     input: &Path,
     output: &Path,
@@ -10,6 +11,7 @@ pub fn handle_render(
     width: Option<u32>,
     height: Option<u32>,
     background: Option<&str>,
+    outline_text: bool,
 ) -> Result<bool, Box<dyn std::error::Error>> {
     if !input.exists() {
         return Err(format!("Input file does not exist: {}", input.display()).into());
@@ -21,10 +23,18 @@ pub fn handle_render(
         .unwrap_or("")
         .to_lowercase();
     let svg_content = if ext == "svg" {
+        // An .svg input already carries whatever the author exported; the
+        // flag only applies to project files (raw SVG is passed through).
+        if outline_text {
+            eprintln!(
+                "⚠️ --outline-text ignored: {} is already SVG (the author's                  export decides). Outline at export time instead.",
+                input.display()
+            );
+        }
         std::fs::read_to_string(input)?
     } else {
         let doc = crate::io::project::load_project(input)?;
-        crate::io::svg::export_svg(&doc)
+        crate::io::svg::export_svg_with_options(&doc, false, None, outline_text)
     };
 
     let opt = resvg::usvg::Options {
@@ -298,17 +308,16 @@ pub fn handle_inspect(input: &Path, json_output: bool) -> Result<bool, Box<dyn s
         }
     }
 
-    if (doc_width == 0.0 || doc_height == 0.0)
-        && !view_box.is_empty() {
-            let parts: Vec<f64> = view_box
-                .split(|c: char| c.is_whitespace() || c == ',')
-                .filter_map(|s| s.parse().ok())
-                .collect();
-            if parts.len() == 4 {
-                doc_width = parts[2];
-                doc_height = parts[3];
-            }
+    if (doc_width == 0.0 || doc_height == 0.0) && !view_box.is_empty() {
+        let parts: Vec<f64> = view_box
+            .split(|c: char| c.is_whitespace() || c == ',')
+            .filter_map(|s| s.parse().ok())
+            .collect();
+        if parts.len() == 4 {
+            doc_width = parts[2];
+            doc_height = parts[3];
         }
+    }
 
     if json_output {
         let info = json!({

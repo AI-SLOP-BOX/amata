@@ -6,7 +6,12 @@ use irasu_illustrator::core::gradient_mesh::MeshGradient;
 
 fn sample_mesh() -> MeshGradient {
     MeshGradient::new_rect(
-        0.0, 0.0, 100.0, 50.0, 3, 4,
+        0.0,
+        0.0,
+        100.0,
+        50.0,
+        3,
+        4,
         [
             [1.0, 0.0, 0.0, 1.0],
             [0.0, 1.0, 0.0, 1.0],

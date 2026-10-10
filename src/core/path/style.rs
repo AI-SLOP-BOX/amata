@@ -24,6 +24,178 @@ pub struct PatternFill {
     pub scale: f64,
 }
 
+/// Primitive geometry shared by the canvas and print-PDF pattern painters.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum PatternPrimitive {
+    Line(AnchorPoint, AnchorPoint),
+    Dot(AnchorPoint, f64),
+}
+
+/// Per-frame canvas budget for pattern motifs. Heavy documents can expand
+/// to `MAX_PRIMITIVES` in world space; the interactive painter stride-samples
+/// down to this so one object cannot stall a frame. Print-PDF output still
+/// uses the full list.
+pub const PATTERN_FRAME_BUDGET: usize = 2000;
+
+/// Stride-sample primitives to `budget` while preserving overall coverage.
+/// Truncation would keep only the top rows; stepping keeps the motif visible
+/// everywhere when the frame budget kicks in.
+pub fn sample_pattern_primitives_for_frame(
+    primitives: &[PatternPrimitive],
+    budget: usize,
+) -> Vec<PatternPrimitive> {
+    if budget == 0 || primitives.is_empty() {
+        return Vec::new();
+    }
+    if primitives.len() <= budget {
+        return primitives.to_vec();
+    }
+    let step = primitives.len().div_ceil(budget).max(1);
+    primitives.iter().step_by(step).copied().collect()
+}
+
+/// Expand the selected pattern type into a bounded list of local-world-space
+/// strokes/dots. The caller clips the result to the object's fill path.
+pub fn pattern_primitives(
+    pattern: &PatternFill,
+    bounds: (f64, f64, f64, f64),
+) -> Option<Vec<PatternPrimitive>> {
+    const MAX_PRIMITIVES: usize = 100_000;
+    let (x0, y0, x1, y1) = bounds;
+    let (step_x, step_y) = (
+        pattern.tile_width * pattern.scale,
+        pattern.tile_height * pattern.scale,
+    );
+    if !(x0.is_finite()
+        && y0.is_finite()
+        && x1.is_finite()
+        && y1.is_finite()
+        && pattern.offset_x.is_finite()
+        && pattern.offset_y.is_finite()
+        && pattern.rotation.is_finite()
+        && step_x.is_finite()
+        && step_y.is_finite()
+        && x1 > x0
+        && y1 > y0
+        && step_x > 0.0
+        && step_y > 0.0)
+    {
+        return None;
+    }
+    let ox = x0 + pattern.offset_x;
+    let oy = y0 + pattern.offset_y;
+    let first_x = ox + ((x0 - ox) / step_x).floor() * step_x;
+    let first_y = oy + ((y0 - oy) / step_y).floor() * step_y;
+    let cols = ((x1 - first_x) / step_x).ceil().max(0.0) as usize + 1;
+    let rows = ((y1 - first_y) / step_y).ceil().max(0.0) as usize + 1;
+    if cols.saturating_mul(rows) > MAX_PRIMITIVES / 6 {
+        return None;
+    }
+
+    let mut primitives = Vec::new();
+    let mut overflowed = false;
+    let mut line = |a: (f64, f64), b: (f64, f64)| {
+        if overflowed {
+            return;
+        }
+        if primitives.len() < MAX_PRIMITIVES {
+            primitives.push(PatternPrimitive::Line(
+                AnchorPoint::new(a.0, a.1),
+                AnchorPoint::new(b.0, b.1),
+            ));
+        } else {
+            overflowed = true;
+        }
+    };
+    match pattern.pattern_type {
+        PatternType::Grid => {
+            for col in 0..cols {
+                let x = first_x + col as f64 * step_x;
+                line((x, y0), (x, y1));
+            }
+            for row in 0..rows {
+                let y = first_y + row as f64 * step_y;
+                line((x0, y), (x1, y));
+            }
+        }
+        PatternType::Brick => {
+            for row in 0..rows {
+                let y = first_y + row as f64 * step_y;
+                line((x0, y), (x1, y));
+                let stagger = if row % 2 == 0 { 0.0 } else { step_x * 0.5 };
+                let first_brick_x = first_x + stagger;
+                let brick_cols = ((x1 - first_brick_x) / step_x).ceil().max(0.0) as usize + 1;
+                for col in 0..brick_cols {
+                    let x = first_brick_x + col as f64 * step_x;
+                    line((x, y), (x, (y + step_y).min(y1)));
+                }
+            }
+        }
+        PatternType::Hex => {
+            let radius_x = step_x * 0.5;
+            let radius_y = step_y * 0.5;
+            let row_step = step_y * 0.75;
+            let hex_rows = ((y1 - first_y) / row_step).ceil().max(0.0) as usize + 1;
+            for row in 0..hex_rows {
+                let cy = first_y + row as f64 * row_step;
+                let stagger = if row % 2 == 0 { 0.0 } else { radius_x };
+                for col in 0..cols {
+                    let cx = first_x + col as f64 * step_x + stagger;
+                    let points: Vec<_> = (0..6)
+                        .map(|i| {
+                            let angle = std::f64::consts::FRAC_PI_3 * i as f64;
+                            (cx + radius_x * angle.cos(), cy + radius_y * angle.sin())
+                        })
+                        .collect();
+                    for i in 0..6 {
+                        line(points[i], points[(i + 1) % 6]);
+                    }
+                }
+            }
+        }
+        PatternType::Dots => {
+            let radius = step_x.min(step_y) * 0.14;
+            for row in 0..rows {
+                let cy = first_y + (row as f64 + 0.5) * step_y;
+                for col in 0..cols {
+                    if primitives.len() >= MAX_PRIMITIVES {
+                        return None;
+                    }
+                    let cx = first_x + (col as f64 + 0.5) * step_x;
+                    primitives.push(PatternPrimitive::Dot(AnchorPoint::new(cx, cy), radius));
+                }
+            }
+        }
+    }
+
+    let angle = pattern.rotation.to_radians();
+    if overflowed {
+        // Grid/Brick/Hex hit the cap mid-fill: fail whole-pattern like
+        // Dots instead of returning a silently truncated motif.
+        return None;
+    }
+    if angle.abs() > f64::EPSILON {
+        let (sin, cos) = angle.sin_cos();
+        let cx = (x0 + x1) * 0.5;
+        let cy = (y0 + y1) * 0.5;
+        let rotate = |p: AnchorPoint| {
+            let dx = p.x - cx;
+            let dy = p.y - cy;
+            AnchorPoint::new(cx + dx * cos - dy * sin, cy + dx * sin + dy * cos)
+        };
+        for primitive in &mut primitives {
+            match primitive {
+                PatternPrimitive::Line(a, b) => {
+                    *a = rotate(*a);
+                    *b = rotate(*b);
+                }
+                PatternPrimitive::Dot(center, _) => *center = rotate(*center),
+            }
+        }
+    }
+    Some(primitives)
+}
+
 impl Default for PatternFill {
     fn default() -> Self {
         Self {
@@ -35,6 +207,115 @@ impl Default for PatternFill {
             rotation: 0.0,
             scale: 1.0,
         }
+    }
+}
+
+#[cfg(test)]
+mod pattern_tests {
+    use super::*;
+
+    #[test]
+    fn pattern_types_generate_distinct_primitives_and_rotation_moves_them() {
+        let bounds = (0.0, 0.0, 60.0, 40.0);
+        let primitives: Vec<_> = [
+            PatternType::Grid,
+            PatternType::Hex,
+            PatternType::Brick,
+            PatternType::Dots,
+        ]
+        .into_iter()
+        .map(|pattern_type| {
+            pattern_primitives(
+                &PatternFill {
+                    pattern_type,
+                    tile_width: 12.0,
+                    tile_height: 10.0,
+                    ..Default::default()
+                },
+                bounds,
+            )
+            .unwrap()
+        })
+        .collect();
+        for i in 0..primitives.len() {
+            for j in i + 1..primitives.len() {
+                assert_ne!(primitives[i], primitives[j]);
+            }
+        }
+
+        let unrotated = pattern_primitives(
+            &PatternFill {
+                pattern_type: PatternType::Brick,
+                tile_width: 12.0,
+                tile_height: 10.0,
+                ..Default::default()
+            },
+            bounds,
+        )
+        .unwrap();
+        let rotated = pattern_primitives(
+            &PatternFill {
+                rotation: 30.0,
+                pattern_type: PatternType::Brick,
+                tile_width: 12.0,
+                tile_height: 10.0,
+                ..Default::default()
+            },
+            bounds,
+        )
+        .unwrap();
+        assert_ne!(unrotated, rotated);
+    }
+
+    #[test]
+    fn pattern_geometry_rejects_invalid_sizes_and_excessive_output() {
+        assert!(pattern_primitives(
+            &PatternFill {
+                tile_width: 0.0,
+                ..Default::default()
+            },
+            (0.0, 0.0, 100.0, 100.0),
+        )
+        .is_none());
+        assert!(pattern_primitives(
+            &PatternFill {
+                tile_width: 0.001,
+                tile_height: 0.001,
+                ..Default::default()
+            },
+            (0.0, 0.0, 100.0, 100.0),
+        )
+        .is_none());
+    }
+
+    #[test]
+    fn frame_sampling_preserves_coverage_within_budget() {
+        let full = pattern_primitives(
+            &PatternFill {
+                pattern_type: PatternType::Dots,
+                tile_width: 2.0,
+                tile_height: 2.0,
+                ..Default::default()
+            },
+            (0.0, 0.0, 200.0, 200.0),
+        )
+        .unwrap();
+        assert!(full.len() > PATTERN_FRAME_BUDGET);
+        let sampled = sample_pattern_primitives_for_frame(&full, PATTERN_FRAME_BUDGET);
+        assert!(sampled.len() <= PATTERN_FRAME_BUDGET);
+        assert!(sampled.len() > PATTERN_FRAME_BUDGET / 2);
+        // Stride keeps first and last regions instead of only the top.
+        assert_eq!(sampled.first(), full.first());
+        assert_ne!(sampled.last().unwrap(), &full[sampled.len() - 1]);
+        assert!(full
+            .iter()
+            .skip(full.len() / 2)
+            .any(|p| sampled.contains(p)));
+        assert!(sample_pattern_primitives_for_frame(&full, 0).is_empty());
+        assert_eq!(
+            sample_pattern_primitives_for_frame(&full[..10], PATTERN_FRAME_BUDGET).len(),
+            10.min(full.len())
+        );
     }
 }
 
@@ -275,7 +556,6 @@ impl ImageFill {
         !self.image_id.is_empty()
     }
 }
-
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum FillType {

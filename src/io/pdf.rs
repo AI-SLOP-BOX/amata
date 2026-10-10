@@ -112,8 +112,7 @@ fn render_obj_pdf(obj: &Object, parent: &[f64; 6], stream_content: &mut String) 
             }
         }
         ObjectType::Text { text, style, .. } => {
-            let mut path =
-                crate::core::text_path::text_to_outline_path_with_style(text, style);
+            let mut path = crate::core::text_path::text_to_outline_path_with_style(text, style);
             path.transform(&world);
             // Object fill wins (canvas renders obj.fill); path fill is the
             // fallback. (PathData::new defaults to black, so testing
@@ -196,7 +195,10 @@ pub fn export_pdf_with_profile(doc: &Document, color_profile: Option<&str>) -> V
     pdf.extend_from_slice(b"%PDF-1.4\n%\xE2\xE3\xCF\xD3\n");
     if let Some(profile) = color_profile.filter(|p| !p.trim().is_empty()) {
         // PDF comments start with `%`; keep them on one line.
-        let sanitized: String = profile.chars().map(|c| if c == '\n' || c == '\r' { ' ' } else { c }).collect();
+        let sanitized: String = profile
+            .chars()
+            .map(|c| if c == '\n' || c == '\r' { ' ' } else { c })
+            .collect();
         pdf.extend_from_slice(format!("% color-profile: {sanitized}\n").as_bytes());
     }
 

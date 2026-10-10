@@ -33,6 +33,45 @@ pub fn save_any_document(
     save_any_document_scaled(doc, path, 1.0)
 }
 
+/// [`save_any_document_scaled`] with text outlined to glyph paths.
+/// Only SVG/PNG honour the flag; other formats ignore it.
+pub fn save_any_document_scaled_outlined(
+    doc: &crate::core::document::Document,
+    path: &Path,
+    scale: f32,
+    outline_text: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let ext = path
+        .extension()
+        .and_then(|s| s.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+    match ext.as_str() {
+        "svg" => {
+            let mut scaled = doc.clone();
+            let s = scale.clamp(0.1, 16.0) as f64;
+            scaled.width *= s;
+            scaled.height *= s;
+            for (_, obj) in scaled.all_objects_mut() {
+                obj.transform.x *= s;
+                obj.transform.y *= s;
+                obj.transform.scale_x *= s;
+                obj.transform.scale_y *= s;
+            }
+            let svg = crate::io::svg::export_svg_with_options(&scaled, false, None, outline_text);
+            crate::io::atomic::atomic_write_str(path, &svg)?;
+            Ok(())
+        }
+        "png" => {
+            let bytes = crate::io::raster::export_png_with_outline(doc, scale, true, outline_text)
+                .map_err(|e| e.to_string())?;
+            crate::io::atomic::atomic_write_bytes(path, &bytes)?;
+            Ok(())
+        }
+        _ => save_any_document_scaled(doc, path, scale),
+    }
+}
+
 pub fn save_any_document_scaled(
     doc: &crate::core::document::Document,
     path: &Path,
@@ -47,10 +86,7 @@ pub fn save_any_document_scaled(
         "svg" => {
             // Raster formats consume `scale` directly; for SVG the document
             // itself must be scaled or the flag would be silently ignored.
-            let svg = if (scale - 1.0).abs() > f32::EPSILON
-                && scale.is_finite()
-                && scale > 0.0
-            {
+            let svg = if (scale - 1.0).abs() > f32::EPSILON && scale.is_finite() && scale > 0.0 {
                 let mut scaled = doc.clone();
                 let s = scale.clamp(0.1, 16.0) as f64;
                 scaled.width *= s;
@@ -93,13 +129,22 @@ pub fn save_any_document_scaled(
             Ok(())
         }
         "pdf" => {
+            if !scale.is_finite() || (scale - 1.0).abs() > f32::EPSILON {
+                return Err("scale is raster-only and unsupported for .pdf (use 1.0)".into());
+            }
             let pdf_bytes = crate::io::pdf::export_pdf(doc);
             crate::io::atomic::atomic_write_bytes(path, &pdf_bytes)?;
             Ok(())
         }
         // PDF-compatible .ai (Illustrator opens the PDF portion; no
         // private edit data — same honest subset as the export dialog).
+        // Vector formats ignore `scale` (it is a raster concept): refuse
+        // a non-1.0 scale loudly instead of silently dropping it, exactly
+        // like the SVG arm documents.
         "ai" => {
+            if !scale.is_finite() || (scale - 1.0).abs() > f32::EPSILON {
+                return Err("scale is raster-only and unsupported for .ai (use 1.0)".into());
+            }
             let pdf_bytes = crate::io::pdf::export_pdf(doc);
             crate::io::atomic::atomic_write_bytes(path, &pdf_bytes)?;
             Ok(())

@@ -1,6 +1,6 @@
 use crate::app::icons::{
-    icon_button, icon_chevron_down, icon_chevron_right, icon_chevron_up, icon_close,
-    icon_duplicate, icon_eye, icon_eye_off, icon_lock, icon_unlock, toggle_icon_button,
+    icon_button_labeled, icon_chevron_down, icon_chevron_right, icon_chevron_up, icon_close,
+    icon_duplicate, icon_eye, icon_eye_off, icon_lock, icon_unlock, toggle_icon_button_labeled,
 };
 use crate::core::boolean::{execute_pathfinder, BooleanOp};
 use crate::core::document::{Document, Object, ObjectType};
@@ -173,11 +173,7 @@ fn plan_reparent(
 
 /// Classify where a pointer over `rect` would drop: top third → before,
 /// bottom third → after, middle of a group → into.
-fn drop_target_from_pointer(
-    rect: egui::Rect,
-    pointer: Pos2,
-    row: &TreeRow,
-) -> Option<DropTarget> {
+fn drop_target_from_pointer(rect: egui::Rect, pointer: Pos2, row: &TreeRow) -> Option<DropTarget> {
     if !rect.contains(pointer) {
         return None;
     }
@@ -195,8 +191,9 @@ pub struct LayerPanel;
 
 impl LayerPanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
+        let locale = state.prefs.language.clone();
         ui.label(
-            RichText::new("レイヤー")
+            RichText::new(crate::ui::i18n::text(&locale, "structure.layers"))
                 .strong()
                 .size(13.0)
                 .color(Color32::WHITE),
@@ -250,16 +247,26 @@ impl LayerPanel {
                 }
 
                 let size = Vec2::new(20.0, 18.0);
-                if icon_button(ui, size, icon_chevron_up)
-                    .on_hover_text("レイヤーを上へ移動")
-                    .clicked()
+                if icon_button_labeled(
+                    ui,
+                    size,
+                    icon_chevron_up,
+                    crate::ui::i18n::text(&locale, "structure.move_layer_up"),
+                )
+                .on_hover_text(crate::ui::i18n::text(&locale, "structure.move_layer_up"))
+                .clicked()
                     && i + 1 < layer_count
                 {
                     to_move_layer_up = Some(i);
                 }
-                if icon_button(ui, size, icon_chevron_down)
-                    .on_hover_text("レイヤーを下へ移動")
-                    .clicked()
+                if icon_button_labeled(
+                    ui,
+                    size,
+                    icon_chevron_down,
+                    crate::ui::i18n::text(&locale, "structure.move_layer_down"),
+                )
+                .on_hover_text(crate::ui::i18n::text(&locale, "structure.move_layer_down"))
+                .clicked()
                     && i > 0
                 {
                     to_move_layer_down = Some(i);
@@ -270,25 +277,44 @@ impl LayerPanel {
                 } else {
                     icon_eye_off
                 };
-                if icon_button(ui, size, vis_painter)
-                    .on_hover_text("表示を切り替え")
-                    .clicked()
+                if icon_button_labeled(
+                    ui,
+                    size,
+                    vis_painter,
+                    crate::ui::i18n::text(&locale, "structure.toggle_visibility"),
+                )
+                .on_hover_text(crate::ui::i18n::text(
+                    &locale,
+                    "structure.toggle_visibility",
+                ))
+                .clicked()
                 {
                     actions.push(TreeAction::ToggleVis(format!("layer:{i}")));
                 }
 
                 let lock_painter: fn(&egui::Painter, egui::Rect, Color32) =
                     if layer.locked { icon_lock } else { icon_unlock };
-                if toggle_icon_button(ui, size, layer.locked, lock_painter)
-                    .on_hover_text("ロックを切り替え")
-                    .clicked()
+                if toggle_icon_button_labeled(
+                    ui,
+                    size,
+                    layer.locked,
+                    lock_painter,
+                    crate::ui::i18n::text(&locale, "structure.toggle_lock"),
+                )
+                .on_hover_text(crate::ui::i18n::text(&locale, "structure.toggle_lock"))
+                .clicked()
                 {
                     actions.push(TreeAction::ToggleLock(format!("layer:{i}")));
                 }
 
-                if icon_button(ui, size, icon_duplicate)
-                    .on_hover_text("レイヤーを複製")
-                    .clicked()
+                if icon_button_labeled(
+                    ui,
+                    size,
+                    icon_duplicate,
+                    crate::ui::i18n::text(&locale, "structure.duplicate_layer"),
+                )
+                .on_hover_text(crate::ui::i18n::text(&locale, "structure.duplicate_layer"))
+                .clicked()
                 {
                     to_duplicate_layer = Some(i);
                 }
@@ -297,9 +323,7 @@ impl LayerPanel {
 
             if let Some(payload) = layer_row.dnd_release_payload::<String>() {
                 layer_drop.push(((*payload).clone(), DropTarget::LayerEnd(i)));
-            } else if layer_row
-                .dnd_hover_payload::<String>()
-                .is_some()
+            } else if layer_row.dnd_hover_payload::<String>().is_some()
                 && ui.input(|inp| inp.pointer.any_down())
             {
                 ui.painter().rect_filled(
@@ -315,9 +339,12 @@ impl LayerPanel {
                 ui.indent("layer_opacity", |ui| {
                     ui.horizontal(|ui| {
                         ui.label(
-                            egui::RichText::new("不透明度")
-                                .size(10.0)
-                                .color(egui::Color32::from_rgb(150, 150, 150)),
+                            egui::RichText::new(crate::ui::i18n::text(
+                                &locale,
+                                "structure.opacity",
+                            ))
+                            .size(10.0)
+                            .color(egui::Color32::from_rgb(150, 150, 150)),
                         );
                         let op_resp = ui.add(
                             egui::Slider::new(&mut lop, 0.0..=1.0)
@@ -354,11 +381,11 @@ impl LayerPanel {
                         icon_chevron_right
                     };
                     let tip = if open {
-                        "折りたたむ"
+                        crate::ui::i18n::text(&locale, "structure.collapse")
                     } else {
-                        "展開する"
+                        crate::ui::i18n::text(&locale, "structure.expand")
                     };
-                    if icon_button(ui, Vec2::new(18.0, 16.0), arrow)
+                    if icon_button_labeled(ui, Vec2::new(18.0, 16.0), arrow, tip.clone())
                         .on_hover_text(tip)
                         .clicked()
                     {
@@ -377,7 +404,7 @@ impl LayerPanel {
                         let te = ui.add(
                             egui::TextEdit::singleline(&mut rename_buf)
                                 .desired_width(120.0)
-                                .hint_text("名前"),
+                                .hint_text(crate::ui::i18n::text(&locale, "structure.name")),
                         );
                         if !rename_focus_done {
                             te.request_focus();
@@ -457,9 +484,9 @@ impl LayerPanel {
                     }
                     row_actions.push(TreeAction::Drop {
                         dragged: (*payload).clone(),
-                        target: local_drop.clone().unwrap_or_else(|| {
-                            DropTarget::Before(row.id.clone())
-                        }),
+                        target: local_drop
+                            .clone()
+                            .unwrap_or_else(|| DropTarget::Before(row.id.clone())),
                     });
                 }
 
@@ -467,38 +494,67 @@ impl LayerPanel {
                 let size = Vec2::new(20.0, 18.0);
                 let vis_painter: fn(&egui::Painter, egui::Rect, Color32) =
                     if row.visible { icon_eye } else { icon_eye_off };
-                if icon_button(ui, size, vis_painter)
-                    .on_hover_text("表示を切り替え")
-                    .clicked()
+                if icon_button_labeled(
+                    ui,
+                    size,
+                    vis_painter,
+                    crate::ui::i18n::text(&locale, "structure.toggle_visibility"),
+                )
+                .on_hover_text(crate::ui::i18n::text(
+                    &locale,
+                    "structure.toggle_visibility",
+                ))
+                .clicked()
                 {
                     row_actions.push(TreeAction::ToggleVis(row.id.clone()));
                 }
 
                 let lock_painter: fn(&egui::Painter, egui::Rect, Color32) =
                     if row.locked { icon_lock } else { icon_unlock };
-                if toggle_icon_button(ui, size, row.locked, lock_painter)
-                    .on_hover_text("ロックを切り替え")
-                    .clicked()
+                if toggle_icon_button_labeled(
+                    ui,
+                    size,
+                    row.locked,
+                    lock_painter,
+                    crate::ui::i18n::text(&locale, "structure.toggle_lock"),
+                )
+                .on_hover_text(crate::ui::i18n::text(&locale, "structure.toggle_lock"))
+                .clicked()
                 {
                     row_actions.push(TreeAction::ToggleLock(row.id.clone()));
                 }
 
-                if icon_button(ui, size, icon_chevron_up)
-                    .on_hover_text("前面へ移動")
-                    .clicked()
+                if icon_button_labeled(
+                    ui,
+                    size,
+                    icon_chevron_up,
+                    crate::ui::i18n::text(&locale, "structure.move_front"),
+                )
+                .on_hover_text(crate::ui::i18n::text(&locale, "structure.move_front"))
+                .clicked()
                 {
                     row_actions.push(TreeAction::BringForward(row.id.clone()));
                 }
-                if icon_button(ui, size, icon_chevron_down)
-                    .on_hover_text("背面へ移動")
-                    .clicked()
+                if icon_button_labeled(
+                    ui,
+                    size,
+                    icon_chevron_down,
+                    crate::ui::i18n::text(&locale, "structure.move_back"),
+                )
+                .on_hover_text(crate::ui::i18n::text(&locale, "structure.move_back"))
+                .clicked()
                 {
                     row_actions.push(TreeAction::SendBackward(row.id.clone()));
                 }
 
-                if icon_button(ui, size, icon_close)
-                    .on_hover_text("削除")
-                    .clicked()
+                if icon_button_labeled(
+                    ui,
+                    size,
+                    icon_close,
+                    crate::ui::i18n::text(&locale, "structure.delete"),
+                )
+                .on_hover_text(crate::ui::i18n::text(&locale, "structure.delete"))
+                .clicked()
                 {
                     row_actions.push(TreeAction::Delete(row.id.clone()));
                 }
@@ -522,8 +578,7 @@ impl LayerPanel {
         for action in actions {
             match action {
                 TreeAction::Select(id) => {
-                    state.selected_ids.clear();
-                    state.selected_ids.push(id);
+                    state.set_selected_ids(vec![id]);
                 }
                 TreeAction::SetActiveLayer(i) => {
                     state.document.active_layer_idx = i;
@@ -618,7 +673,7 @@ impl LayerPanel {
                         state
                             .undo_manager
                             .execute(Box::new(cmd), &mut state.document);
-                        state.selected_ids.retain(|s| s != &id);
+                        state.prune_stale_selection();
                     }
                 }
                 TreeAction::BringForward(id) => {
@@ -747,10 +802,17 @@ impl LayerPanel {
         ui.separator();
 
         ui.horizontal(|ui| {
-            if ui.button("レイヤーを追加").clicked() {
+            if ui
+                .button(crate::ui::i18n::text(&locale, "structure.add_layer"))
+                .clicked()
+            {
                 to_add_layer = true;
             }
-            if ui.button("レイヤーを削除").clicked() && layer_count > 1 {
+            if ui
+                .button(crate::ui::i18n::text(&locale, "structure.remove_layer"))
+                .clicked()
+                && layer_count > 1
+            {
                 to_remove_layer = true;
             }
         });
@@ -786,19 +848,10 @@ impl LayerPanel {
             let idx = state.document.active_layer_idx;
             if let Some(layer) = state.document.layers.get(idx).cloned() {
                 state.undo_manager.execute(
-                    Box::new(crate::core::history::RemoveLayerCommand {
-                        layer,
-                        index: idx,
-                    }),
+                    Box::new(crate::core::history::RemoveLayerCommand { layer, index: idx }),
                     &mut state.document,
                 );
-                let alive: Vec<String> = state
-                    .selected_ids
-                    .iter()
-                    .filter(|sid| state.document.find_object(sid).is_some())
-                    .cloned()
-                    .collect();
-                state.selected_ids = alive;
+                state.prune_stale_selection();
             }
         }
     }
@@ -808,53 +861,78 @@ pub struct HistoryPanel;
 
 impl HistoryPanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("↩ History").strong());
+        let locale = state.prefs.language.clone();
+        ui.heading(RichText::new(crate::ui::i18n::text(&locale, "structure.history")).strong());
         ui.add_space(4.0);
 
         let undo_depth = state.undo_manager.undo_depth();
         let redo_depth = state.undo_manager.redo_depth();
 
-        ui.label(RichText::new(format!("Undo: {} | Redo: {}", undo_depth, redo_depth)).weak());
+        ui.label(
+            RichText::new(crate::ui::i18n::format(
+                &locale,
+                "structure.undo_redo",
+                &[
+                    ("undo", &undo_depth.to_string()),
+                    ("redo", &redo_depth.to_string()),
+                ],
+            ))
+            .weak(),
+        );
         ui.separator();
 
         if undo_depth == 0 && redo_depth == 0 {
-            ui.label(RichText::new("No history yet").weak());
+            ui.label(RichText::new(crate::ui::i18n::text(&locale, "structure.no_history")).weak());
             return;
         }
 
-        ui.collapsing(format!("Undo Stack ({})", undo_depth), |ui| {
-            let names: Vec<String> = state
-                .undo_manager
-                .undo_stack()
-                .iter()
-                .map(|c| c.name().to_string())
-                .collect();
-            for (i, name) in names.iter().enumerate() {
-                let is_last = i == names.len() - 1;
-                let text = if is_last {
-                    RichText::new(format!("{}. {} ●", i + 1, name))
-                        .strong()
-                        .color(Color32::from_rgb(100, 180, 255))
-                } else {
-                    RichText::new(format!("{}. {}", i + 1, name))
-                };
-                ui.label(text);
-            }
-        });
+        ui.collapsing(
+            crate::ui::i18n::format(
+                &locale,
+                "structure.undo_stack",
+                &[("count", &undo_depth.to_string())],
+            ),
+            |ui| {
+                let names: Vec<String> = state
+                    .undo_manager
+                    .undo_stack()
+                    .iter()
+                    .map(|c| c.name().to_string())
+                    .collect();
+                for (i, name) in names.iter().enumerate() {
+                    let is_last = i == names.len() - 1;
+                    let text = if is_last {
+                        RichText::new(format!("{}. {} ●", i + 1, name))
+                            .strong()
+                            .color(Color32::from_rgb(100, 180, 255))
+                    } else {
+                        RichText::new(format!("{}. {}", i + 1, name))
+                    };
+                    ui.label(text);
+                }
+            },
+        );
 
-        ui.collapsing(format!("Redo Stack ({})", redo_depth), |ui| {
-            let names: Vec<String> = state
-                .undo_manager
-                .redo_stack()
-                .iter()
-                .rev()
-                .map(|c| c.name().to_string())
-                .collect();
-            for (i, name) in names.iter().enumerate() {
-                let text = RichText::new(format!("{}. {}", i + 1, name));
-                ui.label(text);
-            }
-        });
+        ui.collapsing(
+            crate::ui::i18n::format(
+                &locale,
+                "structure.redo_stack",
+                &[("count", &redo_depth.to_string())],
+            ),
+            |ui| {
+                let names: Vec<String> = state
+                    .undo_manager
+                    .redo_stack()
+                    .iter()
+                    .rev()
+                    .map(|c| c.name().to_string())
+                    .collect();
+                for (i, name) in names.iter().enumerate() {
+                    let text = RichText::new(format!("{}. {}", i + 1, name));
+                    ui.label(text);
+                }
+            },
+        );
     }
 }
 
@@ -862,17 +940,21 @@ pub struct ClippingMaskPanel;
 
 impl ClippingMaskPanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("Clipping Mask").strong());
+        let locale = state.prefs.language.clone();
+        ui.heading(
+            RichText::new(crate::ui::i18n::text(&locale, "structure.clipping_mask")).strong(),
+        );
         ui.add_space(4.0);
 
         let sel_count = state.selected_ids.len();
         let has_mask_shape = sel_count >= 2;
 
-        ui.label("マスク形状（上）とコンテンツオブジェクト（下）を選択してください");
+        ui.label(crate::ui::i18n::text(&locale, "structure.mask_select"));
         ui.label(
-            RichText::new(format!(
-                "{}+7 or click below to create mask",
-                crate::app::control_bar::mod_key()
+            RichText::new(crate::ui::i18n::format(
+                &locale,
+                "structure.mask_tip",
+                &[("key", crate::app::control_bar::mod_key())],
             ))
             .weak()
             .size(11.0),
@@ -880,7 +962,13 @@ impl ClippingMaskPanel {
         ui.add_space(4.0);
 
         if ui
-            .add_enabled(has_mask_shape, egui::Button::new("Create Clipping Mask"))
+            .add_enabled(
+                has_mask_shape,
+                egui::Button::new(crate::ui::i18n::text(
+                    &locale,
+                    "structure.create_clipping_mask",
+                )),
+            )
             .clicked()
         {
             // The first selected object is the mask, rest are content
@@ -923,10 +1011,8 @@ impl ClippingMaskPanel {
                 // command both removes the sources and adds the mask so
                 // undo restores every original object (the old path called
                 // remove_object outside any command — permanent data loss).
-                let located = crate::core::history::collect_located_objects(
-                    &state.document,
-                    &ids_to_remove,
-                );
+                let located =
+                    crate::core::history::collect_located_objects(&state.document, &ids_to_remove);
                 let cmd = Box::new(crate::core::history::ReplaceObjectsCommand::new(
                     "Create Clipping Mask",
                     located,
@@ -937,7 +1023,14 @@ impl ClippingMaskPanel {
         }
 
         ui.add_space(4.0);
-        ui.label(RichText::new(format!("Selected: {} objects", sel_count)).weak());
+        ui.label(
+            RichText::new(crate::ui::i18n::format(
+                &locale,
+                "structure.selected_count",
+                &[("count", &sel_count.to_string())],
+            ))
+            .weak(),
+        );
     }
 }
 
@@ -949,9 +1042,10 @@ pub struct PathfinderPanel;
 
 impl PathfinderPanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("Pathfinder").strong());
+        let locale = state.prefs.language.clone();
+        ui.heading(RichText::new(crate::ui::i18n::text(&locale, "structure.pathfinder")).strong());
         ui.label(
-            RichText::new("Combine 2 or more vector shapes")
+            RichText::new(crate::ui::i18n::text(&locale, "structure.combine_vectors"))
                 .weak()
                 .size(11.0),
         );
@@ -990,16 +1084,23 @@ impl PathfinderPanel {
 
         ui.add_space(4.0);
         ui.separator();
-        ui.label(RichText::new("単純化・複合パス").strong().size(11.0));
+        ui.label(
+            RichText::new(crate::ui::i18n::text(
+                &locale,
+                "structure.simplify_compound",
+            ))
+            .strong()
+            .size(11.0),
+        );
         ui.horizontal(|ui| {
-            ui.label("許容値:");
-            ui.add(
-                egui::Slider::new(&mut state.simplify_tolerance, 0.5..=50.0)
-                    .show_value(true),
-            );
+            ui.label(crate::ui::i18n::text(&locale, "structure.tolerance"));
+            ui.add(egui::Slider::new(&mut state.simplify_tolerance, 0.5..=50.0).show_value(true));
             if ui
-                .add_enabled(sel_count >= 1, egui::Button::new("単純化"))
-                .on_hover_text("共線点を削減（ベジェは保持）")
+                .add_enabled(
+                    sel_count >= 1,
+                    egui::Button::new(crate::ui::i18n::text(&locale, "structure.simplify")),
+                )
+                .on_hover_text(crate::ui::i18n::text(&locale, "structure.simplify_tip"))
                 .clicked()
             {
                 Self::apply_simplify(state, state.simplify_tolerance);
@@ -1007,15 +1108,27 @@ impl PathfinderPanel {
         });
         ui.horizontal_wrapped(|ui| {
             if ui
-                .add_enabled(is_enabled, egui::Button::new("⧉ 複合パス化"))
-                .on_hover_text("重なりを中マド化 (EvenOdd)")
+                .add_enabled(
+                    is_enabled,
+                    egui::Button::new(crate::ui::i18n::text(&locale, "structure.make_compound")),
+                )
+                .on_hover_text(crate::ui::i18n::text(
+                    &locale,
+                    "structure.make_compound_tip",
+                ))
                 .clicked()
             {
                 Self::apply_compound(state);
             }
             if ui
-                .add_enabled(sel_count >= 1, egui::Button::new("複合解除"))
-                .on_hover_text("複合パスを分割")
+                .add_enabled(
+                    sel_count >= 1,
+                    egui::Button::new(crate::ui::i18n::text(&locale, "structure.release_compound")),
+                )
+                .on_hover_text(crate::ui::i18n::text(
+                    &locale,
+                    "structure.release_compound_tip",
+                ))
                 .clicked()
             {
                 Self::apply_release_compound(state);
@@ -1044,16 +1157,13 @@ impl PathfinderPanel {
         for id in &ids {
             if let Some(obj) = state.document.find_object(id) {
                 if let ObjectType::Path(ref p) = obj.object_type {
-                    let simplified =
-                        crate::core::simplify::simplify_path_visvalingam(p, tolerance);
+                    let simplified = crate::core::simplify::simplify_path_visvalingam(p, tolerance);
                     if simplified.elements != p.elements {
-                        cmds.push(Box::new(
-                            crate::core::history::ModifyPathCommand::new(
-                                id.clone(),
-                                p.elements.clone(),
-                                simplified.elements,
-                            ),
-                        )
+                        cmds.push(Box::new(crate::core::history::ModifyPathCommand::new(
+                            id.clone(),
+                            p.elements.clone(),
+                            simplified.elements,
+                        ))
                             as Box<dyn crate::core::history::Command>);
                     }
                 }
@@ -1110,14 +1220,18 @@ pub struct OffsetPanel;
 
 impl OffsetPanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("Path Tools").strong());
+        let locale = state.prefs.language.clone();
+        ui.heading(RichText::new(crate::ui::i18n::text(&locale, "structure.path_tools")).strong());
         ui.add_space(4.0);
 
         let has_sel = !state.selected_ids.is_empty();
 
         ui.horizontal(|ui| {
             if ui
-                .add_enabled(has_sel, egui::Button::new("Outline Stroke"))
+                .add_enabled(
+                    has_sel,
+                    egui::Button::new(crate::ui::i18n::text(&locale, "structure.outline_stroke")),
+                )
                 .clicked()
             {
                 let targets: Vec<crate::core::document::Object> = state
@@ -1145,7 +1259,10 @@ impl OffsetPanel {
             }
 
             if ui
-                .add_enabled(has_sel, egui::Button::new("Offset Path (+10px)"))
+                .add_enabled(
+                    has_sel,
+                    egui::Button::new(crate::ui::i18n::text(&locale, "structure.offset_path")),
+                )
                 .clicked()
             {
                 let targets: Vec<crate::core::document::Object> = state
@@ -1177,12 +1294,13 @@ pub struct MorphPanel;
 
 impl MorphPanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("Shape Morphing").strong());
+        let locale = state.prefs.language.clone();
+        ui.heading(RichText::new(crate::ui::i18n::text(&locale, "structure.shape_morph")).strong());
         ui.add_space(4.0);
 
         let sel_count = state.selected_ids.len();
         if sel_count == 2 {
-            ui.label("補間/モーフする2つの形状を選択してください");
+            ui.label(crate::ui::i18n::text(&locale, "structure.morph_select"));
             let mut t = 0.5;
             ui.add(
                 egui::Slider::new(&mut t, 0.0..=1.0)
@@ -1190,7 +1308,10 @@ impl MorphPanel {
                     .step_by(0.05),
             );
 
-            if ui.button("モーフ中間形状を作成").clicked() {
+            if ui
+                .button(crate::ui::i18n::text(&locale, "structure.create_morph"))
+                .clicked()
+            {
                 let obj1 = state
                     .document
                     .all_objects()
@@ -1215,7 +1336,9 @@ impl MorphPanel {
                 }
             }
         } else {
-            ui.label(RichText::new("Select exactly 2 objects to morph").weak());
+            ui.label(
+                RichText::new(crate::ui::i18n::text(&locale, "structure.morph_select_two")).weak(),
+            );
         }
     }
 }
@@ -1224,7 +1347,10 @@ pub struct KnifePanel;
 
 impl KnifePanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("Knife & Vector Slicer").strong());
+        let locale = state.prefs.language.clone();
+        ui.heading(
+            RichText::new(crate::ui::i18n::text(&locale, "structure.knife_slicer")).strong(),
+        );
         ui.add_space(4.0);
 
         let has_sel = !state.selected_ids.is_empty();
@@ -1237,7 +1363,13 @@ impl KnifePanel {
                 .map(|(_, o)| o.clone());
             ui.horizontal(|ui| {
                 if ui
-                    .add_enabled(has_sel, egui::Button::new("Slice Horizontally"))
+                    .add_enabled(
+                        has_sel,
+                        egui::Button::new(crate::ui::i18n::text(
+                            &locale,
+                            "structure.slice_horizontal",
+                        )),
+                    )
                     .clicked()
                 {
                     if let Some(obj) = &target_obj {
@@ -1249,18 +1381,16 @@ impl KnifePanel {
                             if let Some((part_a, part_b)) =
                                 crate::core::knife::slice_object_with_line(obj, p1, p2)
                             {
-                                let removed =
-                                    crate::core::history::collect_located_objects(
-                                        &state.document,
-                                        std::slice::from_ref(&obj.id),
-                                    );
-                                let cmd = Box::new(
-                                    crate::core::history::ReplaceObjectsCommand::new(
+                                let removed = crate::core::history::collect_located_objects(
+                                    &state.document,
+                                    std::slice::from_ref(&obj.id),
+                                );
+                                let cmd =
+                                    Box::new(crate::core::history::ReplaceObjectsCommand::new(
                                         "Slice Object",
                                         removed,
                                         vec![part_a, part_b],
-                                    ),
-                                );
+                                    ));
                                 state.undo_manager.execute(cmd, &mut state.document);
                             }
                         }
@@ -1268,7 +1398,13 @@ impl KnifePanel {
                 }
 
                 if ui
-                    .add_enabled(has_sel, egui::Button::new("Slice Vertically"))
+                    .add_enabled(
+                        has_sel,
+                        egui::Button::new(crate::ui::i18n::text(
+                            &locale,
+                            "structure.slice_vertical",
+                        )),
+                    )
                     .clicked()
                 {
                     if let Some(obj) = &target_obj {
@@ -1280,18 +1416,16 @@ impl KnifePanel {
                             if let Some((part_a, part_b)) =
                                 crate::core::knife::slice_object_with_line(obj, p1, p2)
                             {
-                                let removed =
-                                    crate::core::history::collect_located_objects(
-                                        &state.document,
-                                        std::slice::from_ref(&obj.id),
-                                    );
-                                let cmd = Box::new(
-                                    crate::core::history::ReplaceObjectsCommand::new(
+                                let removed = crate::core::history::collect_located_objects(
+                                    &state.document,
+                                    std::slice::from_ref(&obj.id),
+                                );
+                                let cmd =
+                                    Box::new(crate::core::history::ReplaceObjectsCommand::new(
                                         "Slice Object",
                                         removed,
                                         vec![part_a, part_b],
-                                    ),
-                                );
+                                    ));
                                 state.undo_manager.execute(cmd, &mut state.document);
                             }
                         }
@@ -1300,7 +1434,7 @@ impl KnifePanel {
             });
         } else {
             ui.label(
-                RichText::new("Select an object to slice in half")
+                RichText::new(crate::ui::i18n::text(&locale, "structure.slice_select"))
                     .weak()
                     .size(11.0),
             );
@@ -1490,4 +1624,3 @@ mod tests {
         assert!(drop_target_from_pointer(rect_box, Pos2::new(500.0, 5.0), &row).is_none());
     }
 }
-

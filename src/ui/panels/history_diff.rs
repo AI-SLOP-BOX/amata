@@ -39,7 +39,6 @@ pub struct VersionHistoryPanel {
     preview_backup: Option<Document>,
 }
 
-
 impl VersionHistoryPanel {
     pub fn refresh_history(&mut self, file_path: &Path) {
         self.current_file = Some(file_path.to_path_buf());
@@ -53,9 +52,10 @@ impl VersionHistoryPanel {
     }
 
     pub fn show(&mut self, ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("バージョン履歴 (Version History)").strong());
+        let locale = state.prefs.language.clone();
+        ui.heading(RichText::new(crate::ui::i18n::text(&locale, "history.title")).strong());
         ui.label(
-            RichText::new("デザインの節目を安全に記録・比較・復元できます")
+            RichText::new(crate::ui::i18n::text(&locale, "history.description"))
                 .weak()
                 .size(11.0),
         );
@@ -64,7 +64,7 @@ impl VersionHistoryPanel {
         // Checkpoint creation section
         ui.group(|ui| {
             ui.label(
-                RichText::new("📌 今の状態を保存 (Checkpoint)")
+                RichText::new(crate::ui::i18n::text(&locale, "history.checkpoint"))
                     .strong()
                     .size(11.5),
             );
@@ -72,7 +72,10 @@ impl VersionHistoryPanel {
                 ui.text_edit_singleline(&mut self.checkpoint_input);
                 let can_commit = !self.checkpoint_input.trim().is_empty();
                 if ui
-                    .add_enabled(can_commit, egui::Button::new("保存"))
+                    .add_enabled(
+                        can_commit,
+                        egui::Button::new(crate::ui::i18n::text(&locale, "history.save")),
+                    )
                     .clicked()
                 {
                     let msg = self.checkpoint_input.trim().to_string();
@@ -88,7 +91,11 @@ impl VersionHistoryPanel {
                         &file_path,
                     ) {
                         Err(e) => {
-                            state.notify_error(format!("保存失敗: {e}"));
+                            state.notify_error(crate::ui::i18n::format(
+                                &locale,
+                                "history.save_failed",
+                                &[("error", &e.to_string())],
+                            ));
                         }
                         Ok(_) => {
                             if !git::is_git_repository(&file_path) {
@@ -98,14 +105,19 @@ impl VersionHistoryPanel {
                             }
                             match git::create_checkpoint(&file_path, &msg) {
                                 Ok(_) => {
-                                    state.notify_info(format!(
-                                        "チェックポイント「{}」を保存しました",
-                                        msg
+                                    state.notify_info(crate::ui::i18n::format(
+                                        &locale,
+                                        "history.checkpoint_saved",
+                                        &[("name", &msg)],
                                     ));
                                     self.checkpoint_input.clear();
                                     self.refresh_history(&file_path);
                                 }
-                                Err(e) => state.notify_error(format!("保存失敗: {e}")),
+                                Err(e) => state.notify_error(crate::ui::i18n::format(
+                                    &locale,
+                                    "history.save_failed",
+                                    &[("error", &e.to_string())],
+                                )),
                             }
                         }
                     }
@@ -115,12 +127,10 @@ impl VersionHistoryPanel {
             ui.add_space(2.0);
             if ui
                 .button(
-                    RichText::new("🛡️ AI / 外部編集前の状態を保存")
+                    RichText::new(crate::ui::i18n::text(&locale, "history.ai_checkpoint"))
                         .color(Color32::from_rgb(100, 200, 255)),
                 )
-                .on_hover_text(
-                    "外部AIやスクリプトを実行する直前の安全なスナップショットを作成します",
-                )
+                .on_hover_text(crate::ui::i18n::text(&locale, "history.ai_checkpoint_tip"))
                 .clicked()
             {
                 let file_path = self
@@ -128,28 +138,33 @@ impl VersionHistoryPanel {
                     .clone()
                     .unwrap_or_else(|| PathBuf::from("poster.svg"));
                 state.sync_doc_extras();
-                match crate::cli::handlers::common::save_any_document(
-                    &state.document,
-                    &file_path,
-                ) {
+                match crate::cli::handlers::common::save_any_document(&state.document, &file_path) {
                     Err(e) => {
-                        state.notify_error(format!("チェックポイント失敗: {e}"));
+                        state.notify_error(crate::ui::i18n::format(
+                            &locale,
+                            "history.checkpoint_failed",
+                            &[("error", &e.to_string())],
+                        ));
                     }
                     Ok(_) => {
                         if !git::is_git_repository(&file_path) {
-                            let parent =
-                                file_path.parent().unwrap_or(std::path::Path::new("."));
+                            let parent = file_path.parent().unwrap_or(std::path::Path::new("."));
                             let _ = git::init_git_repository(parent);
                         }
-                        let msg = "AI編集前 (Before AI edit)";
-                        match git::create_checkpoint(&file_path, msg) {
+                        let msg = crate::ui::i18n::text(&locale, "history.ai_before").into_owned();
+                        match git::create_checkpoint(&file_path, &msg) {
                             Ok(_) => {
-                                state.notify_info("🛡️ AI編集前のチェックポイントを記録しました");
+                                state.notify_info(crate::ui::i18n::text(
+                                    &locale,
+                                    "history.ai_recorded",
+                                ));
                                 self.refresh_history(&file_path);
                             }
-                            Err(e) => {
-                                state.notify_error(format!("チェックポイント失敗: {e}"))
-                            }
+                            Err(e) => state.notify_error(crate::ui::i18n::format(
+                                &locale,
+                                "history.checkpoint_failed",
+                                &[("error", &e.to_string())],
+                            )),
                         }
                     }
                 }
@@ -160,45 +175,64 @@ impl VersionHistoryPanel {
 
         // Mode switch: Friendly vs Advanced
         ui.horizontal(|ui| {
-            ui.label(RichText::new(format!("履歴一覧 ({} 件)", self.commits.len())).strong());
+            ui.label(
+                RichText::new(crate::ui::i18n::format(
+                    &locale,
+                    "history.list",
+                    &[("count", &self.commits.len().to_string())],
+                ))
+                .strong(),
+            );
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                ui.checkbox(&mut self.is_advanced_mode, "Git詳細表示");
+                ui.checkbox(
+                    &mut self.is_advanced_mode,
+                    crate::ui::i18n::text(&locale, "history.git_details"),
+                );
             });
         });
 
         ui.separator();
 
         if self.commits.is_empty() {
-            ui.label(RichText::new("このファイルにはまだ履歴がありません").weak());
+            ui.label(RichText::new(crate::ui::i18n::text(&locale, "history.empty")).weak());
             if let Some(p) = self.current_file.clone() {
                 if !git::is_git_repository(&p)
                     && ui
-                        .button("履歴管理を開始 (Gitリポジトリを初期化)")
+                        .button(crate::ui::i18n::text(&locale, "history.initialize"))
                         .clicked()
-                    {
-                        let parent = p.parent().unwrap_or(std::path::Path::new("."));
-                        if git::init_git_repository(parent).is_ok() {
-                            state.sync_doc_extras();
-                            match crate::cli::handlers::common::save_any_document(
-                                &state.document,
-                                &p,
-                            ) {
-                                Err(e) => {
-                                    state.notify_error(format!("初期保存に失敗しました: {e}"));
-                                }
-                                Ok(_) => match git::create_checkpoint(&p, "初稿 (Initial layout)")
-                                {
-                                    Err(e) => state.notify_error(format!(
-                                        "チェックポイント失敗: {e}"
-                                    )),
-                                    Ok(_) => {
-                                        state.notify_info("バージョン管理を開始しました");
-                                        self.refresh_history(&p);
-                                    }
-                                },
+                {
+                    let parent = p.parent().unwrap_or(std::path::Path::new("."));
+                    if git::init_git_repository(parent).is_ok() {
+                        state.sync_doc_extras();
+                        match crate::cli::handlers::common::save_any_document(&state.document, &p) {
+                            Err(e) => {
+                                state.notify_error(crate::ui::i18n::format(
+                                    &locale,
+                                    "history.initial_save_failed",
+                                    &[("error", &e.to_string())],
+                                ));
                             }
+                            Ok(_) => match git::create_checkpoint(
+                                &p,
+                                crate::ui::i18n::text(&locale, "history.initial_checkpoint")
+                                    .as_ref(),
+                            ) {
+                                Err(e) => state.notify_error(crate::ui::i18n::format(
+                                    &locale,
+                                    "history.checkpoint_failed",
+                                    &[("error", &e.to_string())],
+                                )),
+                                Ok(_) => {
+                                    state.notify_info(crate::ui::i18n::text(
+                                        &locale,
+                                        "history.started",
+                                    ));
+                                    self.refresh_history(&p);
+                                }
+                            },
                         }
                     }
+                }
             }
             return;
         }
@@ -234,9 +268,13 @@ impl VersionHistoryPanel {
 
                                 if self.is_advanced_mode {
                                     ui.label(
-                                        RichText::new(format!(
-                                            "コミット: {} | 作成者: {}",
-                                            commit.short_hash, commit.author
+                                        RichText::new(crate::ui::i18n::format(
+                                            &locale,
+                                            "history.commit_author",
+                                            &[
+                                                ("hash", &commit.short_hash),
+                                                ("author", &commit.author),
+                                            ],
                                         ))
                                         .weak()
                                         .size(10.0),
@@ -247,20 +285,29 @@ impl VersionHistoryPanel {
 
                         ui.horizontal(|ui| {
                             if ui
-                                .small_button("🔍 比較")
-                                .on_hover_text("現在版との違いを比較")
+                                .small_button(crate::ui::i18n::text(&locale, "history.compare"))
+                                .on_hover_text(crate::ui::i18n::text(
+                                    &locale,
+                                    "history.compare_tip",
+                                ))
                                 .clicked()
                             {
                                 action_compare = Some(commit.hash.clone());
                                 self.selected_commit_idx = Some(idx);
                             }
-                            if ui.small_button("👁 この版を見る").clicked() {
+                            if ui
+                                .small_button(crate::ui::i18n::text(&locale, "history.view"))
+                                .clicked()
+                            {
                                 action_view = Some(commit.hash.clone());
                                 self.selected_commit_idx = Some(idx);
                             }
                             if ui
-                                .small_button("↺ この版に戻す")
-                                .on_hover_text("この時点のデザインへ復元")
+                                .small_button(crate::ui::i18n::text(&locale, "history.restore"))
+                                .on_hover_text(crate::ui::i18n::text(
+                                    &locale,
+                                    "history.restore_tip",
+                                ))
                                 .clicked()
                             {
                                 action_restore = Some(commit.hash.clone());
@@ -275,9 +322,7 @@ impl VersionHistoryPanel {
         if let Some(rev) = action_restore {
             if let Some(ref file_path) = self.current_file.clone() {
                 if state.is_dirty() {
-                    state.notify_error(
-                        "未保存の変更があります。先にチェックポイントを作成してください",
-                    );
+                    state.notify_error(crate::ui::i18n::text(&locale, "history.unsaved"));
                 } else {
                     match git::get_file_content_at_rev(file_path, &rev) {
                         Ok(content) => match parse_stored_doc(file_path, &content) {
@@ -287,16 +332,22 @@ impl VersionHistoryPanel {
                                 state.adopt_doc_extras();
                                 state.clear_history();
                                 state.selected_ids.clear();
-                                state.notify_info(format!(
-                                    "バージョン {} に復元しました",
-                                    &rev[..7.min(rev.len())]
+                                state.notify_info(crate::ui::i18n::format(
+                                    &locale,
+                                    "history.restored",
+                                    &[("version", &rev[..7.min(rev.len())])],
                                 ));
                             }
                             None => state.notify_error(
-                                "復元データの解析に失敗しました".to_string(),
+                                crate::ui::i18n::text(&locale, "history.parse_restore_failed")
+                                    .to_string(),
                             ),
                         },
-                        Err(e) => state.notify_error(format!("復元失敗: {e}")),
+                        Err(e) => state.notify_error(crate::ui::i18n::format(
+                            &locale,
+                            "history.checkpoint_failed",
+                            &[("error", &e.to_string())],
+                        )),
                     }
                 }
             }
@@ -320,16 +371,22 @@ impl VersionHistoryPanel {
                             state.pending_transforms.clear();
                             state.clear_history();
                             state.selected_ids.clear();
-                            state.notify_info(format!(
-                                "バージョン {} をプレビュー中",
-                                &rev[..7.min(rev.len())]
+                            state.notify_info(crate::ui::i18n::format(
+                                &locale,
+                                "history.previewing",
+                                &[("version", &rev[..7.min(rev.len())])],
                             ));
                         }
-                        None => {
-                            state.notify_error("プレビューデータの解析に失敗しました".to_string())
-                        }
+                        None => state.notify_error(
+                            crate::ui::i18n::text(&locale, "history.parse_preview_failed")
+                                .to_string(),
+                        ),
                     },
-                    Err(e) => state.notify_error(format!("読み込み失敗: {e}")),
+                    Err(e) => state.notify_error(crate::ui::i18n::format(
+                        &locale,
+                        "history.load_failed",
+                        &[("error", &e.to_string())],
+                    )),
                 }
             }
         }
@@ -342,13 +399,21 @@ impl VersionHistoryPanel {
                             let diff = compute_semantic_diff(&doc_old, &state.document);
                             self.active_diff = Some(diff);
                             self.is_comparing = true;
-                            state.notify_info("差分比較を生成しました");
+                            state.notify_info(crate::ui::i18n::text(
+                                &locale,
+                                "history.diff_generated",
+                            ));
                         }
                         None => state.notify_error(
-                            "比較対象の解析に失敗しました".to_string(),
+                            crate::ui::i18n::text(&locale, "history.parse_compare_failed")
+                                .to_string(),
                         ),
                     },
-                    Err(e) => state.notify_error(format!("比較対象の取得失敗: {e}")),
+                    Err(e) => state.notify_error(crate::ui::i18n::format(
+                        &locale,
+                        "history.compare_failed",
+                        &[("error", &e.to_string())],
+                    )),
                 }
             }
         }
@@ -358,26 +423,34 @@ impl VersionHistoryPanel {
             ui.add_space(8.0);
             ui.separator();
             ui.horizontal(|ui| {
-                ui.heading(RichText::new("変更内容の比較 (Visual Diff)").strong());
-                if ui.button("閉じる").clicked() {
+                ui.heading(
+                    RichText::new(crate::ui::i18n::text(&locale, "history.diff_title")).strong(),
+                );
+                if ui
+                    .button(crate::ui::i18n::text(&locale, "history.close"))
+                    .clicked()
+                {
                     self.is_comparing = false;
                     self.active_diff = None;
                     if let Some(backup) = self.preview_backup.take() {
                         state.flush_pending_edits();
                         state.document = backup;
                         state.adopt_doc_extras();
-                        state.notify_info("プレビューを終了し、作業内容に戻しました");
+                        state.notify_info(crate::ui::i18n::text(&locale, "history.preview_closed"));
                     }
                 }
             });
 
             if let Some(ref diff) = self.active_diff {
                 ui.label(
-                    RichText::new(format!(
-                        "変更点: 追加 {} 件 | 削除 {} 件 | 変更 {} 件",
-                        diff.summary.added_count,
-                        diff.summary.removed_count,
-                        diff.summary.modified_count
+                    RichText::new(crate::ui::i18n::format(
+                        &locale,
+                        "history.diff_summary",
+                        &[
+                            ("added", &diff.summary.added_count.to_string()),
+                            ("removed", &diff.summary.removed_count.to_string()),
+                            ("modified", &diff.summary.modified_count.to_string()),
+                        ],
                     ))
                     .size(11.5)
                     .strong(),
@@ -390,15 +463,21 @@ impl VersionHistoryPanel {
                     .show(ui, |ui| {
                         for obj in &diff.objects {
                             let (icon, color, status_text) = match &obj.status {
-                                ObjectDiffStatus::Added => {
-                                    ("＋", Color32::from_rgb(46, 204, 113), "追加 (Added)")
-                                }
-                                ObjectDiffStatus::Removed => {
-                                    ("ー", Color32::from_rgb(231, 76, 60), "削除 (Removed)")
-                                }
-                                ObjectDiffStatus::Modified { .. } => {
-                                    ("✎", Color32::from_rgb(241, 196, 15), "変更 (Modified)")
-                                }
+                                ObjectDiffStatus::Added => (
+                                    "＋",
+                                    Color32::from_rgb(46, 204, 113),
+                                    crate::ui::i18n::text(&locale, "history.added"),
+                                ),
+                                ObjectDiffStatus::Removed => (
+                                    "ー",
+                                    Color32::from_rgb(231, 76, 60),
+                                    crate::ui::i18n::text(&locale, "history.removed"),
+                                ),
+                                ObjectDiffStatus::Modified { .. } => (
+                                    "✎",
+                                    Color32::from_rgb(241, 196, 15),
+                                    crate::ui::i18n::text(&locale, "history.modified"),
+                                ),
                             };
 
                             ui.group(|ui| {
@@ -415,9 +494,10 @@ impl VersionHistoryPanel {
                                             &id_display,
                                         )
                                         .clicked()
-                                        && !obj.id.is_empty() {
-                                            state.selected_ids = vec![obj.id.clone()];
-                                        }
+                                        && !obj.id.is_empty()
+                                    {
+                                        state.selected_ids = vec![obj.id.clone()];
+                                    }
                                     ui.label(
                                         RichText::new(format!("({})", obj.object_type))
                                             .weak()

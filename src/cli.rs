@@ -53,7 +53,16 @@ pub fn run_cli(cli: Cli) -> Result<bool, Box<dyn std::error::Error>> {
             width,
             height,
             background,
-        }) => handle_render(&input, &output, scale, width, height, background.as_deref()),
+            outline_text,
+        }) => handle_render(
+            &input,
+            &output,
+            scale,
+            width,
+            height,
+            background.as_deref(),
+            outline_text,
+        ),
         Some(Commands::Inspect { input, json }) => handle_inspect(&input, json),
         Some(Commands::Validate { input, strict }) => handle_validate(&input, strict),
         Some(Commands::Optimize {
@@ -65,7 +74,8 @@ pub fn run_cli(cli: Cli) -> Result<bool, Box<dyn std::error::Error>> {
             input,
             output,
             scale,
-        }) => handle_convert(&input, &output, scale),
+            outline_text,
+        }) => handle_convert(&input, &output, scale, outline_text),
         Some(Commands::ExportVfx {
             input,
             output,

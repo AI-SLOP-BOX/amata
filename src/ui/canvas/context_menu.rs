@@ -13,17 +13,26 @@ impl CanvasWidget {
         _origin: Pos2,
     ) {
         let mk = mod_key();
+        let locale = state.prefs.language.clone();
         // Right-Click Context Menu (Illustrator style)
         response.context_menu(|ui| {
             let has_sel = !state.selected_ids.is_empty();
             let multi_sel = state.selected_ids.len() >= 2;
 
             if has_sel {
-                ui.label(egui::RichText::new("選択項目").weak().size(10.0));
+                ui.label(
+                    egui::RichText::new(crate::ui::i18n::text(&locale, "context.selected"))
+                        .weak()
+                        .size(10.0),
+                );
                 ui.separator();
 
                 if ui
-                    .button(format!("カット (切り取り)   {mk}+X"))
+                    .button(crate::ui::i18n::format(
+                        &locale,
+                        "context.cut",
+                        &[("key", mk)],
+                    ))
                     .clicked()
                 {
                     state.clipboard.clear();
@@ -45,17 +54,22 @@ impl CanvasWidget {
                             .undo_manager
                             .execute(cmds.pop().unwrap(), &mut state.document);
                     } else if !cmds.is_empty() {
-                        let batch = Box::new(crate::core::history::BatchCommand::new(
-                            "Cut Objects",
-                            cmds,
-                        ));
+                        let batch =
+                            Box::new(crate::core::history::BatchCommand::new("Cut Objects", cmds));
                         state.undo_manager.execute(batch, &mut state.document);
                     }
                     state.selected_ids.clear();
                     ui.close_menu();
                 }
 
-                if ui.button(format!("コピー   {mk}+C")).clicked() {
+                if ui
+                    .button(crate::ui::i18n::format(
+                        &locale,
+                        "context.copy",
+                        &[("key", mk)],
+                    ))
+                    .clicked()
+                {
                     state.clipboard.clear();
                     for id in &state.selected_ids {
                         if let Some((_, obj)) =
@@ -68,7 +82,11 @@ impl CanvasWidget {
                 }
 
                 if ui
-                    .button(format!("ペースト (貼り付け)   {mk}+V"))
+                    .button(crate::ui::i18n::format(
+                        &locale,
+                        "context.paste",
+                        &[("key", mk)],
+                    ))
                     .clicked()
                 {
                     state.selected_ids.clear();
@@ -76,7 +94,11 @@ impl CanvasWidget {
                     for obj in &state.clipboard {
                         let mut new_obj = obj.clone();
                         new_obj.id = uuid::Uuid::new_v4().to_string();
-                        new_obj.name = format!("{} のコピー", obj.name);
+                        new_obj.name = crate::ui::i18n::format(
+                            &locale,
+                            "context.copy_name",
+                            &[("name", &obj.name)],
+                        );
                         new_obj.transform.x += 20.0 + offset;
                         new_obj.transform.y += 20.0 + offset;
                         offset += 15.0;
@@ -90,7 +112,14 @@ impl CanvasWidget {
 
                 ui.separator();
 
-                if ui.button(format!("複製   {mk}+D")).clicked() {
+                if ui
+                    .button(crate::ui::i18n::format(
+                        &locale,
+                        "context.duplicate",
+                        &[("key", mk)],
+                    ))
+                    .clicked()
+                {
                     let ids = state.selected_ids.clone();
                     let mut new_objs = Vec::new();
                     for id in &ids {
@@ -114,7 +143,10 @@ impl CanvasWidget {
                     ui.close_menu();
                 }
 
-                if ui.button("削除   Del").clicked() {
+                if ui
+                    .button(crate::ui::i18n::text(&locale, "context.delete"))
+                    .clicked()
+                {
                     let ids: Vec<String> = state.selected_ids.clone();
                     let mut cmds: Vec<Box<dyn crate::core::history::Command>> = Vec::new();
                     for id in &ids {
@@ -154,11 +186,11 @@ impl CanvasWidget {
                     });
                     if ui
                         .button(if any_wrap {
-                            "テキストの回り込みを解除"
+                            crate::ui::i18n::text(&locale, "context.wrap_remove")
                         } else {
-                            "テキストの回り込みを設定"
+                            crate::ui::i18n::text(&locale, "context.wrap_set")
                         })
-                        .on_hover_text("他のテキストがこの図形をよけて流れます")
+                        .on_hover_text(crate::ui::i18n::text(&locale, "context.wrap_tip"))
                         .clicked()
                     {
                         let next = !any_wrap;
@@ -177,9 +209,13 @@ impl CanvasWidget {
                         ui.close_menu();
                     }
                 }
-                ui.menu_button("重ね順 (Arrange)", |ui| {
+                ui.menu_button(crate::ui::i18n::text(&locale, "context.arrange"), |ui| {
                     if ui
-                        .button(format!("最前面へ   {mk}+Shift+]"))
+                        .button(crate::ui::i18n::format(
+                            &locale,
+                            "context.front",
+                            &[("key", mk)],
+                        ))
                         .clicked()
                     {
                         let sel = state.selected_ids.clone();
@@ -198,7 +234,14 @@ impl CanvasWidget {
                         });
                         ui.close_menu();
                     }
-                    if ui.button(format!("前面へ   {mk}+]")).clicked() {
+                    if ui
+                        .button(crate::ui::i18n::format(
+                            &locale,
+                            "context.forward",
+                            &[("key", mk)],
+                        ))
+                        .clicked()
+                    {
                         let sel = state.selected_ids.clone();
                         state.reorder_objects_undoable("Bring Forward", |doc| {
                             for id in &sel {
@@ -216,7 +259,14 @@ impl CanvasWidget {
                         });
                         ui.close_menu();
                     }
-                    if ui.button(format!("背面へ   {mk}+[")).clicked() {
+                    if ui
+                        .button(crate::ui::i18n::format(
+                            &locale,
+                            "context.backward",
+                            &[("key", mk)],
+                        ))
+                        .clicked()
+                    {
                         let sel = state.selected_ids.clone();
                         state.reorder_objects_undoable("Send Backward", |doc| {
                             for id in &sel {
@@ -235,7 +285,11 @@ impl CanvasWidget {
                         ui.close_menu();
                     }
                     if ui
-                        .button(format!("最背面へ   {mk}+Shift+["))
+                        .button(crate::ui::i18n::format(
+                            &locale,
+                            "context.back",
+                            &[("key", mk)],
+                        ))
                         .clicked()
                     {
                         let sel = state.selected_ids.clone();
@@ -258,11 +312,18 @@ impl CanvasWidget {
 
                 if multi_sel {
                     ui.separator();
-                    if ui.button(format!("グループ化   {mk}+G")).clicked() {
+                    if ui
+                        .button(crate::ui::i18n::format(
+                            &locale,
+                            "context.group",
+                            &[("key", mk)],
+                        ))
+                        .clicked()
+                    {
                         state.replace_selected("Group", |objects| {
                             if objects.len() >= 2 {
                                 let grp = crate::core::document::Object::new_group(
-                                    "グループ",
+                                    crate::ui::i18n::text(&locale, "context.group_name").as_ref(),
                                     objects,
                                 );
                                 let new_id = grp.id.clone();
@@ -283,7 +344,11 @@ impl CanvasWidget {
                     });
                     if has_group
                         && ui
-                            .button(format!("グループ解除   {mk}+Shift+G"))
+                            .button(crate::ui::i18n::format(
+                                &locale,
+                                "context.ungroup",
+                                &[("key", mk)],
+                            ))
                             .clicked()
                     {
                         state.replace_selected("Ungroup", |objects| {
@@ -306,10 +371,18 @@ impl CanvasWidget {
                     }
                 }
             } else {
-                ui.label(egui::RichText::new("キャンバス").weak().size(10.0));
+                ui.label(
+                    egui::RichText::new(crate::ui::i18n::text(&locale, "context.canvas"))
+                        .weak()
+                        .size(10.0),
+                );
                 ui.separator();
                 if ui
-                    .button(format!("画面に合わせる (フィット)   {mk}+0"))
+                    .button(crate::ui::i18n::format(
+                        &locale,
+                        "context.fit",
+                        &[("key", mk)],
+                    ))
                     .clicked()
                 {
                     state.start_zoom = state.zoom;
@@ -320,7 +393,11 @@ impl CanvasWidget {
                     ui.close_menu();
                 }
                 if ui
-                    .button(format!("等倍表示 (100%)   {mk}+1"))
+                    .button(crate::ui::i18n::format(
+                        &locale,
+                        "context.zoom_100",
+                        &[("key", mk)],
+                    ))
                     .clicked()
                 {
                     state.start_zoom = state.zoom;
@@ -333,10 +410,22 @@ impl CanvasWidget {
                     ui.close_menu();
                 }
                 ui.separator();
-                ui.checkbox(&mut state.show_grid, "グリッドを表示");
-                ui.checkbox(&mut state.show_rulers, "定規を表示");
-                ui.checkbox(&mut state.show_smart_guides, "スマートガイド");
-                ui.checkbox(&mut state.snap_to_objects, "オブジェクトにスナップ");
+                ui.checkbox(
+                    &mut state.show_grid,
+                    crate::ui::i18n::text(&locale, "context.show_grid"),
+                );
+                ui.checkbox(
+                    &mut state.show_rulers,
+                    crate::ui::i18n::text(&locale, "context.show_rulers"),
+                );
+                ui.checkbox(
+                    &mut state.show_smart_guides,
+                    crate::ui::i18n::text(&locale, "context.smart_guides"),
+                );
+                ui.checkbox(
+                    &mut state.snap_to_objects,
+                    crate::ui::i18n::text(&locale, "context.snap_objects"),
+                );
             }
         });
     }

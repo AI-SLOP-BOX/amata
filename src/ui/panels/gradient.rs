@@ -9,8 +9,11 @@ pub struct GradientPanel;
 
 impl GradientPanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
+        let locale = state.prefs.language.clone();
         if state.selected_ids.is_empty() {
-            ui.label(RichText::new("Select an object to edit gradient").weak());
+            ui.label(
+                RichText::new(crate::ui::i18n::text(&locale, "gradient.select_object")).weak(),
+            );
             return;
         }
 
@@ -60,7 +63,7 @@ impl GradientPanel {
 
         // Fill Type Selector
         ui.horizontal(|ui| {
-            ui.label("タイプ:");
+            ui.label(crate::ui::i18n::text(&locale, "gradient.type"));
             let mut new_type = fill_type_name.clone();
             for t in ["Solid", "Linear", "Radial"] {
                 if ui.selectable_label(fill_type_name == t, t).clicked() {
@@ -116,14 +119,14 @@ impl GradientPanel {
         // Gradient Stops Editor
         match fill_type_name.as_str() {
             "Linear" => {
-                ui.label("線形グラデーション:");
+                ui.label(crate::ui::i18n::text(&locale, "gradient.linear"));
 
                 // Angle
                 let dx = linear_end[0] - linear_start[0];
                 let dy = linear_end[1] - linear_start[1];
                 let mut angle = dy.atan2(dx).to_degrees();
                 ui.horizontal(|ui| {
-                    ui.label("角度:");
+                    ui.label(crate::ui::i18n::text(&locale, "gradient.angle"));
                     let angle_resp = ui.add(
                         egui::DragValue::new(&mut angle)
                             .speed(1.0)
@@ -148,16 +151,15 @@ impl GradientPanel {
                 });
 
                 // Color Stops
-                Self::render_stops(ui, state, &id, &mut linear_stops, "Linear");
+                Self::render_stops(ui, state, &id, &mut linear_stops, "Linear", &locale);
             }
             "Radial" => {
-                ui.label("放射グラデーション:");
+                ui.label(crate::ui::i18n::text(&locale, "gradient.radial"));
 
                 ui.horizontal(|ui| {
-                    ui.label("半径:");
+                    ui.label(crate::ui::i18n::text(&locale, "gradient.radius"));
                     let mut r = radial_radius;
-                    let r_resp =
-                        ui.add(egui::Slider::new(&mut r, 0.01..=2.0).show_value(true));
+                    let r_resp = ui.add(egui::Slider::new(&mut r, 0.01..=2.0).show_value(true));
                     if r_resp.changed() {
                         state.object_edit(&id, &r_resp, |o| {
                             if let Some(ref mut f) = o.fill {
@@ -172,10 +174,10 @@ impl GradientPanel {
                     }
                 });
 
-                Self::render_stops(ui, state, &id, &mut radial_stops, "Radial");
+                Self::render_stops(ui, state, &id, &mut radial_stops, "Radial", &locale);
             }
             _ => {
-                ui.label("単色（グラデーションストップなし）");
+                ui.label(crate::ui::i18n::text(&locale, "gradient.solid"));
             }
         }
     }
@@ -186,8 +188,9 @@ impl GradientPanel {
         obj_id: &str,
         stops: &mut Vec<GradientStop>,
         grad_type: &str,
+        locale: &str,
     ) {
-        ui.label(RichText::new("Color Stops:").strong());
+        ui.label(RichText::new(crate::ui::i18n::text(locale, "gradient.color_stops")).strong());
 
         // Visual Gradient Ramp Bar (Illustrator CC style: Image 3)
         let (ramp_rect, _) = ui.allocate_exact_size(
@@ -301,7 +304,10 @@ impl GradientPanel {
         }
 
         // Add stop button
-        if ui.button("カラーストップを追加").clicked() {
+        if ui
+            .button(crate::ui::i18n::text(locale, "gradient.add_stop"))
+            .clicked()
+        {
             let offset = if stops.len() >= 2 {
                 (stops[stops.len() - 2].offset + stops[stops.len() - 1].offset) / 2.0
             } else {
@@ -361,7 +367,8 @@ pub struct EffectsPanel;
 
 impl EffectsPanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("Effects & Shadows").strong());
+        let locale = state.prefs.language.clone();
+        ui.heading(RichText::new(crate::ui::i18n::text(&locale, "effect.title")).strong());
         ui.add_space(4.0);
 
         if let Some(id) = state.selected_ids.first().cloned() {
@@ -406,35 +413,33 @@ impl EffectsPanel {
                 }
             };
 
-            track(&ui.checkbox(&mut has_shadow, "ドロップシャドウ"));
+            track(&ui.checkbox(
+                &mut has_shadow,
+                crate::ui::i18n::text(&locale, "effect.drop_shadow"),
+            ));
             if has_shadow {
                 ui.horizontal(|ui| {
-                    ui.label("オフセットX:");
-                    let r = ui.add(
-                        egui::DragValue::new(&mut current_shadow.offset_x).speed(1.0),
-                    );
+                    ui.label(crate::ui::i18n::text(&locale, "effect.offset_x"));
+                    let r = ui.add(egui::DragValue::new(&mut current_shadow.offset_x).speed(1.0));
                     track(&r);
                     ui.label("Y:");
-                    let r = ui.add(
-                        egui::DragValue::new(&mut current_shadow.offset_y).speed(1.0),
-                    );
+                    let r = ui.add(egui::DragValue::new(&mut current_shadow.offset_y).speed(1.0));
                     track(&r);
                 });
                 ui.horizontal(|ui| {
-                    ui.label("ぼかし:");
+                    ui.label(crate::ui::i18n::text(&locale, "effect.blur"));
                     let r = ui.add(
                         egui::DragValue::new(&mut current_shadow.blur_radius)
                             .speed(0.5)
                             .range(0.0..=100.0),
                     );
                     track(&r);
-                    ui.label("不透明度:");
-                    let r =
-                        ui.add(egui::Slider::new(&mut current_shadow.opacity, 0.0..=1.0));
+                    ui.label(crate::ui::i18n::text(&locale, "effect.opacity"));
+                    let r = ui.add(egui::Slider::new(&mut current_shadow.opacity, 0.0..=1.0));
                     track(&r);
                 });
                 ui.horizontal(|ui| {
-                    ui.label("カラー:");
+                    ui.label(crate::ui::i18n::text(&locale, "effect.color"));
                     let r = color_edit_srgba(ui, &mut current_shadow.color);
                     track(&r);
                 });
@@ -443,32 +448,37 @@ impl EffectsPanel {
             let mut has_glow = glow.is_some();
             let mut current_glow = glow.unwrap_or_default();
 
-            track(&ui.checkbox(&mut has_glow, "アウターグロー"));
+            track(&ui.checkbox(
+                &mut has_glow,
+                crate::ui::i18n::text(&locale, "effect.outer_glow"),
+            ));
             if has_glow {
                 ui.horizontal(|ui| {
-                    ui.label("半径:");
+                    ui.label(crate::ui::i18n::text(&locale, "gradient.radius"));
                     let r = ui.add(
                         egui::DragValue::new(&mut current_glow.radius)
                             .speed(1.0)
                             .range(1.0..=100.0),
                     );
                     track(&r);
-                    ui.label("強度:");
-                    let r =
-                        ui.add(egui::Slider::new(&mut current_glow.intensity, 0.0..=1.0));
+                    ui.label(crate::ui::i18n::text(&locale, "effect.strength"));
+                    let r = ui.add(egui::Slider::new(&mut current_glow.intensity, 0.0..=1.0));
                     track(&r);
                 });
                 ui.horizontal(|ui| {
-                    ui.label("グローカラー");
+                    ui.label(crate::ui::i18n::text(&locale, "effect.glow_color"));
                     let r = color_edit_srgba(ui, &mut current_glow.color);
                     track(&r);
                 });
             }
 
-            track(&ui.checkbox(&mut has_blur, "ガウスぼかし"));
+            track(&ui.checkbox(
+                &mut has_blur,
+                crate::ui::i18n::text(&locale, "effect.gaussian_blur"),
+            ));
             if has_blur {
                 ui.horizontal(|ui| {
-                    ui.label("半径:");
+                    ui.label(crate::ui::i18n::text(&locale, "gradient.radius"));
                     let r = ui.add(
                         egui::DragValue::new(&mut blur_radius)
                             .speed(0.5)
@@ -477,30 +487,33 @@ impl EffectsPanel {
                     track(&r);
                 });
                 ui.label(
-                    RichText::new("縁をぼかします。書き出しでは feGaussianBlur を使います。")
+                    RichText::new(crate::ui::i18n::text(&locale, "effect.blur_help"))
                         .weak()
                         .size(11.0),
                 );
             }
 
-            track(&ui.checkbox(&mut has_adjust, "カラー調整"));
+            track(&ui.checkbox(
+                &mut has_adjust,
+                crate::ui::i18n::text(&locale, "effect.color_adjustment"),
+            ));
             if has_adjust {
                 ui.horizontal(|ui| {
-                    ui.label("明度:");
+                    ui.label(crate::ui::i18n::text(&locale, "effect.brightness"));
                     let r = ui.add(egui::Slider::new(
                         &mut current_adjust.brightness,
                         -1.0..=1.0,
                     ));
                     track(&r);
-                    ui.label("彩度:");
+                    ui.label(crate::ui::i18n::text(&locale, "effect.saturation"));
                     let r = ui.add(egui::Slider::new(&mut current_adjust.saturation, 0.0..=3.0));
                     track(&r);
                 });
                 ui.horizontal(|ui| {
-                    ui.label("コントラスト:");
+                    ui.label(crate::ui::i18n::text(&locale, "effect.contrast"));
                     let r = ui.add(egui::Slider::new(&mut current_adjust.contrast, 0.0..=3.0));
                     track(&r);
-                    ui.label("色相:");
+                    ui.label(crate::ui::i18n::text(&locale, "effect.hue"));
                     let r = ui.add(egui::Slider::new(
                         &mut current_adjust.hue_rotate,
                         0.0..=360.0,
@@ -545,7 +558,7 @@ impl EffectsPanel {
                 state.commit_object_edits("Edit Object");
             }
         } else {
-            ui.label(RichText::new("Select an object to add effects").weak());
+            ui.label(RichText::new(crate::ui::i18n::text(&locale, "effect.select_object")).weak());
         }
     }
 }
@@ -554,7 +567,8 @@ pub struct NeonGlowPanel;
 
 impl NeonGlowPanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("Vector Neon Glow & Laser").strong());
+        let locale = state.prefs.language.clone();
+        ui.heading(RichText::new(crate::ui::i18n::text(&locale, "neon.title")).strong());
         ui.add_space(4.0);
 
         let has_sel = !state.selected_ids.is_empty();
@@ -567,7 +581,10 @@ impl NeonGlowPanel {
                 .map(|(_, o)| o.clone());
             ui.horizontal(|ui| {
                 if ui
-                    .add_enabled(has_sel, egui::Button::new("Cyan Neon"))
+                    .add_enabled(
+                        has_sel,
+                        egui::Button::new(crate::ui::i18n::text(&locale, "neon.cyan")),
+                    )
                     .clicked()
                 {
                     if let Some(obj) = &target_obj {
@@ -579,14 +596,13 @@ impl NeonGlowPanel {
                             6,
                         );
                         // One click must undo in one step, not one per layer.
-                        let cmds: Vec<Box<dyn crate::core::history::Command>> =
-                            neon_layers
-                                .into_iter()
-                                .map(|layer| {
-                                    Box::new(crate::core::history::AddObjectCommand::new(layer))
-                                        as Box<dyn crate::core::history::Command>
-                                })
-                                .collect();
+                        let cmds: Vec<Box<dyn crate::core::history::Command>> = neon_layers
+                            .into_iter()
+                            .map(|layer| {
+                                Box::new(crate::core::history::AddObjectCommand::new(layer))
+                                    as Box<dyn crate::core::history::Command>
+                            })
+                            .collect();
                         if !cmds.is_empty() {
                             let batch = Box::new(crate::core::history::BatchCommand::new(
                                 "Neon Glow",
@@ -598,7 +614,10 @@ impl NeonGlowPanel {
                 }
 
                 if ui
-                    .add_enabled(has_sel, egui::Button::new("Magenta Neon"))
+                    .add_enabled(
+                        has_sel,
+                        egui::Button::new(crate::ui::i18n::text(&locale, "neon.magenta")),
+                    )
                     .clicked()
                 {
                     if let Some(obj) = &target_obj {
@@ -609,14 +628,13 @@ impl NeonGlowPanel {
                             18.0,
                             6,
                         );
-                        let cmds: Vec<Box<dyn crate::core::history::Command>> =
-                            neon_layers
-                                .into_iter()
-                                .map(|layer| {
-                                    Box::new(crate::core::history::AddObjectCommand::new(layer))
-                                        as Box<dyn crate::core::history::Command>
-                                })
-                                .collect();
+                        let cmds: Vec<Box<dyn crate::core::history::Command>> = neon_layers
+                            .into_iter()
+                            .map(|layer| {
+                                Box::new(crate::core::history::AddObjectCommand::new(layer))
+                                    as Box<dyn crate::core::history::Command>
+                            })
+                            .collect();
                         if !cmds.is_empty() {
                             let batch = Box::new(crate::core::history::BatchCommand::new(
                                 "Neon Glow",
@@ -628,7 +646,10 @@ impl NeonGlowPanel {
                 }
 
                 if ui
-                    .add_enabled(has_sel, egui::Button::new("Gold Laser"))
+                    .add_enabled(
+                        has_sel,
+                        egui::Button::new(crate::ui::i18n::text(&locale, "neon.gold")),
+                    )
                     .clicked()
                 {
                     if let Some(obj) = &target_obj {
@@ -639,14 +660,13 @@ impl NeonGlowPanel {
                             18.0,
                             6,
                         );
-                        let cmds: Vec<Box<dyn crate::core::history::Command>> =
-                            neon_layers
-                                .into_iter()
-                                .map(|layer| {
-                                    Box::new(crate::core::history::AddObjectCommand::new(layer))
-                                        as Box<dyn crate::core::history::Command>
-                                })
-                                .collect();
+                        let cmds: Vec<Box<dyn crate::core::history::Command>> = neon_layers
+                            .into_iter()
+                            .map(|layer| {
+                                Box::new(crate::core::history::AddObjectCommand::new(layer))
+                                    as Box<dyn crate::core::history::Command>
+                            })
+                            .collect();
                         if !cmds.is_empty() {
                             let batch = Box::new(crate::core::history::BatchCommand::new(
                                 "Neon Glow",
@@ -659,7 +679,7 @@ impl NeonGlowPanel {
             });
         } else {
             ui.label(
-                RichText::new("Select an object to generate vector neon halo")
+                RichText::new(crate::ui::i18n::text(&locale, "neon.select_object"))
                     .weak()
                     .size(11.0),
             );

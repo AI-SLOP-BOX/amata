@@ -27,8 +27,7 @@ fn doc_with_image_fill(mode: ImageTileMode) -> Document {
     let mut doc = Document::default();
     doc.width = 200.0;
     doc.height = 100.0;
-    let (_, _, placed) =
-        irasu_illustrator::io::raster::decode_placed_image(&tiny_png()).unwrap();
+    let (_, _, placed) = irasu_illustrator::io::raster::decode_placed_image(&tiny_png()).unwrap();
     let mut src = Object::new_image("Src", 0.0, 0.0, 4.0, 2.0, placed);
     src.id = "src-img".to_string();
     doc.add_object(src);
@@ -93,7 +92,13 @@ fn test_no_bare_invalid_preserve_aspect_ratio() {
         ImageTileMode::Tile,
     ] {
         let svg = export_svg(&doc_with_image_fill(mode));
-        for bad in ["=\"slice\"", "=\"repeat\"", "=\"meet\"", "=\"cover\"", "=\"contain\""] {
+        for bad in [
+            "=\"slice\"",
+            "=\"repeat\"",
+            "=\"meet\"",
+            "=\"cover\"",
+            "=\"contain\"",
+        ] {
             assert!(
                 !svg.contains(bad),
                 "{mode:?} must not emit bare {bad}: {}",
@@ -110,6 +115,9 @@ fn test_missing_image_falls_back_to_none_without_dangling_url() {
     rect.fill = Some(FillStyle::image_fill("no-such-image", ImageTileMode::Cover));
     doc.add_object(rect);
     let svg = export_svg(&doc);
-    assert!(!svg.contains("url(#img_fill"), "no dangling paint-server ref");
+    assert!(
+        !svg.contains("url(#img_fill"),
+        "no dangling paint-server ref"
+    );
     assert!(svg.contains("fill=\"none\""));
 }

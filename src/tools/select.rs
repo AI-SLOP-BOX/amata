@@ -42,12 +42,7 @@ impl SelectState {
 
     /// Hit-test direct children of the isolated group. The click arrives in
     /// world space; children test in group-local space.
-    pub fn hit_test_isolated(
-        &self,
-        state: &AppState,
-        wx: f64,
-        wy: f64,
-    ) -> Option<String> {
+    pub fn hit_test_isolated(&self, state: &AppState, wx: f64, wy: f64) -> Option<String> {
         let group = state.isolated_group()?;
         let (gx, gy) = group.transform.inverse_transform_point(wx, wy);
         let children = match &group.object_type {

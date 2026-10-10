@@ -160,9 +160,9 @@ fn transform_json(transform: &Transform) -> Value {
 }
 
 fn object_json(obj: &Object) -> Value {
-    let bbox = obj.bounding_box().map(|(min, max)| {
-        json!({ "min_x": min.x, "min_y": min.y, "max_x": max.x, "max_y": max.y })
-    });
+    let bbox = obj.bounding_box().map(
+        |(min, max)| json!({ "min_x": min.x, "min_y": min.y, "max_x": max.x, "max_y": max.y }),
+    );
     json!({
         "id": obj.id,
         "name": obj.name,
@@ -359,10 +359,23 @@ fn sync_pull(api: &ApiState) -> ApiResponse {
 /// History is intentionally reset (like opening a file) — last-writer-wins,
 /// clients must pull-merge before pushing.
 fn sync_push(api: &mut ApiState, body: &[u8]) -> ApiResponse {
+    if body.len() > crate::io::project::MAX_PROJECT_BYTES {
+        return ApiResponse::error(413, "project body too large");
+    }
+    let text = match std::str::from_utf8(body) {
+        Ok(t) => t,
+        Err(_) => return ApiResponse::error(400, "invalid project JSON: not UTF-8"),
+    };
+    if let Err(e) = crate::io::project::check_json_depth(text) {
+        return ApiResponse::error(400, e);
+    }
     let mut doc: Document = match serde_json::from_slice(body) {
         Ok(d) => d,
         Err(e) => return ApiResponse::error(400, format!("invalid project JSON: {e}")),
     };
+    // Same hostile-input scrubbing as file load (NaN transforms, absurd
+    // dimensions, oversized embedded rasters).
+    crate::io::project::sanitize_document(&mut doc);
     doc.normalize();
     let count = doc.all_objects().count();
     api.document = doc;
@@ -507,8 +520,6 @@ fn create_ellipse(api: &mut ApiState, body: &[u8]) -> ApiResponse {
     response
 }
 
-
-
 fn create_path(api: &mut ApiState, body: &[u8]) -> ApiResponse {
     let payload = match parse_body_json(body) {
         Ok(value) => value,
@@ -592,22 +603,68 @@ fn run_script(api: &mut ApiState, body: &[u8]) -> ApiResponse {
     }
 }
 
+/// Directory API file writes are jailed to (default: temp/amata-exports,
+/// override with `AMATA_EXPORT_DIR`). Absolute paths, `..` escapes and
+/// directories are all refused: loopback callers (and DNS-rebinding pages)
+/// must never gain arbitrary file write.
+fn export_jail() -> PathBuf {
+    std::env::var("AMATA_EXPORT_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| std::env::temp_dir().join("amata-exports"))
+}
+
+fn jailed_path(raw: &str) -> Result<PathBuf, ApiResponse> {
+    use std::path::Component;
+    let rel = PathBuf::from(raw);
+    if rel.is_absolute()
+        || rel.components().any(|c| {
+            matches!(
+                c,
+                Component::ParentDir | Component::CurDir | Component::Prefix(_)
+            )
+        })
+    {
+        return Err(ApiResponse::error(
+            422,
+            "path must be a plain relative filename inside the export dir",
+        ));
+    }
+    if !rel
+        .extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| e.eq_ignore_ascii_case("svg"))
+    {
+        return Err(ApiResponse::error(422, "only .svg exports allowed here"));
+    }
+    let jail = export_jail();
+    if std::fs::create_dir_all(&jail).is_err() {
+        return Err(ApiResponse::error(500, "export dir unavailable"));
+    }
+    let base = jail.canonicalize().unwrap_or(jail.clone());
+    let joined = base.join(rel);
+    // No symlink games: the parent must already exist inside the jail
+    // (no create_dir_all on caller input).
+    let parent_ok = joined
+        .parent()
+        .and_then(|p| p.canonicalize().ok())
+        .is_some_and(|p| p.starts_with(&base));
+    if !parent_ok {
+        return Err(ApiResponse::error(422, "path escapes the export dir"));
+    }
+    if joined.is_dir() {
+        return Err(ApiResponse::error(422, "path points at a directory"));
+    }
+    Ok(joined)
+}
+
 fn export_svg_route(api: &mut ApiState, query: &str) -> ApiResponse {
     let svg = crate::io::svg::export_svg(&api.document);
     match query_param(query, "path") {
         Some(raw_path) => {
-            // Absolute paths are fine for a local tool, but `..` segments
-            // must not be usable to walk out of a caller-supplied base.
-            let path = PathBuf::from(&raw_path);
-            let has_dotdot = path
-                .components()
-                .any(|c| matches!(c, std::path::Component::ParentDir));
-            if has_dotdot {
-                return ApiResponse::error(422, "path must not contain '..' segments");
-            }
-            if path.is_dir() {
-                return ApiResponse::error(422, "path points at a directory");
-            }
+            let path = match jailed_path(&raw_path) {
+                Ok(p) => p,
+                Err(e) => return e,
+            };
             match crate::io::atomic::atomic_write_str(&path, &svg) {
                 Ok(()) => ApiResponse::json(
                     200,
@@ -624,13 +681,13 @@ fn export_svg_route(api: &mut ApiState, query: &str) -> ApiResponse {
     }
 }
 
-
 /// A parsed HTTP request line + body.
 struct Request {
     method: String,
     target: String,
     body: Vec<u8>,
     authorization: Option<String>,
+    origin: Option<String>,
 }
 
 fn header_end(raw: &[u8]) -> Option<usize> {
@@ -676,7 +733,9 @@ fn read_request(stream: &mut TcpStream) -> std::io::Result<Request> {
     }
 
     let mut content_length = 0usize;
+    let mut content_length_seen = false;
     let mut authorization: Option<String> = None;
+    let mut origin: Option<String> = None;
     for line in lines {
         let Some((name, value)) = line.split_once(':') else {
             continue;
@@ -685,18 +744,46 @@ fn read_request(stream: &mut TcpStream) -> std::io::Result<Request> {
         let value = value.trim();
         match name.as_str() {
             "content-length" => {
+                // Duplicates disagree all the time in smuggling attacks:
+                // refuse instead of picking last-wins.
+                if content_length_seen {
+                    return Err(std::io::Error::new(
+                        ErrorKind::InvalidData,
+                        "duplicate Content-Length",
+                    ));
+                }
+                content_length_seen = true;
                 content_length = value.parse::<usize>().map_err(|_| {
                     std::io::Error::new(ErrorKind::InvalidData, "invalid Content-Length")
                 })?;
             }
-            "transfer-encoding" if value.to_ascii_lowercase().contains("chunked") => {
+            "transfer-encoding" => {
+                // Any transfer coding is unsupported (we only do
+                // Content-Length bodies); refusing outright beats
+                // allow-listing "chunked" substrings.
                 return Err(std::io::Error::new(
                     ErrorKind::InvalidData,
-                    "chunked transfer encoding is not supported",
+                    "transfer encoding is not supported",
                 ));
             }
-            "authorization" if authorization.is_none() => {
+            "authorization" => {
+                // Multi-valued auth headers are ambiguous: refuse.
+                if authorization.is_some() {
+                    return Err(std::io::Error::new(
+                        ErrorKind::InvalidData,
+                        "duplicate Authorization",
+                    ));
+                }
                 authorization = Some(value.to_string());
+            }
+            "origin" => {
+                if origin.is_some() {
+                    return Err(std::io::Error::new(
+                        ErrorKind::InvalidData,
+                        "duplicate Origin",
+                    ));
+                }
+                origin = Some(value.to_string());
             }
             _ => {}
         }
@@ -724,10 +811,9 @@ fn read_request(stream: &mut TcpStream) -> std::io::Result<Request> {
         target,
         body,
         authorization,
+        origin,
     })
 }
-
-
 
 fn write_response(stream: &mut TcpStream, response: &ApiResponse) -> std::io::Result<()> {
     let head = format!(
@@ -767,20 +853,53 @@ fn drain_pending_request_bytes(stream: &mut TcpStream) {
     }
 }
 
+/// CSRF/DNS-rebinding gate: browser-borne requests carry `Origin`.
+/// Only loopback origins may drive the API; anything else (attacker page,
+/// rebinding DNS, `null` file origins) is refused before routing or auth.
+/// Non-browser callers (curl, native tools) send no Origin and are unaffected
+/// (bearer auth still applies when configured).
+fn origin_allowed(origin: Option<&str>) -> bool {
+    let Some(raw) = origin else {
+        return true;
+    };
+    let o = raw.trim();
+    let authority = o
+        .split("://")
+        .nth(1)
+        .unwrap_or(o)
+        .split(['/', '?', '#'])
+        .next()
+        .unwrap_or("");
+    // [v6-literal]:port | host:port | bare host.
+    let host = if let Some(rest) = authority.strip_prefix('[') {
+        rest.split(']').next().unwrap_or("")
+    } else {
+        authority.split(':').next().unwrap_or("")
+    };
+    host.eq_ignore_ascii_case("127.0.0.1")
+        || host.eq_ignore_ascii_case("localhost")
+        || host == "::1"
+}
+
 /// Bearer gate for self-hosting. `None` token = open (loopback default,
 /// unchanged behaviour); otherwise every non-OPTIONS request must carry
-/// `Authorization: Bearer <token>`. Constant-time compare, length-checked
-/// first so the timing signal carries nothing.
+/// `Authorization: Bearer <token>`. Constant-time compare on the secret.
 fn authorized(api: &ApiState, req: &Request) -> bool {
     let Some(token) = &api.auth_token else {
         return true;
     };
     req.authorization.as_deref().is_some_and(|h| {
-        // Auth scheme is case-insensitive (RFC 9110 §11.2); the secret
-        // itself stays constant-time.
-        h.len() == token.len() + 7
-            && h[..7].eq_ignore_ascii_case("Bearer ")
-            && subtle_eq(&h[7..], token)
+        // Auth scheme is case-insensitive (RFC 9110 §11.2); split at the
+        // first space instead of byte-slicing (a non-ASCII prefix would
+        // panic on a UTF-8 boundary). The secret itself stays constant-time.
+        match h.split_once(' ') {
+            Some((scheme, secret)) => {
+                scheme.eq_ignore_ascii_case("bearer")
+                    && secret.len() == token.len()
+                    && subtle_eq(secret, token)
+            }
+            None => false,
+        }
     })
 }
 fn subtle_eq(a: &str, b: &str) -> bool {
@@ -808,6 +927,14 @@ pub fn handle_connection(mut stream: TcpStream, api: &mut ApiState) {
 
     match read_request(&mut stream) {
         Ok(request) => {
+            // CSRF gate first (before routing/auth): attacker pages and
+            // rebinding DNS never get past here regardless of token state.
+            if !origin_allowed(request.origin.as_deref()) {
+                let response = ApiResponse::error(403, "cross-origin browser requests refused");
+                let _ = write_response(&mut stream, &response);
+                drain_pending_request_bytes(&mut stream);
+                return;
+            }
             if request.method.eq_ignore_ascii_case("OPTIONS") {
                 let response = ApiResponse::text(200, "");
                 let _ = write_response(&mut stream, &response);
@@ -874,7 +1001,9 @@ pub fn handle_serve(
     let listener = match TcpListener::bind(&addr) {
         Ok(listener) => listener,
         Err(err) => {
-            return Err(format!("Could not bind {addr}: {err} (is the port already in use?)").into())
+            return Err(
+                format!("Could not bind {addr}: {err} (is the port already in use?)").into(),
+            )
         }
     };
 
@@ -914,6 +1043,7 @@ mod tests {
             target: "/api/health".to_string(),
             body: Vec::new(),
             authorization: auth.map(|s| s.to_string()),
+            origin: None,
         }
     }
 
@@ -925,6 +1055,18 @@ mod tests {
     }
 
     #[test]
+    fn origin_gate_blocks_non_loopback_browsers() {
+        assert!(origin_allowed(None));
+        assert!(origin_allowed(Some("http://127.0.0.1:9260")));
+        assert!(origin_allowed(Some("http://localhost:3000")));
+        assert!(origin_allowed(Some("http://[::1]:8080")));
+        assert!(!origin_allowed(Some("https://evil.example.com")));
+        assert!(!origin_allowed(Some("http://attacker.test:9260")));
+        assert!(!origin_allowed(Some("null")));
+        assert!(!origin_allowed(Some("file://")));
+    }
+
+    #[test]
     fn token_server_checks_bearer() {
         let mut api = ApiState::new(Document::default());
         api.auth_token = Some("secret".to_string());
@@ -933,5 +1075,7 @@ mod tests {
         assert!(!authorized(&api, &req(Some("Basic c2VjcmV0"))));
         assert!(authorized(&api, &req(Some("Bearer secret"))));
         assert!(authorized(&api, &req(Some("bearer secret"))));
+        // Non-ASCII prefix must not panic (byte-slicing would split UTF-8).
+        assert!(!authorized(&api, &req(Some("Béarer secret"))));
     }
 }

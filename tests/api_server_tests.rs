@@ -92,8 +92,7 @@ fn test_create_shape_routes() {
         &mut api,
         "POST",
         "/api/objects/rect",
-        r##"{"name":"Card","x":5,"y":6,"width":50,"height":30,"fill":"#00ff00"}"##
-            .as_bytes(),
+        r##"{"name":"Card","x":5,"y":6,"width":50,"height":30,"fill":"#00ff00"}"##.as_bytes(),
     );
     assert_eq!(rect.status, 200);
     assert_eq!(response_json(&rect)["object_count"], 1);
@@ -105,7 +104,12 @@ fn test_create_shape_routes() {
         "/api/objects/ellipse",
         br#"{"cx":100,"cy":100,"rx":20,"ry":10,"fill":[0,0,1,1]}"#,
     );
-    assert_eq!(ellipse.status, 200, "{}", String::from_utf8_lossy(&ellipse.body));
+    assert_eq!(
+        ellipse.status,
+        200,
+        "{}",
+        String::from_utf8_lossy(&ellipse.body)
+    );
 
     let path = route(
         &mut api,
@@ -186,7 +190,12 @@ fn test_script_route_accepts_json_and_raw_bodies() {
     "#;
     let json_body = serde_json::json!({ "script": script }).to_string();
     let response = route(&mut api, "POST", "/api/script", json_body.as_bytes());
-    assert_eq!(response.status, 200, "{}", String::from_utf8_lossy(&response.body));
+    assert_eq!(
+        response.status,
+        200,
+        "{}",
+        String::from_utf8_lossy(&response.body)
+    );
     let value = response_json(&response);
     assert_eq!(value["objects_before"], 0);
     assert_eq!(value["objects_after"], 1);
@@ -215,27 +224,32 @@ fn test_export_svg_route_inline_and_to_disk() {
     assert!(svg.starts_with("<?xml"));
     assert!(svg.contains("</svg>"));
 
+    // Writes are jailed to AMATA_EXPORT_DIR (relative names only).
     let dir = std::env::temp_dir().join("amata_api_export");
     let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    let target = dir.join("out.svg");
-    let target_uri = target.display().to_string().replace('/', "%2F");
-    let response = route(
-        &mut api,
-        "POST",
-        &format!("/api/export/svg?path={target_uri}"),
-        &[],
+    std::env::set_var("AMATA_EXPORT_DIR", &dir);
+    let response = route(&mut api, "POST", "/api/export/svg?path=out.svg", &[]);
+    assert_eq!(
+        response.status,
+        200,
+        "{}",
+        String::from_utf8_lossy(&response.body)
     );
-    assert_eq!(response.status, 200, "{}", String::from_utf8_lossy(&response.body));
-    assert!(target.exists(), "export must write the requested file");
+    let target = dir.join("out.svg");
+    assert!(target.exists(), "export must write inside the jail");
     let written = std::fs::read_to_string(&target).unwrap();
     assert!(written.contains("</svg>"));
     // Atomic writer must not leave a `.tmp` sibling behind.
     assert!(!dir.join("out.svg.tmp").exists());
+    // Absolute paths and escapes are refused.
+    let abs = route(&mut api, "POST", "/api/export/svg?path=%2Ftmp%2Fx.svg", &[]);
+    assert_eq!(abs.status, 422);
+    let dotdot = route(&mut api, "POST", "/api/export/svg?path=..%2Fx.svg", &[]);
+    assert_eq!(dotdot.status, 422);
 
+    std::env::remove_var("AMATA_EXPORT_DIR");
     let _ = std::fs::remove_dir_all(&dir);
 }
-
 
 fn start_server(api: ApiState) -> (SocketAddr, Arc<AtomicBool>, std::thread::JoinHandle<()>) {
     let listener = TcpListener::bind("127.0.0.1:0").expect("bind ephemeral port");
@@ -281,7 +295,11 @@ fn test_http_roundtrip_get_and_post() {
     assert!(health.contains("Content-Type: application/json"));
     assert!(health.contains("\"status\": \"ok\""));
 
-    let created = http_post(addr, "/api/objects/rect", r#"{"name":"Via HTTP","width":10,"height":10}"#);
+    let created = http_post(
+        addr,
+        "/api/objects/rect",
+        r#"{"name":"Via HTTP","width":10,"height":10}"#,
+    );
     assert!(created.starts_with("HTTP/1.1 200 OK"), "got: {created}");
     assert!(created.contains("\"object_count\": 2"));
 
@@ -292,7 +310,10 @@ fn test_http_roundtrip_get_and_post() {
 
     // Unknown route still answers with a framed, parseable response.
     let missing = send_raw(addr, "GET /api/ghost HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n");
-    assert!(missing.starts_with("HTTP/1.1 404 Not Found"), "got: {missing}");
+    assert!(
+        missing.starts_with("HTTP/1.1 404 Not Found"),
+        "got: {missing}"
+    );
 
     stop.store(true, Ordering::Relaxed);
     thread.join().expect("server thread must stop cleanly");
@@ -306,7 +327,10 @@ fn test_http_rejects_malformed_and_chunked_requests() {
         addr,
         "POST /api/objects/rect HTTP/1.1\r\nHost: 127.0.0.1\r\nTransfer-Encoding: chunked\r\n\r\n0\r\n\r\n",
     );
-    assert!(chunked.starts_with("HTTP/1.1 400 Bad Request"), "got: {chunked}");
+    assert!(
+        chunked.starts_with("HTTP/1.1 400 Bad Request"),
+        "got: {chunked}"
+    );
 
     let garbage = send_raw(addr, "\r\n\r\n");
     assert!(garbage.contains("400"), "got: {garbage}");
@@ -314,4 +338,3 @@ fn test_http_rejects_malformed_and_chunked_requests() {
     stop.store(true, Ordering::Relaxed);
     thread.join().expect("server thread must stop cleanly");
 }
-

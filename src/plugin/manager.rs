@@ -49,7 +49,10 @@ impl PluginManager {
         );
         // Notification preference: acknowledge the plugin in the UI too.
         if state.prefs.notify_plugin_load {
-            state.notify_info(format!("プラグインを読み込みました: {} v{}", info.name, info.version));
+            state.notify_info(format!(
+                "プラグインを読み込みました: {} v{}",
+                info.name, info.version
+            ));
         }
 
         let selected = state.selected_ids.clone();

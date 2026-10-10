@@ -95,8 +95,7 @@ pub struct CanvasWidget {
     pixel_textures: std::collections::HashMap<String, (egui::TextureHandle, u64)>,
     /// Baked text outlines: object id → (shape key, per-line meshes).
     /// `None` meshes mean "no real face" (legacy egui-font path draws).
-    text_meshes:
-        std::collections::HashMap<String, (u64, Option<rendering::CachedText>)>,
+    text_meshes: std::collections::HashMap<String, (u64, Option<rendering::CachedText>)>,
 }
 
 struct NodeEditState {
@@ -368,14 +367,21 @@ impl CanvasWidget {
         cy: f64,
     ) {
         match crate::io::raster::decode_placed_image(bytes) {
-            Err(e) => state.notify_error(format!("画像の配置に失敗しました: {e}")),
+            Err(e) => state.notify_error(crate::ui::i18n::format(
+                &state.prefs.language,
+                "canvas.place_image_failed",
+                &[("error", &e.to_string())],
+            )),
             Ok((w, h, png)) => {
                 let obj = Object::new_image(name, cx - w / 2.0, cy - h / 2.0, w, h, png);
                 let id = obj.id.clone();
                 let cmd = Box::new(crate::core::history::AddObjectCommand::new(obj));
                 state.undo_manager.execute(cmd, &mut state.document);
                 state.selected_ids = vec![id];
-                state.notify_success("画像を配置しました");
+                state.notify_success(
+                    crate::ui::i18n::text(&state.prefs.language, "canvas.image_placed")
+                        .into_owned(),
+                );
             }
         }
     }
@@ -388,10 +394,7 @@ impl CanvasWidget {
     ) {
         // View-centre world coordinates for the drop target.
         let zoom = state.zoom as f64;
-        let (cx, cy) = (
-            -state.pan_x as f64 / zoom,
-            -state.pan_y as f64 / zoom,
-        );
+        let (cx, cy) = (-state.pan_x as f64 / zoom, -state.pan_y as f64 / zoom);
         for f in dropped {
             let ext = f
                 .path
@@ -403,8 +406,7 @@ impl CanvasWidget {
             let is_raster = matches!(
                 ext.as_str(),
                 "png" | "jpg" | "jpeg" | "webp" | "avif" | "gif" | "bmp"
-            ) || f.bytes.is_some()
-                && ext.is_empty();
+            ) || f.bytes.is_some() && ext.is_empty();
             if !is_raster {
                 continue;
             }
@@ -432,11 +434,7 @@ impl CanvasWidget {
         }
     }
 
-    pub fn show(
-        &mut self,
-        ui: &mut Ui,
-        state: &mut AppState,
-    ) {
+    pub fn show(&mut self, ui: &mut Ui, state: &mut AppState) {
         let (response, painter) = ui.allocate_painter(
             Vec2::new(ui.available_width(), ui.available_height()),
             Sense::click_and_drag(),
@@ -468,10 +466,7 @@ impl CanvasWidget {
                     origin.x + ab.x as f32 * state.zoom,
                     origin.y + ab.y as f32 * state.zoom,
                 ),
-                Vec2::new(
-                    ab.width as f32 * state.zoom,
-                    ab.height as f32 * state.zoom,
-                ),
+                Vec2::new(ab.width as f32 * state.zoom, ab.height as f32 * state.zoom),
             );
             // Soft outer diffuse shadow
             let shadow_rect1 = ab_rect.translate(Vec2::new(4.0, 4.0));
@@ -500,8 +495,13 @@ impl CanvasWidget {
                             let r = Rect::from_min_size(
                                 Pos2::new(x, y),
                                 Vec2::new(check_size + 0.5, check_size + 0.5),
-                            ).intersect(ab_rect);
-                            let c = if (row + col) % 2 == 0 { c_light } else { c_dark };
+                            )
+                            .intersect(ab_rect);
+                            let c = if (row + col) % 2 == 0 {
+                                c_light
+                            } else {
+                                c_dark
+                            };
                             painter.rect_filled(r, 0.0, c);
                         }
                     }
@@ -544,9 +544,18 @@ impl CanvasWidget {
         }
 
         // Compute the active artboard rect for isolation overlay / smart guides
-        let active_ab = artboards.get(state.active_artboard_idx).cloned().unwrap_or_else(|| {
-            crate::core::document::Artboard::new("Artboard 1", 0.0, 0.0, state.document.width, state.document.height)
-        });
+        let active_ab = artboards
+            .get(state.active_artboard_idx)
+            .cloned()
+            .unwrap_or_else(|| {
+                crate::core::document::Artboard::new(
+                    "Artboard 1",
+                    0.0,
+                    0.0,
+                    state.document.width,
+                    state.document.height,
+                )
+            });
         let artboard = Rect::from_min_size(
             Pos2::new(
                 origin.x + active_ab.x as f32 * state.zoom,
@@ -565,8 +574,7 @@ impl CanvasWidget {
 
         // Handle files dropped onto the canvas: raster images are placed,
         // documents are ignored here (use File > Open).
-        let dropped: Vec<egui::DroppedFile> =
-            ui.ctx().input(|i| i.raw.dropped_files.clone());
+        let dropped: Vec<egui::DroppedFile> = ui.ctx().input(|i| i.raw.dropped_files.clone());
         if !dropped.is_empty() {
             self.place_dropped_images(state, origin, &dropped);
         }
@@ -919,10 +927,7 @@ impl CanvasWidget {
             }
             // Double-click a top-level group enters isolation editing
             // (Illustrator-style); double-click empty space exits.
-            if response.double_clicked()
-                && !space_down
-                && state.current_tool == Tool::Select
-            {
+            if response.double_clicked() && !space_down && state.current_tool == Tool::Select {
                 if state.isolated_group_id.is_none() {
                     if let Some(id) = self.select_state.hit_test(state, wx, wy) {
                         let is_group = state
@@ -930,10 +935,7 @@ impl CanvasWidget {
                             .all_objects()
                             .find(|(_, o)| o.id == id)
                             .map(|(_, o)| {
-                                matches!(
-                                    o.object_type,
-                                    crate::core::document::ObjectType::Group(_)
-                                )
+                                matches!(o.object_type, crate::core::document::ObjectType::Group(_))
                             })
                             .unwrap_or(false);
                         if is_group {
@@ -958,7 +960,13 @@ impl CanvasWidget {
                                     .strong()
                                     .color(egui::Color32::from_rgb(100, 190, 255)),
                             );
-                            if ui.small_button("終了（Esc）").clicked() {
+                            if ui
+                                .small_button(crate::ui::i18n::text(
+                                    &state.prefs.language,
+                                    "canvas.finish",
+                                ))
+                                .clicked()
+                            {
                                 state.exit_isolation();
                             }
                         });
@@ -1084,14 +1092,12 @@ impl CanvasWidget {
                                 let mut hit_corner = None;
                                 let mut hit_id = None;
                                 for id in &selected {
-                                    if let Some((_, obj)) = state
-                                        .document
-                                        .all_objects()
-                                        .find(|(_, o)| &o.id == id)
+                                    if let Some((_, obj)) =
+                                        state.document.all_objects().find(|(_, o)| &o.id == id)
                                     {
-                                        if let Some(corner) = self.hit_test_corner_widgets(
-                                            obj, screen_pos, origin, state,
-                                        ) {
+                                        if let Some(corner) = self
+                                            .hit_test_corner_widgets(obj, screen_pos, origin, state)
+                                        {
                                             hit_corner = Some(corner);
                                             hit_id = Some(id.clone());
                                             break;
@@ -1203,8 +1209,7 @@ impl CanvasWidget {
                                         state.commit_object_edits("Convert to Path");
                                     }
 
-                                    let mut d =
-                                        DragState::new(DragMode::MoveNode(target), wx, wy);
+                                    let mut d = DragState::new(DragMode::MoveNode(target), wx, wy);
                                     d.initial_elements = initial_elements;
                                     self.drag = Some(d);
                                 }
@@ -1275,28 +1280,21 @@ impl CanvasWidget {
                         self.update_resize(state, corner, wx, wy);
                     } else if drag.mode == DragMode::SlideTextOnPath {
                         if let Some(obj_id) = drag.object_id.clone() {
-                            let projected =
-                                state.document.find_object(&obj_id).and_then(|obj| {
-                                    if let ObjectType::TextOnPath { path: bp, .. } =
-                                        &obj.object_type
-                                    {
-                                        let (lx, ly) =
-                                            obj.transform.inverse_transform_point(wx, wy);
-                                        crate::core::text_path::project_to_arc_length(bp, lx, ly)
-                                    } else {
-                                        None
-                                    }
-                                });
+                            let projected = state.document.find_object(&obj_id).and_then(|obj| {
+                                if let ObjectType::TextOnPath { path: bp, .. } = &obj.object_type {
+                                    let (lx, ly) = obj.transform.inverse_transform_point(wx, wy);
+                                    crate::core::text_path::project_to_arc_length(bp, lx, ly)
+                                } else {
+                                    None
+                                }
+                            });
                             if let Some(new_off) = projected {
                                 if let Some(o) = state.document.find_object_mut(&obj_id) {
                                     if let ObjectType::TextOnPath {
-                                        path,
-                                        start_offset,
-                                        ..
+                                        path, start_offset, ..
                                     } = &mut o.object_type
                                     {
-                                        let total =
-                                            crate::core::text_path::path_total_length(path);
+                                        let total = crate::core::text_path::path_total_length(path);
                                         *start_offset = new_off.clamp(0.0, total.max(0.0));
                                     }
                                 }

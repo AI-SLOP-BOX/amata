@@ -2,7 +2,7 @@
 //! baked outlines (fully undoable). Custom artwork comes from the
 //! selection; named brushes persist in a JSON library.
 
-use crate::core::brush::{apply_bristle, builtin_motif, apply_brush, BrushDefinition, BrushKind};
+use crate::core::brush::{apply_bristle, apply_brush, builtin_motif, BrushDefinition, BrushKind};
 use crate::core::document::{Object, ObjectType};
 use crate::core::state::AppState;
 use egui::{RichText, Ui};
@@ -10,9 +10,12 @@ use egui::{RichText, Ui};
 pub struct BrushPanel;
 
 fn library_path() -> Option<std::path::PathBuf> {
-    std::env::var("HOME")
-        .ok()
-        .map(|h| std::path::PathBuf::from(h).join(".config").join("amata").join("brushes.json"))
+    std::env::var("HOME").ok().map(|h| {
+        std::path::PathBuf::from(h)
+            .join(".config")
+            .join("amata")
+            .join("brushes.json")
+    })
 }
 
 fn load_library() -> Vec<BrushDefinition> {
@@ -92,7 +95,11 @@ fn current_def(state: &AppState) -> Option<BrushDefinition> {
 /// Push a brush definition's params back into panel state (library apply).
 fn adopt_def(state: &mut AppState, def: &BrushDefinition) {
     match &def.kind {
-        BrushKind::Calligraphy { angle_deg, roundness, size } => {
+        BrushKind::Calligraphy {
+            angle_deg,
+            roundness,
+            size,
+        } => {
             state.brush_kind_idx = 0;
             state.brush_angle = *angle_deg;
             state.brush_roundness = roundness * 100.0;
@@ -103,14 +110,23 @@ fn adopt_def(state: &mut AppState, def: &BrushDefinition) {
             state.brush_artwork = Some(artwork.clone());
             state.brush_custom_art = true;
         }
-        BrushKind::Pattern { artwork, spacing, scale } => {
+        BrushKind::Pattern {
+            artwork,
+            spacing,
+            scale,
+        } => {
             state.brush_kind_idx = 2;
             state.brush_artwork = Some(artwork.clone());
             state.brush_custom_art = true;
             state.brush_spacing = *spacing;
             state.brush_scale = *scale;
         }
-        BrushKind::Bristle { count, scatter, size, opacity } => {
+        BrushKind::Bristle {
+            count,
+            scatter,
+            size,
+            opacity,
+        } => {
             state.brush_kind_idx = 3;
             state.brush_bristles = *count as f64;
             state.brush_scatter = *scatter;
@@ -123,13 +139,20 @@ fn adopt_def(state: &mut AppState, def: &BrushDefinition) {
 
 impl BrushPanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("Brushes").strong());
+        let locale = state.prefs.language.clone();
+        ui.heading(RichText::new(crate::ui::i18n::text(&locale, "brush.title")).strong());
         ui.add_space(4.0);
 
         ui.horizontal(|ui| {
-            for (i, label) in ["Calligraphy", "Art", "Pattern", "Bristle"].iter().enumerate() {
+            let kinds = [
+                crate::ui::i18n::text(&locale, "brush.kind.calligraphy"),
+                crate::ui::i18n::text(&locale, "brush.kind.art"),
+                crate::ui::i18n::text(&locale, "brush.kind.pattern"),
+                crate::ui::i18n::text(&locale, "brush.kind.bristle"),
+            ];
+            for (i, label) in kinds.iter().enumerate() {
                 if ui
-                    .selectable_label(state.brush_kind_idx == i, *label)
+                    .selectable_label(state.brush_kind_idx == i, label.as_ref())
                     .clicked()
                 {
                     state.brush_kind_idx = i;
@@ -141,7 +164,7 @@ impl BrushPanel {
         match state.brush_kind_idx {
             0 => {
                 ui.horizontal(|ui| {
-                    ui.label("角度:");
+                    ui.label(crate::ui::i18n::text(&locale, "brush.angle"));
                     ui.add(
                         egui::DragValue::new(&mut state.brush_angle)
                             .range(-90.0..=90.0)
@@ -149,7 +172,7 @@ impl BrushPanel {
                     );
                 });
                 ui.horizontal(|ui| {
-                    ui.label("丸み:");
+                    ui.label(crate::ui::i18n::text(&locale, "brush.roundness"));
                     ui.add(
                         egui::DragValue::new(&mut state.brush_roundness)
                             .range(5.0..=100.0)
@@ -157,7 +180,7 @@ impl BrushPanel {
                     );
                 });
                 ui.horizontal(|ui| {
-                    ui.label("サイズ:");
+                    ui.label(crate::ui::i18n::text(&locale, "brush.size"));
                     ui.add(
                         egui::DragValue::new(&mut state.brush_size)
                             .range(1.0..=200.0)
@@ -167,12 +190,9 @@ impl BrushPanel {
             }
             _ if state.brush_kind_idx == 3 => {
                 ui.horizontal(|ui| {
-                    ui.label("毛:");
-                    ui.add(
-                        egui::DragValue::new(&mut state.brush_bristles)
-                            .range(1.0..=64.0),
-                    );
-                    ui.label("散らばり:");
+                    ui.label(crate::ui::i18n::text(&locale, "brush.bristles"));
+                    ui.add(egui::DragValue::new(&mut state.brush_bristles).range(1.0..=64.0));
+                    ui.label(crate::ui::i18n::text(&locale, "brush.scatter"));
                     ui.add(
                         egui::DragValue::new(&mut state.brush_scatter)
                             .range(0.0..=1.0)
@@ -180,33 +200,43 @@ impl BrushPanel {
                     );
                 });
                 ui.horizontal(|ui| {
-                    ui.label("サイズ:");
+                    ui.label(crate::ui::i18n::text(&locale, "brush.size"));
                     ui.add(
                         egui::DragValue::new(&mut state.brush_size)
                             .range(1.0..=200.0)
                             .suffix("pt"),
                     );
-                    ui.label("不透明度:");
+                    ui.label(crate::ui::i18n::text(&locale, "brush.opacity"));
                     ui.add(
                         egui::DragValue::new(&mut state.brush_opacity)
                             .range(0.05..=1.0)
                             .speed(0.01),
                     );
                 });
-                ui.label(RichText::new("乾いた筆の筋になります。").weak().size(11.0));
+                ui.label(
+                    RichText::new(crate::ui::i18n::text(&locale, "brush.dry_streaks"))
+                        .weak()
+                        .size(11.0),
+                );
             }
             _ => {
                 ui.horizontal(|ui| {
-                    ui.label("ソース:");
+                    ui.label(crate::ui::i18n::text(&locale, "brush.source"));
                     if ui
-                        .selectable_label(!state.brush_custom_art, "Builtin")
+                        .selectable_label(
+                            !state.brush_custom_art,
+                            crate::ui::i18n::text(&locale, "brush.builtin"),
+                        )
                         .clicked()
                     {
                         state.brush_custom_art = false;
                     }
                     if ui
-                        .selectable_label(state.brush_custom_art, "Selection")
-                        .on_hover_text("選択中の図形をモチーフに使います")
+                        .selectable_label(
+                            state.brush_custom_art,
+                            crate::ui::i18n::text(&locale, "brush.selection"),
+                        )
+                        .on_hover_text(crate::ui::i18n::text(&locale, "brush.selection_tip"))
                         .clicked()
                     {
                         // Capture the selection as artwork (local geometry).
@@ -217,18 +247,27 @@ impl BrushPanel {
                                 if !art.elements.is_empty() {
                                     state.brush_artwork = Some(art);
                                     state.brush_custom_art = true;
-                                    state.notify_success("選択をブラシモチーフに登録しました");
+                                    state.notify_success(
+                                        crate::ui::i18n::text(&locale, "brush.capture_selection")
+                                            .into_owned(),
+                                    );
                                 } else {
-                                    state.notify_error("モチーフにできる図形がありません");
+                                    state.notify_error(
+                                        crate::ui::i18n::text(&locale, "brush.no_motif_shape")
+                                            .into_owned(),
+                                    );
                                 }
                             }
                         } else {
-                            state.notify_error("先にモチーフを選んでください");
+                            state.notify_error(
+                                crate::ui::i18n::text(&locale, "brush.select_motif_first")
+                                    .into_owned(),
+                            );
                         }
                     }
                 });
                 ui.horizontal(|ui| {
-                    ui.label("モチーフ:");
+                    ui.label(crate::ui::i18n::text(&locale, "brush.motif"));
                     for motif in ["arrow", "leaf", "wave"] {
                         if ui
                             .selectable_label(
@@ -243,19 +282,17 @@ impl BrushPanel {
                     }
                 });
                 if state.brush_kind_idx == 1 {
-                    ui.label(RichText::new("Motif height := path stroke width.").weak().size(11.0));
+                    ui.label(
+                        RichText::new(crate::ui::i18n::text(&locale, "brush.motif_height_tip"))
+                            .weak()
+                            .size(11.0),
+                    );
                 } else {
                     ui.horizontal(|ui| {
-                        ui.label("間隔:");
-                        ui.add(
-                            egui::DragValue::new(&mut state.brush_spacing)
-                                .range(1.0..=500.0),
-                        );
-                        ui.label("スケール:");
-                        ui.add(
-                            egui::DragValue::new(&mut state.brush_scale)
-                                .range(0.1..=10.0),
-                        );
+                        ui.label(crate::ui::i18n::text(&locale, "brush.spacing"));
+                        ui.add(egui::DragValue::new(&mut state.brush_spacing).range(1.0..=500.0));
+                        ui.label(crate::ui::i18n::text(&locale, "brush.scale"));
+                        ui.add(egui::DragValue::new(&mut state.brush_scale).range(0.1..=10.0));
                     });
                 }
             }
@@ -264,7 +301,10 @@ impl BrushPanel {
 
         let has_sel = !state.selected_ids.is_empty();
         if ui
-            .add_enabled(has_sel, egui::Button::new("Apply Brush to Selection"))
+            .add_enabled(
+                has_sel,
+                egui::Button::new(crate::ui::i18n::text(&locale, "brush.apply_selection")),
+            )
             .clicked()
         {
             if let Some(def) = current_def(state) {
@@ -296,10 +336,17 @@ impl BrushPanel {
                         continue;
                     }
                     let stroke_w = obj.stroke.as_ref().map(|s| s.width).unwrap_or(2.0);
-                    let base_fill = obj.fill.clone().or_else(|| {
-                        Some(crate::core::path::FillStyle::solid(state.fill_color))
-                    });
-                    if let BrushKind::Bristle { count, scatter, size, opacity } = def.kind {
+                    let base_fill = obj
+                        .fill
+                        .clone()
+                        .or_else(|| Some(crate::core::path::FillStyle::solid(state.fill_color)));
+                    if let BrushKind::Bristle {
+                        count,
+                        scatter,
+                        size,
+                        opacity,
+                    } = def.kind
+                    {
                         // One group of translucent streaks per spine.
                         let streaks = apply_bristle(&spine, count, scatter, size, opacity);
                         if streaks.is_empty() {
@@ -314,10 +361,8 @@ impl BrushPanel {
                                 }
                                 band.fill = Some(f);
                             }
-                            let mut child = Object::new_path(
-                                &format!("{} (Bristle {i})", obj.name),
-                                band,
-                            );
+                            let mut child =
+                                Object::new_path(&format!("{} (Bristle {i})", obj.name), band);
                             child.transform = obj.transform.clone();
                             children.push(child);
                         }
@@ -332,34 +377,50 @@ impl BrushPanel {
                         let mut new_obj =
                             Object::new_path(&format!("{} (Brush)", obj.name), brushed);
                         new_obj.transform = obj.transform.clone();
-                        let cmd =
-                            Box::new(crate::core::history::AddObjectCommand::new(new_obj));
+                        let cmd = Box::new(crate::core::history::AddObjectCommand::new(new_obj));
                         state.undo_manager.execute(cmd, &mut state.document);
                         applied += 1;
                     }
                 }
                 if applied > 0 {
-                    state.notify_success(format!("ブラシを適用しました（{applied}件）"));
+                    state.notify_success(crate::ui::i18n::format(
+                        &locale,
+                        "brush.applied_count",
+                        &[("count", &applied.to_string())],
+                    ));
                 } else {
-                    state.notify_error("適用できるパスがありません");
+                    state.notify_error(
+                        crate::ui::i18n::text(&locale, "brush.no_applicable_paths").into_owned(),
+                    );
                 }
             }
         }
         if !has_sel {
-            ui.label(RichText::new("Select a path or shape first.").weak().size(11.0));
+            ui.label(
+                RichText::new(crate::ui::i18n::text(&locale, "brush.select_path_first"))
+                    .weak()
+                    .size(11.0),
+            );
         }
 
         // Brush library (persisted JSON).
         ui.add_space(4.0);
         ui.separator();
-        ui.label(RichText::new("ブラシライブラリ").strong());
+        ui.label(RichText::new(crate::ui::i18n::text(&locale, "brush.library")).strong());
         ui.horizontal(|ui| {
-            ui.label("名前:");
+            ui.label(crate::ui::i18n::text(&locale, "brush.name"));
             ui.text_edit_singleline(&mut state.brush_lib_name);
-            if ui.button("保存").clicked() {
+            if ui
+                .button(crate::ui::i18n::text(&locale, "brush.save"))
+                .clicked()
+            {
                 if let Some(mut def) = current_def(state) {
                     let name = state.brush_lib_name.trim();
-                    def.name = if name.is_empty() { "Brush".to_string() } else { name.to_string() };
+                    def.name = if name.is_empty() {
+                        "Brush".to_string()
+                    } else {
+                        name.to_string()
+                    };
                     let mut lib = load_library();
                     if let Some(pos) = lib.iter().position(|b| b.name == def.name) {
                         lib[pos] = def;
@@ -367,7 +428,8 @@ impl BrushPanel {
                         lib.push(def);
                     }
                     save_library(&lib);
-                    state.notify_success("ブラシを保存しました");
+                    state
+                        .notify_success(crate::ui::i18n::text(&locale, "brush.saved").into_owned());
                 }
             }
         });
@@ -376,7 +438,10 @@ impl BrushPanel {
         for b in load_library() {
             ui.horizontal(|ui| {
                 ui.label(&b.name);
-                if ui.small_button("適用").clicked() {
+                if ui
+                    .small_button(crate::ui::i18n::text(&locale, "brush.apply"))
+                    .clicked()
+                {
                     adopt = Some(b.clone());
                 }
                 if ui.small_button("×").clicked() {

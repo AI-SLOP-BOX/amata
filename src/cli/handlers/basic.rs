@@ -1,4 +1,7 @@
-use super::common::{load_any_document, save_any_document, save_any_document_scaled};
+use super::common::{
+    load_any_document, save_any_document, save_any_document_scaled,
+    save_any_document_scaled_outlined,
+};
 use crate::cli::types::*;
 use std::path::Path;
 
@@ -6,13 +9,18 @@ pub fn handle_convert(
     input: &Path,
     output: &Path,
     scale: f32,
+    outline_text: bool,
 ) -> Result<bool, Box<dyn std::error::Error>> {
     println!(
         "🔄 Converting '{:?}' to '{:?}' (scale: {}x)...",
         input, output, scale
     );
     let doc = load_any_document(input)?;
-    save_any_document_scaled(&doc, output, scale)?;
+    if outline_text {
+        save_any_document_scaled_outlined(&doc, output, scale, true)?;
+    } else {
+        save_any_document_scaled(&doc, output, scale)?;
+    }
     println!("✅ Conversion complete: {:?}", output);
     Ok(false)
 }
@@ -56,10 +64,7 @@ pub fn handle_export_3d(
     Ok(false)
 }
 
-pub fn handle_export_pdf(
-    input: &Path,
-    output: &Path,
-) -> Result<bool, Box<dyn std::error::Error>> {
+pub fn handle_export_pdf(input: &Path, output: &Path) -> Result<bool, Box<dyn std::error::Error>> {
     println!("📄 Exporting '{:?}' to Pure Vector PDF...", input);
     let doc = load_any_document(input)?;
     let pdf_bytes = crate::io::pdf::export_pdf(&doc);

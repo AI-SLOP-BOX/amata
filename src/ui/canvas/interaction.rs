@@ -109,13 +109,9 @@ impl CanvasWidget {
             Tool::Select => {
                 if let Some(id) = self.select_state.hit_test(state, wx, wy) {
                     if shift {
-                        if let Some(pos) = state.selected_ids.iter().position(|x| x == &id) {
-                            state.selected_ids.remove(pos);
-                        } else {
-                            state.selected_ids.push(id);
-                        }
+                        state.toggle_selection(&id);
                     } else {
-                        state.selected_ids = vec![id];
+                        state.set_selected_ids(vec![id]);
                     }
                 } else if !shift {
                     state.selected_ids.clear();
@@ -285,9 +281,8 @@ impl CanvasWidget {
                     _ => return,
                 };
                 let (lx, ly) = obj.transform.inverse_transform_point(wx, wy);
-                *corner_radius = crate::core::geometry::compute_corner_radius(
-                    width, height, lx, ly, vertex,
-                );
+                *corner_radius =
+                    crate::core::geometry::compute_corner_radius(width, height, lx, ly, vertex);
             }
         }
     }
@@ -707,63 +702,63 @@ impl CanvasWidget {
     ) {
         if let Some(ref obj_id) = self.node_edit_state.selected_object_id.clone() {
             if let Some(obj) = state.document.find_object_mut(obj_id) {
-                    if !matches!(obj.object_type, ObjectType::Path(_)) {
-                        let p = obj.to_path_data();
-                        obj.object_type = ObjectType::Path(p);
-                    }
-                    let (lx, ly) = obj.transform.inverse_transform_point(wx, wy);
-                    if let ObjectType::Path(ref mut path) = obj.object_type {
-                        match target {
-                            super::NodeTarget::Anchor(elem_idx) => {
-                                let total = path.elements.len();
-                                if elem_idx < total {
-                                    let old_anchor = match &path.elements[elem_idx] {
-                                        PathElement::MoveTo(p) | PathElement::LineTo(p) => *p,
-                                        PathElement::CurveTo(seg) => seg.end,
-                                        PathElement::ClosePath => return,
-                                    };
-                                    let dx = lx - old_anchor.x;
-                                    let dy = ly - old_anchor.y;
+                if !matches!(obj.object_type, ObjectType::Path(_)) {
+                    let p = obj.to_path_data();
+                    obj.object_type = ObjectType::Path(p);
+                }
+                let (lx, ly) = obj.transform.inverse_transform_point(wx, wy);
+                if let ObjectType::Path(ref mut path) = obj.object_type {
+                    match target {
+                        super::NodeTarget::Anchor(elem_idx) => {
+                            let total = path.elements.len();
+                            if elem_idx < total {
+                                let old_anchor = match &path.elements[elem_idx] {
+                                    PathElement::MoveTo(p) | PathElement::LineTo(p) => *p,
+                                    PathElement::CurveTo(seg) => seg.end,
+                                    PathElement::ClosePath => return,
+                                };
+                                let dx = lx - old_anchor.x;
+                                let dy = ly - old_anchor.y;
 
-                                    match &mut path.elements[elem_idx] {
-                                        PathElement::MoveTo(p) | PathElement::LineTo(p) => {
-                                            *p = AnchorPoint::new(lx, ly);
-                                        }
-                                        PathElement::CurveTo(seg) => {
-                                            seg.end = AnchorPoint::new(lx, ly);
-                                            seg.control2.x += dx;
-                                            seg.control2.y += dy;
-                                        }
-                                        PathElement::ClosePath => {}
+                                match &mut path.elements[elem_idx] {
+                                    PathElement::MoveTo(p) | PathElement::LineTo(p) => {
+                                        *p = AnchorPoint::new(lx, ly);
                                     }
+                                    PathElement::CurveTo(seg) => {
+                                        seg.end = AnchorPoint::new(lx, ly);
+                                        seg.control2.x += dx;
+                                        seg.control2.y += dy;
+                                    }
+                                    PathElement::ClosePath => {}
+                                }
 
-                                    if elem_idx + 1 < total {
-                                        if let PathElement::CurveTo(ref mut next_seg) =
-                                            path.elements[elem_idx + 1]
-                                        {
-                                            next_seg.start = AnchorPoint::new(lx, ly);
-                                            next_seg.control1.x += dx;
-                                            next_seg.control1.y += dy;
-                                        }
+                                if elem_idx + 1 < total {
+                                    if let PathElement::CurveTo(ref mut next_seg) =
+                                        path.elements[elem_idx + 1]
+                                    {
+                                        next_seg.start = AnchorPoint::new(lx, ly);
+                                        next_seg.control1.x += dx;
+                                        next_seg.control1.y += dy;
                                     }
-                                }
-                            }
-                            super::NodeTarget::Control1(elem_idx) => {
-                                if let Some(PathElement::CurveTo(ref mut seg)) =
-                                    path.elements.get_mut(elem_idx)
-                                {
-                                    seg.control1 = AnchorPoint::new(lx, ly);
-                                }
-                            }
-                            super::NodeTarget::Control2(elem_idx) => {
-                                if let Some(PathElement::CurveTo(ref mut seg)) =
-                                    path.elements.get_mut(elem_idx)
-                                {
-                                    seg.control2 = AnchorPoint::new(lx, ly);
                                 }
                             }
                         }
+                        super::NodeTarget::Control1(elem_idx) => {
+                            if let Some(PathElement::CurveTo(ref mut seg)) =
+                                path.elements.get_mut(elem_idx)
+                            {
+                                seg.control1 = AnchorPoint::new(lx, ly);
+                            }
+                        }
+                        super::NodeTarget::Control2(elem_idx) => {
+                            if let Some(PathElement::CurveTo(ref mut seg)) =
+                                path.elements.get_mut(elem_idx)
+                            {
+                                seg.control2 = AnchorPoint::new(lx, ly);
+                            }
+                        }
                     }
+                }
             }
         }
     }

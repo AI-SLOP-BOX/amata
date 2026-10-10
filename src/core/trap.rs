@@ -179,6 +179,10 @@ pub fn find_trap_strokes(
     let mut matched: std::collections::BTreeSet<SegKey> = std::collections::BTreeSet::new();
     let mut trap_colors: std::collections::HashMap<SegKey, [f32; 4]> =
         std::collections::HashMap::new();
+    // Real coordinates per key (first occurrence wins); the overlap
+    // detector above also pins its synthesized interior points here.
+    let mut coord: std::collections::HashMap<(i64, i64), (f64, f64)> =
+        std::collections::HashMap::new();
     for (i, (ci, si)) in cands.iter().zip(segs.iter()).enumerate() {
         for (cj, sj) in cands.iter().zip(segs.iter()).skip(i + 1) {
             if ci.color == cj.color {
@@ -216,6 +220,11 @@ pub fn find_trap_strokes(
                                 if hi - lo >= 1.0 {
                                     let pt = |tt: f64| (a1.0 + ux * tt, a1.1 + uy * tt);
                                     let (u, v) = (key(pt(lo)), key(pt(hi)));
+                                    // Interior points are synthesized: pin
+                                    // them into the coordinate map first
+                                    // (HashMap::index would panic on miss).
+                                    coord.insert(u, pt(lo));
+                                    coord.insert(v, pt(hi));
                                     let kk = if u <= v { (u, v) } else { (v, u) };
                                     if matched.insert(kk) {
                                         let darker = if luminance(ci.color) <= luminance(cj.color) {
@@ -247,9 +256,6 @@ pub fn find_trap_strokes(
     }
     // Chain matched segments into polylines via endpoint adjacency.
     let mut adj: std::collections::HashMap<(i64, i64), Vec<(i64, i64)>> =
-        std::collections::HashMap::new();
-    // Recover real coordinates per key (first occurrence wins).
-    let mut coord: std::collections::HashMap<(i64, i64), (f64, f64)> =
         std::collections::HashMap::new();
     for s in &segs {
         for &(a, b) in s {

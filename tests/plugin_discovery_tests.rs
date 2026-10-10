@@ -45,10 +45,7 @@ fn test_parse_metadata_header_and_defaults() {
     assert!(bare.description.is_empty());
 
     // Only the leading comment block counts; a later `@id:` must be ignored.
-    let trailing = parse_metadata(
-        "// @id: real-id\nlet x = 1;\n// @id: fake-id\n",
-        "stem",
-    );
+    let trailing = parse_metadata("// @id: real-id\nlet x = 1;\n// @id: fake-id\n", "stem");
     assert_eq!(trailing.id, "real-id");
 }
 
@@ -64,7 +61,12 @@ fn test_discover_in_scans_rhai_files_only() {
     // Same directory passed twice must not duplicate results.
     let found = discover_in(&[dir.clone(), missing_dir, dir.clone()]);
 
-    assert_eq!(found.len(), 2, "found: {:?}", found.iter().map(|p| &p.id).collect::<Vec<_>>());
+    assert_eq!(
+        found.len(),
+        2,
+        "found: {:?}",
+        found.iter().map(|p| &p.id).collect::<Vec<_>>()
+    );
     // Sorted by id for stable CLI output; the bare script's id is its file stem.
     assert_eq!(found[0].id, "bare");
     assert_eq!(found[0].name, "bare");
@@ -115,4 +117,3 @@ fn test_plugins_cli_reports_discovered_plugins() {
     std::env::remove_var("AMATA_PLUGIN_DIR");
     let _ = std::fs::remove_dir_all(&dir);
 }
-

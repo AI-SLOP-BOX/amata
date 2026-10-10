@@ -21,7 +21,12 @@ fn test_rotated_rect_export_keeps_transform() {
     let imported = doc2
         .all_objects()
         .map(|(_, o)| o)
-        .find(|o| matches!(o.object_type, irasu_illustrator::core::document::ObjectType::Rectangle { .. }))
+        .find(|o| {
+            matches!(
+                o.object_type,
+                irasu_illustrator::core::document::ObjectType::Rectangle { .. }
+            )
+        })
         .expect("rect should round-trip");
     assert!(
         (imported.transform.rotation - std::f64::consts::FRAC_PI_4).abs() < 1e-6,

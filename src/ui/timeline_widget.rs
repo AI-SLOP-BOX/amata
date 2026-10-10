@@ -1,4 +1,4 @@
-use crate::app::icons::{icon_button, icon_pause, icon_play, icon_stop};
+use crate::app::icons::{icon_button_labeled, icon_pause, icon_play, icon_stop};
 use crate::core::state::AppState;
 use crate::core::timeline::{AnimProperty, EaseType};
 use egui::{Color32, RichText, Ui, Vec2};
@@ -7,28 +7,43 @@ pub struct TimelineWidget;
 
 impl TimelineWidget {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
+        let locale = state.prefs.language.clone();
         ui.horizontal(|ui| {
             ui.heading(
-                RichText::new("タイムラインとアニメーション")
+                RichText::new(crate::ui::i18n::text(&locale, "timeline.title"))
                     .strong()
                     .size(14.0),
             );
 
             let playing = state.timeline.is_playing;
-            if icon_button(
+            let play_tip = crate::ui::i18n::text(
+                &locale,
+                if playing {
+                    "timeline.pause"
+                } else {
+                    "timeline.play"
+                },
+            );
+            if icon_button_labeled(
                 ui,
                 Vec2::new(22.0, 20.0),
                 if playing { icon_pause } else { icon_play },
+                play_tip.clone(),
             )
-            .on_hover_text(if playing { "一時停止" } else { "再生" })
+            .on_hover_text(play_tip)
             .clicked()
             {
                 state.timeline.is_playing = !state.timeline.is_playing;
             }
 
-            if icon_button(ui, Vec2::new(22.0, 20.0), icon_stop)
-                .on_hover_text("停止（先頭に戻る）")
-                .clicked()
+            if icon_button_labeled(
+                ui,
+                Vec2::new(22.0, 20.0),
+                icon_stop,
+                crate::ui::i18n::text(&locale, "timeline.stop"),
+            )
+            .on_hover_text(crate::ui::i18n::text(&locale, "timeline.stop"))
+            .clicked()
             {
                 state.timeline.is_playing = false;
                 state.timeline.current_frame = 0;
@@ -41,9 +56,17 @@ impl TimelineWidget {
             let tf = state.timeline.total_frames;
             let secs = cf as f64 / fps.max(1.0);
             ui.label(
-                RichText::new(format!("Frame: {:03}/{} ({:.2}s)", cf, tf, secs))
-                    .strong()
-                    .color(Color32::from_rgb(0, 180, 255)),
+                RichText::new(crate::ui::i18n::format(
+                    &locale,
+                    "timeline.frame",
+                    &[
+                        ("current", &format!("{cf:03}")),
+                        ("total", &tf.to_string()),
+                        ("seconds", &format!("{secs:.2}")),
+                    ],
+                ))
+                .strong()
+                .color(Color32::from_rgb(0, 180, 255)),
             );
 
             if tf > 1 {
@@ -70,71 +93,89 @@ impl TimelineWidget {
             }
 
             ui.separator();
-            ui.checkbox(&mut state.timeline.loop_playback, "ループ");
+            ui.checkbox(
+                &mut state.timeline.loop_playback,
+                crate::ui::i18n::text(&locale, "timeline.loop"),
+            );
 
             // Keyframing controls for selected object
             if let Some(sel_id) = state.selected_ids.first().cloned() {
                 ui.separator();
-                ui.menu_button("キーフレームを追加", |ui| {
-                    let mut obj_tx = 0.0;
-                    let mut obj_ty = 0.0;
-                    let mut obj_rot = 0.0;
-                    let mut obj_sx = 1.0;
-                    let mut obj_sy = 1.0;
-                    let mut obj_opac = 1.0;
+                ui.menu_button(
+                    crate::ui::i18n::text(&locale, "timeline.add_keyframe"),
+                    |ui| {
+                        let mut obj_tx = 0.0;
+                        let mut obj_ty = 0.0;
+                        let mut obj_rot = 0.0;
+                        let mut obj_sx = 1.0;
+                        let mut obj_sy = 1.0;
+                        let mut obj_opac = 1.0;
 
-                    for (_, obj) in state.document.all_objects() {
-                        if obj.id == sel_id {
-                            obj_tx = obj.transform.x;
-                            obj_ty = obj.transform.y;
-                            obj_rot = obj.transform.rotation.to_degrees();
-                            obj_sx = obj.transform.scale_x;
-                            obj_sy = obj.transform.scale_y;
-                            obj_opac = obj.opacity as f64;
-                            break;
+                        for (_, obj) in state.document.all_objects() {
+                            if obj.id == sel_id {
+                                obj_tx = obj.transform.x;
+                                obj_ty = obj.transform.y;
+                                obj_rot = obj.transform.rotation.to_degrees();
+                                obj_sx = obj.transform.scale_x;
+                                obj_sy = obj.transform.scale_y;
+                                obj_opac = obj.opacity as f64;
+                                break;
+                            }
                         }
-                    }
 
-                    if ui.button("位置（X, Y）").clicked() {
-                        let track_x = state
-                            .timeline
-                            .add_or_get_track_mut(&sel_id, AnimProperty::PositionX);
-                        track_x.add_keyframe(cf, obj_tx, EaseType::EaseInOut);
-                        let track_y = state
-                            .timeline
-                            .add_or_get_track_mut(&sel_id, AnimProperty::PositionY);
-                        track_y.add_keyframe(cf, obj_ty, EaseType::EaseInOut);
-                        ui.close_menu();
-                    }
+                        if ui
+                            .button(crate::ui::i18n::text(&locale, "timeline.position"))
+                            .clicked()
+                        {
+                            let track_x = state
+                                .timeline
+                                .add_or_get_track_mut(&sel_id, AnimProperty::PositionX);
+                            track_x.add_keyframe(cf, obj_tx, EaseType::EaseInOut);
+                            let track_y = state
+                                .timeline
+                                .add_or_get_track_mut(&sel_id, AnimProperty::PositionY);
+                            track_y.add_keyframe(cf, obj_ty, EaseType::EaseInOut);
+                            ui.close_menu();
+                        }
 
-                    if ui.button("回転").clicked() {
-                        let track_rot = state
-                            .timeline
-                            .add_or_get_track_mut(&sel_id, AnimProperty::Rotation);
-                        track_rot.add_keyframe(cf, obj_rot, EaseType::EaseInOut);
-                        ui.close_menu();
-                    }
+                        if ui
+                            .button(crate::ui::i18n::text(&locale, "timeline.rotation"))
+                            .clicked()
+                        {
+                            let track_rot = state
+                                .timeline
+                                .add_or_get_track_mut(&sel_id, AnimProperty::Rotation);
+                            track_rot.add_keyframe(cf, obj_rot, EaseType::EaseInOut);
+                            ui.close_menu();
+                        }
 
-                    if ui.button("スケール（X, Y）").clicked() {
-                        let track_sx = state
-                            .timeline
-                            .add_or_get_track_mut(&sel_id, AnimProperty::ScaleX);
-                        track_sx.add_keyframe(cf, obj_sx, EaseType::EaseInOut);
-                        let track_sy = state
-                            .timeline
-                            .add_or_get_track_mut(&sel_id, AnimProperty::ScaleY);
-                        track_sy.add_keyframe(cf, obj_sy, EaseType::EaseInOut);
-                        ui.close_menu();
-                    }
+                        if ui
+                            .button(crate::ui::i18n::text(&locale, "timeline.scale"))
+                            .clicked()
+                        {
+                            let track_sx = state
+                                .timeline
+                                .add_or_get_track_mut(&sel_id, AnimProperty::ScaleX);
+                            track_sx.add_keyframe(cf, obj_sx, EaseType::EaseInOut);
+                            let track_sy = state
+                                .timeline
+                                .add_or_get_track_mut(&sel_id, AnimProperty::ScaleY);
+                            track_sy.add_keyframe(cf, obj_sy, EaseType::EaseInOut);
+                            ui.close_menu();
+                        }
 
-                    if ui.button("不透明度").clicked() {
-                        let track_op = state
-                            .timeline
-                            .add_or_get_track_mut(&sel_id, AnimProperty::Opacity);
-                        track_op.add_keyframe(cf, obj_opac, EaseType::Linear);
-                        ui.close_menu();
-                    }
-                });
+                        if ui
+                            .button(crate::ui::i18n::text(&locale, "timeline.opacity"))
+                            .clicked()
+                        {
+                            let track_op = state
+                                .timeline
+                                .add_or_get_track_mut(&sel_id, AnimProperty::Opacity);
+                            track_op.add_keyframe(cf, obj_opac, EaseType::Linear);
+                            ui.close_menu();
+                        }
+                    },
+                );
             }
         });
 
@@ -145,19 +186,33 @@ impl TimelineWidget {
                 ui.horizontal(|ui| {
                     for track in &state.timeline.tracks {
                         let prop_name = match track.property {
-                            AnimProperty::PositionX => "Pos X",
-                            AnimProperty::PositionY => "Pos Y",
-                            AnimProperty::Rotation => "Rot",
-                            AnimProperty::ScaleX => "Scale X",
-                            AnimProperty::ScaleY => "Scale Y",
-                            AnimProperty::Opacity => "Opacity",
+                            AnimProperty::PositionX => {
+                                crate::ui::i18n::text(&locale, "timeline.pos_x")
+                            }
+                            AnimProperty::PositionY => {
+                                crate::ui::i18n::text(&locale, "timeline.pos_y")
+                            }
+                            AnimProperty::Rotation => {
+                                crate::ui::i18n::text(&locale, "timeline.rot")
+                            }
+                            AnimProperty::ScaleX => {
+                                crate::ui::i18n::text(&locale, "timeline.scale_x")
+                            }
+                            AnimProperty::ScaleY => {
+                                crate::ui::i18n::text(&locale, "timeline.scale_y")
+                            }
+                            AnimProperty::Opacity => {
+                                crate::ui::i18n::text(&locale, "timeline.opacity")
+                            }
                         };
+                        let fallback_name =
+                            crate::ui::i18n::text(&locale, "timeline.object").into_owned();
                         let obj_name = state
                             .document
                             .all_objects()
                             .find(|(_, o)| o.id == track.object_id)
                             .map(|(_, o)| o.name.as_str())
-                            .unwrap_or("Object");
+                            .unwrap_or(&fallback_name);
 
                         let (rect, _) =
                             ui.allocate_exact_size(Vec2::new(140.0, 20.0), egui::Sense::hover());

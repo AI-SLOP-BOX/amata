@@ -115,9 +115,7 @@ pub enum BrushKind {
     },
     /// Stretch vector artwork along the whole spine, scaled so the artwork
     /// height matches the path's stroke width.
-    Art {
-        artwork: PathData,
-    },
+    Art { artwork: PathData },
     /// Tile vector artwork along the spine every `spacing` units.
     Pattern {
         artwork: PathData,
@@ -255,7 +253,9 @@ fn map_artwork_onto_spine(
     let (x0, x1) = (bb_min.x, bb_max.x);
     let y_center = (bb_min.y + bb_max.y) / 2.0;
     let map = |x: f64, y: f64| {
-        map_point(x, y, x0, x1, y_center, y_scale, pts, tangents, total, s_origin, s_span)
+        map_point(
+            x, y, x0, x1, y_center, y_scale, pts, tangents, total, s_origin, s_span,
+        )
     };
     let mut out = PathData::new();
     out.fill = artwork.fill.clone();
@@ -277,14 +277,13 @@ fn map_artwork_onto_spine(
                 let c2 = map(seg.control2.x, seg.control2.y);
                 let s = map(seg.start.x, seg.start.y);
                 let e = map(seg.end.x, seg.end.y);
-                out.elements.push(PathElement::CurveTo(
-                    super::path::BezierSegment {
+                out.elements
+                    .push(PathElement::CurveTo(super::path::BezierSegment {
                         start: s,
                         control1: c1,
                         control2: c2,
                         end: e,
-                    },
-                ));
+                    }));
             }
             PathElement::ClosePath => out.elements.push(PathElement::ClosePath),
         }
@@ -305,7 +304,12 @@ pub fn apply_brush_to_polyline(
         return None;
     }
     match &def.kind {
-        BrushKind::Bristle { count, scatter, size, opacity } => {
+        BrushKind::Bristle {
+            count,
+            scatter,
+            size,
+            opacity,
+        } => {
             // Single-path fallback (per-streak alpha needs the multi
             // entry point `apply_bristle`): merge all streaks.
             let mut spine_only = PathData::new();
@@ -341,7 +345,8 @@ pub fn apply_brush_to_polyline(
                 let d = theta - phi;
                 // Full nib width across the travel direction (the ribbon
                 // builder halves it internally).
-                let w = size * (roundness * roundness * d.cos() * d.cos() + d.sin() * d.sin()).sqrt();
+                let w =
+                    size * (roundness * roundness * d.cos() * d.cos() + d.sin() * d.sin()).sqrt();
                 profile.points.push(crate::core::document::WidthPoint {
                     position: i as f64 / 64.0,
                     width: w.max(0.05),
@@ -413,9 +418,8 @@ pub fn apply_brush_to_polyline(
             let mut s = 0.0;
             while s < total {
                 // The artwork's own bbox maps onto [s, s + aw].
-                let tile = map_artwork_onto_spine(
-                    artwork, &pts, &tangents, total, scale.max(0.1), s, aw,
-                );
+                let tile =
+                    map_artwork_onto_spine(artwork, &pts, &tangents, total, scale.max(0.1), s, aw);
                 out.elements.extend(tile.elements);
                 s += step;
             }
@@ -478,7 +482,8 @@ pub fn apply_bristle(
                     },
                 ],
             };
-            let band = crate::core::offset::variable_width_outline(&shifted, &profile, 1.0, *closed);
+            let band =
+                crate::core::offset::variable_width_outline(&shifted, &profile, 1.0, *closed);
             if band.len() < 3 {
                 continue;
             }
@@ -504,7 +509,11 @@ pub fn apply_brush(spine: &PathData, def: &BrushDefinition, stroke_width: f64) -
             any = true;
         }
     }
-    if any { Some(out) } else { None }
+    if any {
+        Some(out)
+    } else {
+        None
+    }
 }
 
 /// Split a spine into flattened runs, keeping 2-point runs (which
@@ -680,7 +689,10 @@ mod tests {
         assert_eq!(streaks.len(), 8);
         for (band, alpha) in &streaks {
             assert!(!band.elements.is_empty());
-            assert!(*alpha > 0.0 && *alpha <= 0.8, "alpha varies under peak: {alpha}");
+            assert!(
+                *alpha > 0.0 && *alpha <= 0.8,
+                "alpha varies under peak: {alpha}"
+            );
         }
         // Deterministic: same input, same output.
         let again = apply_bristle(&spine, 8, 0.5, 10.0, 0.8);

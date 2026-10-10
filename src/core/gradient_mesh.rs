@@ -250,7 +250,12 @@ impl MeshGradient {
         let x = Self::hermite(q0x, q1x, m0x, m1x, t);
         let y = Self::hermite(q0y, q1y, m0y, m1y, t);
         // Bilinear color.
-        let cs = [p(r, c).color, p(r, c + 1).color, p(r + 1, c).color, p(r + 1, c + 1).color];
+        let cs = [
+            p(r, c).color,
+            p(r, c + 1).color,
+            p(r + 1, c).color,
+            p(r + 1, c + 1).color,
+        ];
         let mut color = [0.0; 4];
         for i in 0..4 {
             let top = cs[0][i] + (cs[1][i] - cs[0][i]) * s as f32;
@@ -345,7 +350,10 @@ impl MeshGradient {
             max_x = max_x.max(n.x);
             max_y = max_y.max(n.y);
         }
-        Some((AnchorPoint::new(min_x, min_y), AnchorPoint::new(max_x, max_y)))
+        Some((
+            AnchorPoint::new(min_x, min_y),
+            AnchorPoint::new(max_x, max_y),
+        ))
     }
 }
 
@@ -355,10 +363,7 @@ mod tests {
 
     #[test]
     fn corners_reproduce_inputs() {
-        let m = MeshGradient::new_rect(
-            0.0, 0.0, 100.0, 50.0, 3, 3,
-            [[1.0, 0.0, 0.0, 1.0]; 4],
-        );
+        let m = MeshGradient::new_rect(0.0, 0.0, 100.0, 50.0, 3, 3, [[1.0, 0.0, 0.0, 1.0]; 4]);
         assert_eq!((m.rows, m.cols), (3, 3));
         // Patch corners evaluate exactly to their nodes (Hermite property).
         let (p00, _) = m.evaluate(0, 0, 0.0, 0.0);

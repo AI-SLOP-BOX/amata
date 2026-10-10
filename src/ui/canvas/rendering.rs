@@ -1,12 +1,43 @@
+/// Draw one ruby reading at half size to the right of a vertical column,
+/// centred on the base group's vertical extent. Kept out of the main
+/// draw loop so the loop stays readable.
+#[allow(clippy::too_many_arguments)]
+fn draw_canvas_ruby(
+    painter: &egui::Painter,
+    font_id: egui::FontId,
+    color: egui::Color32,
+    reading: &str,
+    col_x_local: f64,
+    start_y: f64,
+    end_y: f64,
+    style: &crate::core::document::TextStyle,
+    to_screen: &impl Fn(f64, f64) -> egui::Pos2,
+) {
+    let font_size = style.effective_font_size();
+    let small = egui::FontId::new(font_id.size / 2.0, font_id.family.clone());
+    let galley = painter.layout_no_wrap(reading.to_string(), small, color);
+    let gw = galley.size().x;
+    let gh = galley.size().y;
+    let mid = (start_y + end_y) / 2.0;
+    // Strip to the right of the base column: [font_size, font_size*1.5].
+    let cx = to_screen(col_x_local + font_size * RUBY_STRIP_CENTER_EM, mid).x - gw / 2.0;
+    let cy = to_screen(col_x_local, mid).y - gh / 2.0;
+    painter.galley(egui::pos2(cx, cy), galley, color);
+}
+
 use super::CanvasWidget;
-use crate::core::document::{BlendMode, Object, ObjectType, TextArea, TextStyle};
+use crate::core::document::{
+    char_advance_estimate, is_fullwidth_char, is_ja_latin_boundary, ja_latin_gap_em, BlendMode,
+    Object, ObjectType, TextArea, TextStyle, RUBY_STRIP_CENTER_EM,
+};
 use crate::core::path::{
-    AnchorPoint, FillStyle, FillType, ImageFill, ImageTileMode, LinearGradient, PathData,
-    PatternFill, RadialGradient,
+    sample_pattern_primitives_for_frame, AnchorPoint, FillStyle, FillType, ImageFill,
+    ImageTileMode, LinearGradient, PathData, PatternFill, PatternPrimitive, RadialGradient,
+    PATTERN_FRAME_BUDGET,
 };
 use crate::core::state::AppState;
 use crate::ui::canvas::clip::{self, ClipRegion};
-use egui::{Color32, FontId, Pos2, Rect, Stroke, Vec2};
+use egui::{Color32, FontId, Pos2, Stroke};
 
 fn affine_mul(m1: &[f64; 6], m2: &[f64; 6]) -> [f64; 6] {
     [
@@ -71,14 +102,26 @@ pub fn text_shape_key(text: &str, style: &TextStyle, area: Option<TextArea>) -> 
     })
     .hash(&mut h);
     style.letter_spacing.to_bits().hash(&mut h);
-    style
-        .line_height
-        .map(f64::to_bits)
-        .hash(&mut h);
+    style.line_height.map(f64::to_bits).hash(&mut h);
     style.max_width.map(f64::to_bits).hash(&mut h);
     style.word_wrap.hash(&mut h);
     style.vertical.hash(&mut h);
     style.ligatures.hash(&mut h);
+    // OpenType overrides reshape glyphs (palt/halt/vert/…) and 和欧間 spacing
+    // moves them: both must invalidate the cached outline triangles.
+    (match style.text_anchor {
+        crate::core::document::TextAnchor::Start => 0u8,
+        crate::core::document::TextAnchor::Middle => 1u8,
+        crate::core::document::TextAnchor::End => 2u8,
+    })
+    .hash(&mut h);
+    style.auto_spacing.hash(&mut h);
+    style.auto_spacing_em.to_bits().hash(&mut h);
+    style.ot_features.len().hash(&mut h);
+    for f in &style.ot_features {
+        f.tag.hash(&mut h);
+        f.on.hash(&mut h);
+    }
     // Variable-font axes reshape glyph outlines; include them in the key.
     style.variations.len().hash(&mut h);
     for v in &style.variations {
@@ -86,8 +129,15 @@ pub fn text_shape_key(text: &str, style: &TextStyle, area: Option<TextArea>) -> 
         v.value.to_bits().hash(&mut h);
     }
     // Area box is a shaping input: resizing the box rewraps the text.
-    area.map(|a| (a.x.to_bits(), a.y.to_bits(), a.width.to_bits(), a.height.to_bits()))
-        .hash(&mut h);
+    area.map(|a| {
+        (
+            a.x.to_bits(),
+            a.y.to_bits(),
+            a.width.to_bits(),
+            a.height.to_bits(),
+        )
+    })
+    .hash(&mut h);
     h.finish()
 }
 
@@ -108,6 +158,7 @@ pub(super) fn text_draw_lines(
 }
 
 impl CanvasWidget {
+    #[allow(clippy::too_many_arguments)]
     #[allow(clippy::too_many_arguments)]
     pub(super) fn draw_object(
         &self,
@@ -303,7 +354,9 @@ impl CanvasWidget {
                     let tf = tier as f32 / 6.0;
                     let spread = (gl.radius as f32 * tf) * state.zoom * vscale;
                     // Gaussian-like falloff: alpha drops as exp(-x^2)
-                    let tier_alpha = (base_c[3] * gl.intensity * opacity
+                    let tier_alpha = (base_c[3]
+                        * gl.intensity
+                        * opacity
                         * (0.25 * (-tf * tf * 2.0).exp())
                         * 255.0) as u8;
                     let tier_color = Color32::from_rgba_unmultiplied(
@@ -759,18 +812,17 @@ impl CanvasWidget {
             } => {
                 // Real typeface first (cached outline triangles); missing
                 // fonts fall through to the legacy egui-font path below.
-                if self.draw_real_text(
-                    painter,
-                    obj,
-                    text,
-                    style,
-                    fill_color,
-                    &to_screen,
-                    state,
-                ) {
+                if self.draw_real_text(painter, obj, text, style, fill_color, &to_screen, state) {
                     self.draw_fill_overlay(painter, obj, opacity, origin, state, parent);
                     return;
                 }
+                // The legacy duplicated size field may carry hostile values
+                // from hand-edited files; fall back to the style size.
+                let font_size = if font_size.is_finite() && *font_size > 0.0 {
+                    *font_size
+                } else {
+                    style.effective_font_size()
+                };
                 let scaled_size = (font_size * state.zoom as f64) as f32;
 
                 let align = match style.text_anchor {
@@ -820,85 +872,410 @@ impl CanvasWidget {
                 // outlines — see text_path / SVG skewX export). Shifting
                 // successive baselines still signals italic for multiline
                 // text and matches the export slant direction.
-                let italic = !matches!(
-                    style.font_style,
-                    crate::core::document::FontStyle::Normal
-                );
-                for (li, line) in lines.iter().take(layout.visible).enumerate() {
-                    let shear_dx = if italic {
-                        -(crate::core::text_path::FAUX_ITALIC_SHEAR as f32)
-                            * (li as f32 * line_height)
-                    } else {
-                        0.0
-                    };
-                    // Anchor in local space first (rotation-safe), then the
-                    // screen-space italic shear.
-                    let baseline_ly = origin_y + li as f64 * style.effective_line_height();
-                    let line_pos = egui::pos2(
-                        to_screen(anchor_lx, baseline_ly).x + shear_dx,
-                        base_pos.y + li as f32 * line_height,
-                    );
-                    if style.letter_spacing != 0.0 {
-                        let letter_space_screen =
-                            (style.letter_spacing * state.zoom as f64) as f32;
-                        // Pre-measure so text-anchor (middle/end) applies to the whole run,
-                        // matching exported SVG behavior.
-                        let mut widths: Vec<(String, f32, f32)> = Vec::new();
-                        let mut total_w = 0.0;
-                        for ch in line.chars() {
-                            let ch_str = ch.to_string();
-                            let galley =
-                                painter.layout_no_wrap(ch_str.clone(), font_id.clone(), color);
-                            let w = galley.size().x;
-                            let h = galley.size().y;
-                            widths.push((ch_str, w, h));
-                            total_w += w;
-                        }
-                        if !widths.is_empty() {
-                            total_w += letter_space_screen * (widths.len() as f32 - 1.0);
-                        }
-                        widest = widest.max(total_w);
-                        let mut curr_x = match style.text_anchor {
-                            crate::core::document::TextAnchor::Start => line_pos.x,
-                            crate::core::document::TextAnchor::Middle => {
-                                line_pos.x - total_w / 2.0
+                let italic = !matches!(style.font_style, crate::core::document::FontStyle::Normal);
+                if style.vertical {
+                    // 縦組み: columns advance right→left (each successive
+                    // column one line-height to the left) and glyphs stack
+                    // top to bottom. Fullwidth glyphs stand upright;
+                    // halfwidth glyphs rotate 90° clockwise.
+                    for (li, line) in lines.iter().take(layout.visible).enumerate() {
+                        let col_x_local = origin_x - li as f64 * style.effective_line_height();
+                        let mut y_local = origin_y;
+                        let mut prev_sig: Option<char> = None;
+                        let (base_line, ruby_anns) = crate::core::document::parse_ruby(line);
+                        let chars: Vec<char> = base_line.chars().collect();
+                        let mut ci = 0;
+                        let mut ruby_open: Option<(f64, usize)> = None;
+                        while ci < chars.len() {
+                            let ch = chars[ci];
+                            ci += 1;
+                            if char_advance_estimate(ch) == 0.0 {
+                                continue;
                             }
-                            crate::core::document::TextAnchor::End => line_pos.x - total_w,
+                            // 和欧間 auto spacing advances the cell.
+                            if style.auto_spacing {
+                                if let Some(p) = prev_sig {
+                                    if is_ja_latin_boundary(p, ch) {
+                                        y_local += ja_latin_gap_em(
+                                            style.effective_font_size(),
+                                            style.auto_spacing_em as f64,
+                                        );
+                                    }
+                                }
+                            }
+                            // Ruby group starting at this char.
+                            if let Some(ann) = ruby_anns.iter().find(|a| a.start == ci - 1) {
+                                ruby_open = Some((y_local, ann.len));
+                            }
+                            let adv_local = char_advance_estimate(ch) * style.effective_font_size()
+                                + style.effective_letter_spacing();
+                            let adv_screen = adv_local * state.zoom as f64;
+                            let xs = to_screen(col_x_local, y_local).x;
+                            let ys = to_screen(col_x_local, y_local).y;
+                            // 縦中横: 2–3 digits share one em cell, set
+                            // horizontally (scaled, unrotated).
+                            let unit_len = crate::core::document::tatechuyoko_run(&chars, ci - 1);
+                            if let Some(n) = unit_len {
+                                let unit: String = chars[ci - 1..ci - 1 + n].iter().collect();
+                                ci += n - 1;
+                                let adv_unit =
+                                    style.effective_font_size() + style.effective_letter_spacing();
+                                let small = egui::FontId::new(
+                                    font_id.size / n as f32,
+                                    font_id.family.clone(),
+                                );
+                                let galley = painter.layout_no_wrap(unit, small, color);
+                                let gw = galley.size().x;
+                                let gh = galley.size().y;
+                                let cx = to_screen(
+                                    col_x_local + style.effective_font_size() / 2.0,
+                                    y_local,
+                                )
+                                .x - gw / 2.0;
+                                let cy =
+                                    to_screen(col_x_local, y_local + adv_unit / 2.0).y - gh / 2.0;
+                                painter.galley(egui::pos2(cx, cy), galley, color);
+                                y_local += adv_unit;
+                                prev_sig = Some(chars[ci - 1]);
+                                // Ruby group closing on this char.
+                                if let Some((start_y, left)) = ruby_open {
+                                    if left <= 1 {
+                                        ruby_open = None;
+                                        let ann = ruby_anns.iter().find(|a| a.start + a.len == ci);
+                                        if let Some(ann) = ann {
+                                            draw_canvas_ruby(
+                                                painter,
+                                                font_id.clone(),
+                                                color,
+                                                &ann.reading,
+                                                col_x_local,
+                                                start_y,
+                                                y_local,
+                                                style,
+                                                &to_screen,
+                                            );
+                                        }
+                                    } else {
+                                        ruby_open = Some((start_y, left - 1));
+                                    }
+                                }
+                                continue;
+                            }
+                            // vert-rotated brackets: the face's vertical
+                            // form is a 90° CW rotation, so draw it that
+                            // way (PDF/SVG agree; see is_vert_rotated_char).
+                            if is_fullwidth_char(ch)
+                                && !crate::core::document::is_vert_rotated_char(ch)
+                            {
+                                let galley =
+                                    painter.layout_no_wrap(ch.to_string(), font_id.clone(), color);
+                                painter.galley(egui::pos2(xs, ys), galley, color);
+                            } else {
+                                let galley =
+                                    painter.layout_no_wrap(ch.to_string(), font_id.clone(), color);
+                                let gw = galley.size().x;
+                                let gh = galley.size().y;
+                                let pos = egui::pos2(
+                                    xs + (line_height - gh) / 2.0,
+                                    ys + (adv_screen as f32 - gw) / 2.0,
+                                );
+                                let ts = egui::epaint::TextShape::new(pos, galley, color)
+                                    .with_angle(std::f32::consts::FRAC_PI_2);
+                                painter.add(ts);
+                            }
+                            y_local += adv_local;
+                            prev_sig = Some(ch);
+                            // Ruby group closing on this char.
+                            if let Some((start_y, left)) = ruby_open {
+                                if left <= 1 {
+                                    ruby_open = None;
+                                    let ann = ruby_anns.iter().find(|a| a.start + a.len == ci);
+                                    if let Some(ann) = ann {
+                                        draw_canvas_ruby(
+                                            painter,
+                                            font_id.clone(),
+                                            color,
+                                            &ann.reading,
+                                            col_x_local,
+                                            start_y,
+                                            y_local,
+                                            style,
+                                            &to_screen,
+                                        );
+                                    }
+                                } else {
+                                    ruby_open = Some((start_y, left - 1));
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    for (li, line) in lines.iter().take(layout.visible).enumerate() {
+                        // Ruby markup is stripped from the drawn base; readings
+                        // (if any) are set above their group in the branch below.
+                        let (base_line, ruby_h) = crate::core::document::parse_ruby(line);
+                        let shear_dx = if italic {
+                            -(crate::core::text_path::FAUX_ITALIC_SHEAR as f32)
+                                * (li as f32 * line_height)
+                        } else {
+                            0.0
                         };
-                        for (ch_str, w, h) in &widths {
-                            // painter::galley positions from the top-left while `pos`
-                            // is the text baseline; align bottoms explicitly.
-                            let char_pos = egui::pos2(curr_x, line_pos.y - *h);
+                        // Anchor in local space first (rotation-safe), then the
+                        // screen-space italic shear.
+                        let baseline_ly = origin_y + li as f64 * style.effective_line_height();
+                        let line_pos = egui::pos2(
+                            to_screen(anchor_lx, baseline_ly).x + shear_dx,
+                            base_pos.y + li as f32 * line_height,
+                        );
+                        if !ruby_h.is_empty() {
+                            // ルビ (horizontal): measure the base char-by-char so
+                            // the anchored width matches what is drawn, then set
+                            // each reading above its group's centre.
+                            let letter_space_screen =
+                                (style.effective_letter_spacing() * state.zoom as f64) as f32;
+                            let mut widths: Vec<(char, String, f32, f32)> = Vec::new();
+                            let mut total_w = 0.0;
+                            for ch in base_line.chars() {
+                                let ch_str = ch.to_string();
+                                let galley =
+                                    painter.layout_no_wrap(ch_str.clone(), font_id.clone(), color);
+                                let w = galley.size().x;
+                                let h = galley.size().y;
+                                widths.push((ch, ch_str, w, h));
+                                total_w += w;
+                            }
+                            let mut gaps_w = 0.0f32;
+                            if style.auto_spacing {
+                                for pair in widths.windows(2) {
+                                    if crate::core::document::is_ja_latin_boundary(
+                                        pair[0].0, pair[1].0,
+                                    ) {
+                                        gaps_w += (crate::core::document::ja_latin_gap_em(
+                                            style.effective_font_size(),
+                                            style.auto_spacing_em as f64,
+                                        ) * state.zoom as f64)
+                                            as f32;
+                                    }
+                                }
+                                total_w += gaps_w;
+                            }
+                            if !widths.is_empty() {
+                                total_w += letter_space_screen * (widths.len() as f32 - 1.0);
+                            }
+                            widest = widest.max(total_w);
+                            let mut curr_x = match style.text_anchor {
+                                crate::core::document::TextAnchor::Start => line_pos.x,
+                                crate::core::document::TextAnchor::Middle => {
+                                    line_pos.x - total_w / 2.0
+                                }
+                                crate::core::document::TextAnchor::End => line_pos.x - total_w,
+                            };
+                            let mut group_open: Option<(f32, usize)> = None;
+                            let mut groups: Vec<(f32, f32, String)> = Vec::new();
+                            let mut prev_ch: Option<char> = None;
+                            let mut i = 0usize;
+                            while i < widths.len() {
+                                let (ch, ch_str, w, h) = &widths[i];
+                                if style.auto_spacing {
+                                    if let Some(p) = prev_ch {
+                                        if crate::core::document::is_ja_latin_boundary(p, *ch) {
+                                            curr_x += (crate::core::document::ja_latin_gap_em(
+                                                style.effective_font_size(),
+                                                style.auto_spacing_em as f64,
+                                            ) * state.zoom as f64)
+                                                as f32;
+                                        }
+                                    }
+                                }
+                                // Ruby group starting here: remember its left edge.
+                                if let Some(ann) = ruby_h.iter().find(|a| a.start == i) {
+                                    group_open = Some((curr_x, ann.len));
+                                }
+                                let char_pos = egui::pos2(curr_x, line_pos.y - *h);
+                                let galley =
+                                    painter.layout_no_wrap(ch_str.clone(), font_id.clone(), color);
+                                painter.galley(char_pos, galley, color);
+                                if bold {
+                                    let g2 = painter.layout_no_wrap(
+                                        ch_str.clone(),
+                                        font_id.clone(),
+                                        color,
+                                    );
+                                    painter.galley(
+                                        egui::pos2(curr_x + bold_dx, line_pos.y - *h),
+                                        g2,
+                                        color,
+                                    );
+                                }
+                                curr_x += *w + letter_space_screen;
+                                prev_ch = Some(*ch);
+                                i += 1;
+                                if let Some((sx, left)) = group_open {
+                                    if left <= 1 {
+                                        group_open = None;
+                                        if let Some(ann) =
+                                            ruby_h.iter().find(|a| a.start + a.len == i)
+                                        {
+                                            groups.push((sx, curr_x, ann.reading.clone()));
+                                        }
+                                    } else {
+                                        group_open = Some((sx, left - 1));
+                                    }
+                                }
+                            }
+                            for (sx, ex, reading) in groups {
+                                let small =
+                                    egui::FontId::new(font_id.size / 2.0, font_id.family.clone());
+                                let galley = painter.layout_no_wrap(reading, small, color);
+                                let gw = galley.size().x;
+                                let cy = line_pos.y
+                                    - (style.effective_font_size()
+                                        * crate::core::document::RUBY_ABOVE_EM
+                                        * state.zoom as f64)
+                                        as f32;
+                                painter.galley(
+                                    egui::pos2((sx + ex) / 2.0 - gw / 2.0, cy),
+                                    galley,
+                                    color,
+                                );
+                            }
+                        } else if style.effective_letter_spacing() != 0.0 {
+                            let letter_space_screen =
+                                (style.effective_letter_spacing() * state.zoom as f64) as f32;
+                            // Pre-measure so text-anchor (middle/end) applies to the whole run,
+                            // matching exported SVG behavior.
+                            let mut widths: Vec<(char, String, f32, f32)> = Vec::new();
+                            let mut total_w = 0.0;
+                            for ch in base_line.chars() {
+                                let ch_str = ch.to_string();
+                                let galley =
+                                    painter.layout_no_wrap(ch_str.clone(), font_id.clone(), color);
+                                let w = galley.size().x;
+                                let h = galley.size().y;
+                                widths.push((ch, ch_str, w, h));
+                                total_w += w;
+                            }
+                            let mut gaps_w = 0.0f32;
+                            if style.auto_spacing {
+                                for pair in widths.windows(2) {
+                                    if crate::core::document::is_ja_latin_boundary(
+                                        pair[0].0, pair[1].0,
+                                    ) {
+                                        gaps_w += (crate::core::document::ja_latin_gap_em(
+                                            style.effective_font_size(),
+                                            style.auto_spacing_em as f64,
+                                        ) * state.zoom as f64)
+                                            as f32;
+                                    }
+                                }
+                                total_w += gaps_w;
+                            }
+                            if !widths.is_empty() {
+                                total_w += letter_space_screen * (widths.len() as f32 - 1.0);
+                            }
+                            widest = widest.max(total_w);
+                            let mut curr_x = match style.text_anchor {
+                                crate::core::document::TextAnchor::Start => line_pos.x,
+                                crate::core::document::TextAnchor::Middle => {
+                                    line_pos.x - total_w / 2.0
+                                }
+                                crate::core::document::TextAnchor::End => line_pos.x - total_w,
+                            };
+                            let mut prev_ch: Option<char> = None;
+                            for (ch, ch_str, w, h) in &widths {
+                                if style.auto_spacing {
+                                    if let Some(p) = prev_ch {
+                                        if crate::core::document::is_ja_latin_boundary(p, *ch) {
+                                            curr_x += (crate::core::document::ja_latin_gap_em(
+                                                style.effective_font_size(),
+                                                style.auto_spacing_em as f64,
+                                            ) * state.zoom as f64)
+                                                as f32;
+                                        }
+                                    }
+                                }
+                                // painter::galley positions from the top-left while `pos`
+                                // is the text baseline; align bottoms explicitly.
+                                let char_pos = egui::pos2(curr_x, line_pos.y - *h);
+                                let galley =
+                                    painter.layout_no_wrap(ch_str.clone(), font_id.clone(), color);
+                                painter.galley(char_pos, galley, color);
+                                if bold {
+                                    let g2 = painter.layout_no_wrap(
+                                        ch_str.clone(),
+                                        font_id.clone(),
+                                        color,
+                                    );
+                                    painter.galley(
+                                        egui::pos2(curr_x + bold_dx, line_pos.y - *h),
+                                        g2,
+                                        color,
+                                    );
+                                }
+                                curr_x += *w + letter_space_screen;
+                                prev_ch = Some(*ch);
+                            }
+                        } else if style.auto_spacing
+                            && crate::core::document::has_ja_latin_boundary(&base_line)
+                        {
+                            // 和欧間 auto-spacing: draw each script-neighbourhood
+                            // segment separately, injecting the ~1/4em gap between.
+                            let segs =
+                                crate::core::document::split_ja_latin_segments(&base_line, style);
+                            let mut total_w = 0.0f32;
+                            let mut galleys = Vec::new();
+                            let mut gaps = Vec::new();
+                            for (seg, gap) in &segs {
+                                let g = painter.layout_no_wrap(seg.clone(), font_id.clone(), color);
+                                total_w += g.size().x;
+                                gaps.push(if *gap {
+                                    (ja_latin_gap_em(
+                                        style.effective_font_size(),
+                                        style.auto_spacing_em as f64,
+                                    ) * state.zoom as f64)
+                                        as f32
+                                } else {
+                                    0.0
+                                });
+                                galleys.push(g);
+                            }
+                            // Anchor across the whole run.
+                            total_w += gaps.iter().sum::<f32>();
+                            let start_x = match style.text_anchor {
+                                crate::core::document::TextAnchor::Start => line_pos.x,
+                                crate::core::document::TextAnchor::Middle => {
+                                    line_pos.x - total_w / 2.0
+                                }
+                                crate::core::document::TextAnchor::End => line_pos.x - total_w,
+                            };
+                            widest = widest.max(total_w);
+                            let mut curr_x = start_x;
+                            for (idx, g) in galleys.iter().enumerate() {
+                                if idx > 0 {
+                                    curr_x += gaps[idx];
+                                }
+                                let h = g.size().y;
+                                painter.galley(
+                                    egui::pos2(curr_x, line_pos.y - h),
+                                    g.clone(),
+                                    color,
+                                );
+                                curr_x += g.size().x;
+                            }
+                        } else {
                             let galley =
-                                painter.layout_no_wrap(ch_str.clone(), font_id.clone(), color);
-                            painter.galley(char_pos, galley, color);
+                                painter.layout_no_wrap(line.to_string(), font_id.clone(), color);
+                            widest = widest.max(galley.size().x);
+                            painter.text(line_pos, align, *line, font_id.clone(), color);
                             if bold {
-                                let g2 = painter.layout_no_wrap(
-                                    ch_str.clone(),
+                                painter.text(
+                                    egui::pos2(line_pos.x + bold_dx, line_pos.y),
+                                    align,
+                                    *line,
                                     font_id.clone(),
                                     color,
                                 );
-                                painter.galley(
-                                    egui::pos2(curr_x + bold_dx, line_pos.y - *h),
-                                    g2,
-                                    color,
-                                );
                             }
-                            curr_x += *w + letter_space_screen;
-                        }
-                    } else {
-                        let galley =
-                            painter.layout_no_wrap(line.to_string(), font_id.clone(), color);
-                        widest = widest.max(galley.size().x);
-                        painter.text(line_pos, align, *line, font_id.clone(), color);
-                        if bold {
-                            painter.text(
-                                egui::pos2(line_pos.x + bold_dx, line_pos.y),
-                                align,
-                                *line,
-                                font_id.clone(),
-                                color,
-                            );
                         }
                     }
                 }
@@ -1099,7 +1476,10 @@ impl CanvasWidget {
             let ux = dx / len;
             let uy = dy / len;
             let proj = |p: Pos2| (p.x - sx0) * ux + (p.y - sy0) * uy;
-            let s_min = screen_pts.iter().map(|p| proj(*p)).fold(f32::INFINITY, f32::min);
+            let s_min = screen_pts
+                .iter()
+                .map(|p| proj(*p))
+                .fold(f32::INFINITY, f32::min);
             let s_max = screen_pts
                 .iter()
                 .map(|p| proj(*p))
@@ -1243,10 +1623,7 @@ impl CanvasWidget {
 
             // Shape-clipped band: no disc overdraw outside the silhouette.
             let mut piece = clip_poly_to_ellipse_band(&screen_pts, fx, fy, rx, ry, t0, t1);
-            if piece.len() < 3
-                && t0 == 0.0
-                && pos_in_polygon(fx, fy, &screen_pts)
-            {
+            if piece.len() < 3 && t0 == 0.0 && pos_in_polygon(fx, fy, &screen_pts) {
                 // Innermost band around an interior focal point touches no
                 // edge; without this the centre would stay transparent.
                 // No band crossings were found, so the disc lies fully
@@ -1317,39 +1694,104 @@ impl CanvasWidget {
             ))
         };
         if let Some((bb_min, bb_max)) = bb {
-            let tile_w = (pat.tile_width * pat.scale) as f32 * state.zoom;
-            let tile_h = (pat.tile_height * pat.scale) as f32 * state.zoom;
-            if tile_w < 2.0 || tile_h < 2.0 {
+            // Tiny tiles at this zoom would be sub-pixel noise: skip work.
+            let tile_w_screen = (pat.tile_width * pat.scale) as f32 * state.zoom;
+            let tile_h_screen = (pat.tile_height * pat.scale) as f32 * state.zoom;
+            if tile_w_screen < 2.0 || tile_h_screen < 2.0 {
                 return;
             }
-
+            let bounds = (bb_min.x, bb_min.y, bb_max.x, bb_max.y);
+            let Some(primitives) = crate::core::path::pattern_primitives(pat, bounds) else {
+                return;
+            };
+            // Frame budget: stride-sample so heavy patterns degrade to a
+            // sparser motif instead of stalling interaction. Print output is
+            // unaffected (it uses the full list).
+            let primitives = sample_pattern_primitives_for_frame(&primitives, PATTERN_FRAME_BUDGET);
+            let screen_clip = painter.clip_rect();
+            let to_screen_pattern = |p: AnchorPoint| {
+                Pos2::new(
+                    origin.x + p.x as f32 * state.zoom,
+                    origin.y + p.y as f32 * state.zoom,
+                )
+            };
+            let polygon: Vec<AnchorPoint> = wpoly
+                .iter()
+                .map(|(x, y)| AnchorPoint::new(*x, *y))
+                .collect();
             let base_color = obj
                 .fill
                 .as_ref()
                 .map(|f| f.color)
                 .unwrap_or([0.0, 0.0, 0.0, 1.0]);
-            let a = (base_color[3] * opacity * 255.0) as u8;
-            let tile_color = Color32::from_rgba_unmultiplied(
+            let color = Color32::from_rgba_unmultiplied(
                 (base_color[0] * 255.0) as u8,
                 (base_color[1] * 255.0) as u8,
                 (base_color[2] * 255.0) as u8,
-                a,
+                (base_color[3] * opacity * 255.0).round().clamp(0.0, 255.0) as u8,
             );
-
-            let sx = origin.x + bb_min.x as f32 * state.zoom + (pat.offset_x as f32 * state.zoom);
-            let sy = origin.y + bb_min.y as f32 * state.zoom + (pat.offset_y as f32 * state.zoom);
-            let ex = origin.x + bb_max.x as f32 * state.zoom;
-            let ey = origin.y + bb_max.y as f32 * state.zoom;
-
-            let mut y = sy;
-            while y < ey {
-                let mut x = sx;
-                while x < ex {
-                    let r = Rect::from_min_size(Pos2::new(x, y), Vec2::new(tile_w, tile_h));
-                    painter.rect_filled(r, 0.0, tile_color);
-                    x += tile_w;
+            let stroke = Stroke::new(0.8_f32, color);
+            let inside = |x: f64, y: f64| crate::core::geometry::point_in_polygon(x, y, &polygon);
+            for primitive in primitives {
+                match primitive {
+                    PatternPrimitive::Line(a, b) => {
+                        let sa = to_screen_pattern(a);
+                        let sb = to_screen_pattern(b);
+                        // Viewport cull before expensive shape clipping.
+                        let line_rect = egui::Rect::from_min_max(
+                            Pos2::new(sa.x.min(sb.x), sa.y.min(sb.y)),
+                            Pos2::new(sa.x.max(sb.x), sa.y.max(sb.y)),
+                        );
+                        if !screen_clip.intersects(line_rect) {
+                            continue;
+                        }
+                        let length = sa.distance(sb);
+                        let steps = (length / 8.0).ceil().clamp(1.0, 128.0) as usize;
+                        let mut run_start = None;
+                        for step in 0..=steps {
+                            let t = step as f64 / steps as f64;
+                            let x = a.x + (b.x - a.x) * t;
+                            let y = a.y + (b.y - a.y) * t;
+                            let in_shape = step < steps
+                                && inside(
+                                    x + (b.x - a.x) / steps as f64 * 0.5,
+                                    y + (b.y - a.y) / steps as f64 * 0.5,
+                                );
+                            if in_shape && run_start.is_none() {
+                                run_start = Some(step);
+                            } else if !in_shape {
+                                if let Some(start) = run_start.take() {
+                                    let t0 = start as f64 / steps as f64;
+                                    let t1 = step as f64 / steps as f64;
+                                    let p0 = AnchorPoint::new(
+                                        a.x + (b.x - a.x) * t0,
+                                        a.y + (b.y - a.y) * t0,
+                                    );
+                                    let p1 = AnchorPoint::new(
+                                        a.x + (b.x - a.x) * t1,
+                                        a.y + (b.y - a.y) * t1,
+                                    );
+                                    painter.line_segment(
+                                        [to_screen_pattern(p0), to_screen_pattern(p1)],
+                                        stroke,
+                                    );
+                                }
+                            }
+                        }
+                    }
+                    PatternPrimitive::Dot(center, radius) => {
+                        let p = to_screen_pattern(center);
+                        if !screen_clip.contains(p) {
+                            continue;
+                        }
+                        // Center-point test: the old 8-perimeter `all()`
+                        // erased edge dots entirely and made them pop while
+                        // panning. Center coverage is stable and cheap.
+                        if inside(center.x, center.y) {
+                            painter.circle_filled(p, (radius as f32 * state.zoom).max(0.5), color);
+                        }
+                    }
                 }
-                y += tile_h;
             }
         }
     }
@@ -1388,7 +1830,7 @@ impl CanvasWidget {
             return;
         }
         // 1px = 1 world unit, same convention as placed Image objects.
-        let (tex_id, iw, ih) = match self.image_textures.get(&img.image_id) {
+        let (tex_id, source_w, source_h) = match self.image_textures.get(&img.image_id) {
             Some(tex) => {
                 let [w, h] = tex.size();
                 (tex.id(), w as f64, h as f64)
@@ -1398,9 +1840,26 @@ impl CanvasWidget {
                 return;
             }
         };
+        let [crop_x, crop_y, crop_w, crop_h] = img.crop_rect.unwrap_or([0.0, 0.0, 1.0, 1.0]);
+        if ![crop_x, crop_y, crop_w, crop_h]
+            .iter()
+            .all(|value| value.is_finite())
+        {
+            return;
+        }
+        let crop_x = crop_x.clamp(0.0, 1.0);
+        let crop_y = crop_y.clamp(0.0, 1.0);
+        let crop_right = (crop_x + crop_w).clamp(0.0, 1.0);
+        let crop_bottom = (crop_y + crop_h).clamp(0.0, 1.0);
+        let (crop_w, crop_h) = (crop_right - crop_x, crop_bottom - crop_y);
+        if crop_w <= 0.0 || crop_h <= 0.0 {
+            return;
+        }
+        let (iw, ih) = (source_w * crop_w as f64, source_h * crop_h as f64);
         if iw <= 0.0 || ih <= 0.0 {
             return;
         }
+        let crop_uv = |u: f32, v: f32| (crop_x + u * crop_w, crop_y + v * crop_h);
         let wpoly: Vec<(f64, f64)> = obj
             .to_path_data()
             .to_polygon(16)
@@ -1446,7 +1905,7 @@ impl CanvasWidget {
                 let cover = img.tile_mode == ImageTileMode::Cover;
                 let (ox, oy, dw, dh) = cover_contain_placement(bw, bh, iw, ih, cover);
                 let (ox, oy) = (bx + ox, by + oy);
-                let uv = |x: f64, y: f64| (((x - ox) / dw) as f32, ((y - oy) / dh) as f32);
+                let uv = |x: f64, y: f64| crop_uv(((x - ox) / dw) as f32, ((y - oy) / dh) as f32);
                 for t in &tris {
                     // Cover always spans the bbox; Contain letterboxes, so
                     // fragments outside the fitted rect must be cut away
@@ -1461,7 +1920,7 @@ impl CanvasWidget {
                 }
             }
             ImageTileMode::Fit => {
-                let uv = |x: f64, y: f64| (((x - bx) / bw) as f32, ((y - by) / bh) as f32);
+                let uv = |x: f64, y: f64| crop_uv(((x - bx) / bw) as f32, ((y - by) / bh) as f32);
                 for t in &tris {
                     push_textured_fan(&mut mesh, t, &uv, &to_screen, tint);
                 }
@@ -1475,7 +1934,8 @@ impl CanvasWidget {
                     // a single Cover placement instead of stalling the frame.
                     let (ox, oy, dw, dh) = cover_contain_placement(bw, bh, iw, ih, true);
                     let (ox, oy) = (bx + ox, by + oy);
-                    let uv = |x: f64, y: f64| (((x - ox) / dw) as f32, ((y - oy) / dh) as f32);
+                    let uv =
+                        |x: f64, y: f64| crop_uv(((x - ox) / dw) as f32, ((y - oy) / dh) as f32);
                     for t in &tris {
                         push_textured_fan(&mut mesh, t, &uv, &to_screen, tint);
                     }
@@ -1484,7 +1944,7 @@ impl CanvasWidget {
                         for i in 0..nx {
                             let (tx, ty) = (bx + i as f64 * iw, by + j as f64 * ih);
                             let uv = |x: f64, y: f64| {
-                                (((x - tx) / iw) as f32, ((y - ty) / ih) as f32)
+                                crop_uv(((x - tx) / iw) as f32, ((y - ty) / ih) as f32)
                             };
                             for t in &tris {
                                 let clipped = clip_tri_to_rect(t, (tx, ty, iw, ih));
@@ -1526,7 +1986,7 @@ impl CanvasWidget {
         let line_h = style.effective_line_height();
         let bold = style.font_weight >= 650;
         // Match the legacy faux-bold weight (screen-space doubling).
-        let scaled_size = (style.font_size * state.zoom as f64) as f32;
+        let scaled_size = (style.effective_font_size() * state.zoom as f64) as f32;
         let bold_dx = (scaled_size * 0.035).clamp(0.5, 1.5);
         // Area text starts at the box's em-box origin and clips lines that
         // overflow the bottom; point text keeps origin (0,0).
@@ -1535,7 +1995,14 @@ impl CanvasWidget {
             if cl.tris.is_empty() {
                 continue;
             }
-            let base_y = origin_y + li as f64 * line_h;
+            // Horizontal text stacks lines down the Y axis; vertical text
+            // stacks columns along X (per-line col_x offset already in
+            // `cl.x_off`), so every column starts at the same Y.
+            let base_y = if style.vertical {
+                origin_y
+            } else {
+                origin_y + li as f64 * line_h
+            };
             let mut mesh = egui::epaint::Mesh::default();
             for tri in &cl.tris {
                 let base = mesh.vertices.len() as u32;
@@ -1613,7 +2080,13 @@ fn world_bbox(pts: &[(f64, f64)]) -> Option<(f64, f64, f64, f64)> {
 /// Cover (`cover = true`, uniform scale until the bbox is fully covered) and
 /// Contain (`cover = false`, whole image fits inside), both centered —
 /// mirroring SVG `xMidYMid slice` / `xMidYMid meet`.
-fn cover_contain_placement(bw: f64, bh: f64, iw: f64, ih: f64, cover: bool) -> (f64, f64, f64, f64) {
+fn cover_contain_placement(
+    bw: f64,
+    bh: f64,
+    iw: f64,
+    ih: f64,
+    cover: bool,
+) -> (f64, f64, f64, f64) {
     let s = if cover {
         (bw / iw).max(bh / ih)
     } else {
@@ -1635,9 +2108,12 @@ fn clip_tri_to_rect(tri: &[(f64, f64); 3], rect: (f64, f64, f64, f64)) -> Vec<(f
     let (x0, y0, x1, y1) = (rx, ry, rx + rw, ry + rh);
     let mut poly = vec![tri[0], tri[1], tri[2]];
     // (axis, bound, keep_greater): left, right, top, bottom.
-    for (axis, bound, keep_greater) in
-        [(0u8, x0, true), (0, x1, false), (1, y0, true), (1, y1, false)]
-    {
+    for (axis, bound, keep_greater) in [
+        (0u8, x0, true),
+        (0, x1, false),
+        (1, y0, true),
+        (1, y1, false),
+    ] {
         if poly.is_empty() {
             break;
         }
@@ -1712,7 +2188,8 @@ fn push_textured_fan(
         });
     }
     for i in 1..poly.len() - 1 {
-        mesh.indices.extend([base, base + i as u32, base + i as u32 + 1]);
+        mesh.indices
+            .extend([base, base + i as u32, base + i as u32 + 1]);
     }
 }
 
@@ -1749,7 +2226,9 @@ pub fn sample_gradient_stops(stops: &[crate::core::path::GradientStop], t: f32) 
 fn fill_type_color(fill: &FillStyle, opacity: f32) -> Option<Color32> {
     let c = match &fill.fill_type {
         FillType::Solid(color) => *color,
-        FillType::Linear(_) | FillType::Radial(_) | FillType::Pattern(_) | FillType::Image(_) => return None,
+        FillType::Linear(_) | FillType::Radial(_) | FillType::Pattern(_) | FillType::Image(_) => {
+            return None
+        }
     };
     let a = c[3] * opacity;
     if a <= 0.0 {
@@ -1949,9 +2428,7 @@ fn clip_poly_to_ellipse_band(
         return Vec::new();
     }
     let t_of = |p: Pos2| ellipse_norm_dist(p.x, p.y, cx, cy, rx, ry);
-    let lerp = |a: Pos2, b: Pos2, s: f32| {
-        Pos2::new(a.x + s * (b.x - a.x), a.y + s * (b.y - a.y))
-    };
+    let lerp = |a: Pos2, b: Pos2, s: f32| Pos2::new(a.x + s * (b.x - a.x), a.y + s * (b.y - a.y));
     let mut out = Vec::new();
     let n = poly.len();
     for i in 0..n {
@@ -1967,27 +2444,23 @@ fn clip_poly_to_ellipse_band(
             out.push(curr);
             // Exiting: cross whichever bound lies ahead.
             let target = if tn > tc { t1 } else { t0 };
-            let mut xs = edge_ellipse_crossings(
-                curr.x, curr.y, next.x, next.y, cx, cy, rx, ry, target,
-            );
+            let mut xs =
+                edge_ellipse_crossings(curr.x, curr.y, next.x, next.y, cx, cy, rx, ry, target);
             xs.sort_by(|a, b| a.total_cmp(b));
             if let Some(&s) = xs.first() {
                 out.push(lerp(curr, next, s));
             }
         } else if !cin && nin {
             let target = if tn > tc { t0 } else { t1 };
-            let mut xs = edge_ellipse_crossings(
-                curr.x, curr.y, next.x, next.y, cx, cy, rx, ry, target,
-            );
+            let mut xs =
+                edge_ellipse_crossings(curr.x, curr.y, next.x, next.y, cx, cy, rx, ry, target);
             xs.sort_by(|a, b| a.total_cmp(b));
             if let Some(&s) = xs.last() {
                 out.push(lerp(curr, next, s));
             }
         } else {
             // Both outside: the edge may still cut through the band.
-            let mut xs = edge_ellipse_crossings(
-                curr.x, curr.y, next.x, next.y, cx, cy, rx, ry, t0,
-            );
+            let mut xs = edge_ellipse_crossings(curr.x, curr.y, next.x, next.y, cx, cy, rx, ry, t0);
             xs.extend(edge_ellipse_crossings(
                 curr.x, curr.y, next.x, next.y, cx, cy, rx, ry, t1,
             ));
@@ -2094,7 +2567,13 @@ mod gradient_clip_tests {
         ];
         for i in 0..8 {
             let piece = clip_poly_to_ellipse_band(
-                &poly, 5.0, 5.0, 6.0, 6.0, i as f32 * 0.25, (i + 1) as f32 * 0.25,
+                &poly,
+                5.0,
+                5.0,
+                6.0,
+                6.0,
+                i as f32 * 0.25,
+                (i + 1) as f32 * 0.25,
             );
             for p in &piece {
                 // Inside bbox (silhouette test at vertex level).
@@ -2173,10 +2652,16 @@ mod image_fill_clip_tests {
         // Wide 8x2 image into a 200x100 bbox.
         let (ox, oy, dw, dh) = cover_contain_placement(200.0, 100.0, 8.0, 2.0, true);
         assert!((dw - 400.0).abs() < 1e-9 && (dh - 100.0).abs() < 1e-9);
-        assert!((ox + 100.0).abs() < 1e-9 && oy.abs() < 1e-9, "cover centers overflow");
+        assert!(
+            (ox + 100.0).abs() < 1e-9 && oy.abs() < 1e-9,
+            "cover centers overflow"
+        );
         let (ox, oy, dw, dh) = cover_contain_placement(200.0, 100.0, 8.0, 2.0, false);
         assert!((dw - 200.0).abs() < 1e-9 && (dh - 50.0).abs() < 1e-9);
-        assert!(ox.abs() < 1e-9 && (oy - 25.0).abs() < 1e-9, "contain centers bands");
+        assert!(
+            ox.abs() < 1e-9 && (oy - 25.0).abs() < 1e-9,
+            "contain centers bands"
+        );
     }
 
     #[test]
@@ -2255,8 +2740,9 @@ mod real_text_tests {
 
     #[test]
     fn cjk_in_latin_face_falls_back() {
-        // Bundled Inter has no kana: the whole object goes legacy (UI
-        // cascade Noto) instead of a ransom note of mock blocks.
+        // Bundled Inter has no kana: per-glyph fallback shapes the kana
+        // with a CJK-capable face instead of the all-or-nothing ransom
+        // note of mock blocks.
         let mut state = AppState::default();
         let style = TextStyle::new("Inter", 40.0);
         let obj = Object::new_text_with_style("T", "あ", 0.0, 0.0, style);
@@ -2265,7 +2751,10 @@ mod real_text_tests {
         let mut w = CanvasWidget::new();
         w.ensure_text_meshes(&state);
         let (_, lines) = w.text_meshes.get(&id).expect("text cached");
-        assert!(lines.is_none(), "legacy egui path draws this one");
+        assert!(
+            lines.is_some(),
+            "kana outlines now come from the fallback face"
+        );
     }
 
     #[test]

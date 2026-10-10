@@ -98,13 +98,11 @@ impl PreferencesDialog {
         let mut is_open = self.is_open;
         let mut ok_clicked = false;
         let mut cancel_clicked = false;
+        let language = state.prefs.language.clone();
         let screen = ctx.screen_rect();
-        let (size, min_size, pos) = crate::ui::window_defaults(
-            screen,
-            Vec2::new(560.0, 520.0),
-            Vec2::new(300.0, 260.0),
-        );
-        egui::Window::new("環境設定")
+        let (size, min_size, pos) =
+            crate::ui::window_defaults(screen, Vec2::new(560.0, 520.0), Vec2::new(300.0, 260.0));
+        egui::Window::new(crate::ui::i18n::text(&language, "preferences.title"))
             .open(&mut is_open)
             .collapsible(false)
             .resizable(true)
@@ -114,15 +112,15 @@ impl PreferencesDialog {
             .show(ctx, |ui| {
                 let total_w = ui.available_width();
                 let categories = [
-                    (PrefCategory::General, "一般"),
-                    (PrefCategory::Interface, "インターフェース"),
-                    (PrefCategory::Performance, "パフォーマンス"),
-                    (PrefCategory::FileHandling, "ファイルの取り扱い"),
-                    (PrefCategory::GuidesAndGrid, "ガイド・グリッド"),
-                    (PrefCategory::Units, "単位"),
-                    (PrefCategory::Type, "書式 (テキスト)"),
-                    (PrefCategory::Plugins, "プラグイン"),
-                    (PrefCategory::Shortcuts, "ショートカット"),
+                    (PrefCategory::General, "prefs.category.general"),
+                    (PrefCategory::Interface, "prefs.category.interface"),
+                    (PrefCategory::Performance, "prefs.category.performance"),
+                    (PrefCategory::FileHandling, "prefs.category.files"),
+                    (PrefCategory::GuidesAndGrid, "prefs.category.guides_grid"),
+                    (PrefCategory::Units, "prefs.category.units"),
+                    (PrefCategory::Type, "prefs.category.type"),
+                    (PrefCategory::Plugins, "prefs.category.plugins"),
+                    (PrefCategory::Shortcuts, "prefs.category.shortcuts"),
                 ];
 
                 // Category tabs across the top (always wrapped — no sidebar,
@@ -133,7 +131,7 @@ impl PreferencesDialog {
                         if ui
                             .selectable_label(
                                 is_sel,
-                                RichText::new(label)
+                                RichText::new(crate::ui::i18n::text(&language, label))
                                     .size(11.5)
                                     .color(if is_sel {
                                         Color32::WHITE
@@ -165,7 +163,13 @@ impl PreferencesDialog {
                                 ok_clicked = true;
                             }
                             if ui
-                                .add(egui::Button::new("キャンセル").min_size(Vec2::new(80.0, 26.0)))
+                                .add(
+                                    egui::Button::new(crate::ui::i18n::text(
+                                        &state.prefs.language,
+                                        "prefs.cancel",
+                                    ))
+                                    .min_size(Vec2::new(80.0, 26.0)),
+                                )
                                 .clicked()
                             {
                                 cancel_clicked = true;
@@ -177,7 +181,13 @@ impl PreferencesDialog {
                     self.show_content(ui, total_w, state);
                     ui.add_space(8.0);
                     if ui
-                        .button(RichText::new("すべての環境設定をリセット").size(10.5))
+                        .button(
+                            RichText::new(crate::ui::i18n::text(
+                                &state.prefs.language,
+                                "prefs.reset",
+                            ))
+                            .size(10.5),
+                        )
                         .clicked()
                     {
                         state.prefs = Prefs::default();
@@ -214,23 +224,36 @@ impl PreferencesDialog {
         let prefs = &mut state.prefs;
         match self.selected_category {
             PrefCategory::General => {
-                ui.label(RichText::new("一般").strong().size(14.0));
+                ui.label(
+                    RichText::new(crate::ui::i18n::text(&prefs.language, "prefs.general"))
+                        .strong()
+                        .size(14.0),
+                );
                 ui.add_space(6.0);
 
                 ui.label(
-                    RichText::new("起動・作業環境")
+                    RichText::new(crate::ui::i18n::text(&prefs.language, "prefs.startup"))
                         .strong()
                         .size(11.5)
                         .color(Color32::from_rgb(180, 180, 180)),
                 );
-                ui.checkbox(&mut prefs.show_home_on_startup, "起動時にホームを表示");
-                ui.checkbox(&mut prefs.open_last_doc, "前回のドキュメントを開く");
+                ui.checkbox(
+                    &mut prefs.show_home_on_startup,
+                    crate::ui::i18n::text(&prefs.language, "prefs.home_startup"),
+                );
+                ui.checkbox(
+                    &mut prefs.open_last_doc,
+                    crate::ui::i18n::text(&prefs.language, "prefs.reopen_last"),
+                );
                 ui.checkbox(
                     &mut prefs.show_new_doc_dialog,
-                    "新規ドキュメントを作成するときに設定ダイアログを表示",
+                    crate::ui::i18n::text(&prefs.language, "prefs.show_new_dialog"),
                 );
                 ui.horizontal_wrapped(|ui| {
-                    ui.label(RichText::new("最近使用したファイルの表示数:").size(11.0));
+                    ui.label(
+                        RichText::new(crate::ui::i18n::text(&prefs.language, "prefs.recent_count"))
+                            .size(11.0),
+                    );
                     egui::ComboBox::from_id_salt("recent_files")
                         .selected_text(format!("{}", prefs.recent_files_count))
                         .width(60.0)
@@ -241,7 +264,10 @@ impl PreferencesDialog {
                         });
                 });
                 ui.horizontal_wrapped(|ui| {
-                    ui.label(RichText::new("取り消しの回数 (ヒストリー数):").size(11.0));
+                    ui.label(
+                        RichText::new(crate::ui::i18n::text(&prefs.language, "prefs.undo_count"))
+                            .size(11.0),
+                    );
                     egui::ComboBox::from_id_salt("history_count")
                         .selected_text(format!("{}", prefs.history_states_count))
                         .width(60.0)
@@ -257,53 +283,81 @@ impl PreferencesDialog {
                 ui.add_space(6.0);
 
                 ui.label(
-                    RichText::new("選択・表示")
-                        .strong()
-                        .size(11.5)
-                        .color(Color32::from_rgb(180, 180, 180)),
+                    RichText::new(crate::ui::i18n::text(
+                        &prefs.language,
+                        "prefs.selection_display",
+                    ))
+                    .strong()
+                    .size(11.5)
+                    .color(Color32::from_rgb(180, 180, 180)),
                 );
                 ui.checkbox(
                     &mut prefs.show_bounding_box,
-                    "オブジェクトを選択したときにバウンディングボックスを表示",
+                    crate::ui::i18n::text(&prefs.language, "prefs.show_bounds"),
                 );
-                ui.checkbox(&mut prefs.show_anchor_points, "アンカーポイントを表示");
-                ui.checkbox(&mut prefs.show_tool_hints, "ツールヒントを表示");
+                ui.checkbox(
+                    &mut prefs.show_anchor_points,
+                    crate::ui::i18n::text(&prefs.language, "prefs.show_anchors"),
+                );
+                ui.checkbox(
+                    &mut prefs.show_tool_hints,
+                    crate::ui::i18n::text(&prefs.language, "prefs.show_tool_hints"),
+                );
                 ui.checkbox(
                     &mut prefs.show_smart_guides_on_transform,
-                    "変形時にスマートガイドを表示",
+                    crate::ui::i18n::text(&prefs.language, "prefs.show_smart_guides"),
                 );
                 ui.horizontal_wrapped(|ui| {
-                    ui.label(RichText::new("アンカーポイントのサイズ:").size(11.0));
+                    ui.label(
+                        RichText::new(crate::ui::i18n::text(&prefs.language, "prefs.anchor_size"))
+                            .size(11.0),
+                    );
                     ui.add(
                         egui::Slider::new(&mut prefs.anchor_point_size, 2.0..=8.0).suffix(" px"),
                     );
                 });
                 ui.horizontal_wrapped(|ui| {
-                    ui.label(RichText::new("ハンドルのサイズ:").size(11.0));
+                    ui.label(
+                        RichText::new(crate::ui::i18n::text(&prefs.language, "prefs.handle_size"))
+                            .size(11.0),
+                    );
                     ui.add(egui::Slider::new(&mut prefs.handle_size, 2.0..=8.0).suffix(" px"));
                 });
                 ui.horizontal_wrapped(|ui| {
-                    ui.label(RichText::new("選択範囲の線の太さ:").size(11.0));
+                    ui.label(
+                        RichText::new(crate::ui::i18n::text(
+                            &prefs.language,
+                            "prefs.selection_line_width",
+                        ))
+                        .size(11.0),
+                    );
                     ui.add(
-                        egui::Slider::new(&mut prefs.selection_line_width, 0.5..=3.0)
-                            .suffix(" px"),
+                        egui::Slider::new(&mut prefs.selection_line_width, 0.5..=3.0).suffix(" px"),
                     );
                 });
                 ui.horizontal_wrapped(|ui| {
-                    ui.label(RichText::new("ポイントとハンドルのカラー:").size(11.0));
+                    ui.label(
+                        RichText::new(crate::ui::i18n::text(&prefs.language, "prefs.handle_color"))
+                            .size(11.0),
+                    );
                     egui::ComboBox::from_id_salt("handle_color")
-                        .selected_text(&prefs.point_handle_color_mode)
+                        .selected_text(match prefs.point_handle_color_mode {
+                            crate::core::prefs::HandleColorMode::HighContrast => {
+                                crate::ui::i18n::text(&prefs.language, "prefs.value.high_contrast")
+                            }
+                            _ => crate::ui::i18n::text(&prefs.language, "prefs.value.default_blue"),
+                        })
                         .width(140.0)
                         .show_ui(ui, |ui| {
                             ui.selectable_value(
                                 &mut prefs.point_handle_color_mode,
-                                "デフォルト".to_string(),
-                                "デフォルト (青)",
+                                crate::core::prefs::HandleColorMode::Default,
+                                crate::ui::i18n::text(&prefs.language, "prefs.value.default_blue"),
                             );
                             ui.selectable_value(
                                 &mut prefs.point_handle_color_mode,
-                                "ハイコントラスト".to_string(),
-                                "ハイコントラスト",
+                                crate::core::prefs::HandleColorMode::HighContrast,
+                                crate::ui::i18n::text(&prefs.language, "prefs.value.high_contrast"),
                             );
                         });
                 });
@@ -313,36 +367,50 @@ impl PreferencesDialog {
                 ui.add_space(6.0);
 
                 ui.label(
-                    RichText::new("外観")
+                    RichText::new(crate::ui::i18n::text(&prefs.language, "prefs.appearance"))
                         .strong()
                         .size(11.5)
                         .color(Color32::from_rgb(180, 180, 180)),
                 );
                 ui.horizontal_wrapped(|ui| {
-                    ui.label(RichText::new("カラーテーマ:").size(11.0));
+                    ui.label(
+                        RichText::new(crate::ui::i18n::text(&prefs.language, "prefs.color_theme"))
+                            .size(11.0),
+                    );
                     egui::ComboBox::from_id_salt("pref_theme")
-                        .selected_text(&prefs.color_theme)
+                        .selected_text(match prefs.color_theme {
+                            crate::core::prefs::ColorTheme::MediumDark => {
+                                crate::ui::i18n::text(&prefs.language, "prefs.value.medium_dark")
+                            }
+                            crate::core::prefs::ColorTheme::Light => {
+                                crate::ui::i18n::text(&prefs.language, "prefs.value.light")
+                            }
+                            _ => crate::ui::i18n::text(&prefs.language, "prefs.value.dark_adobe"),
+                        })
                         .width(160.0)
                         .show_ui(ui, |ui| {
                             ui.selectable_value(
                                 &mut prefs.color_theme,
-                                "ダーク".to_string(),
-                                "ダーク (Adobe Charcoal)",
+                                crate::core::prefs::ColorTheme::Dark,
+                                crate::ui::i18n::text(&prefs.language, "prefs.value.dark_adobe"),
                             );
                             ui.selectable_value(
                                 &mut prefs.color_theme,
-                                "ミディアムダーク".to_string(),
-                                "ミディアムダーク",
+                                crate::core::prefs::ColorTheme::MediumDark,
+                                crate::ui::i18n::text(&prefs.language, "prefs.value.medium_dark"),
                             );
                             ui.selectable_value(
                                 &mut prefs.color_theme,
-                                "ライト".to_string(),
-                                "ライト",
+                                crate::core::prefs::ColorTheme::Light,
+                                crate::ui::i18n::text(&prefs.language, "prefs.value.light"),
                             );
                         });
                 });
                 ui.horizontal_wrapped(|ui| {
-                    ui.label(RichText::new("UIのスケール:").size(11.0));
+                    ui.label(
+                        RichText::new(crate::ui::i18n::text(&prefs.language, "prefs.ui_scale"))
+                            .size(11.0),
+                    );
                     egui::ComboBox::from_id_salt("pref_scale")
                         .selected_text(&prefs.ui_scale)
                         .width(120.0)
@@ -350,68 +418,144 @@ impl PreferencesDialog {
                             ui.selectable_value(
                                 &mut prefs.ui_scale,
                                 "100%".to_string(),
-                                "100% (標準)",
+                                crate::ui::i18n::text(
+                                    &prefs.language,
+                                    "prefs.value.scale_standard",
+                                ),
                             );
                             ui.selectable_value(&mut prefs.ui_scale, "125%".to_string(), "125%");
                             ui.selectable_value(&mut prefs.ui_scale, "150%".to_string(), "150%");
                         });
                 });
                 ui.horizontal_wrapped(|ui| {
-                    ui.label(RichText::new("アートボードの背景:").size(11.0));
+                    ui.label(
+                        RichText::new(crate::ui::i18n::text(
+                            &prefs.language,
+                            "prefs.artboard_background",
+                        ))
+                        .size(11.0),
+                    );
                     egui::ComboBox::from_id_salt("artboard_bg")
-                        .selected_text(&prefs.artboard_bg_mode)
+                        .selected_text(match prefs.artboard_bg_mode {
+                            crate::core::prefs::ArtboardBgMode::Checker => crate::ui::i18n::text(
+                                &prefs.language,
+                                "prefs.value.transparency_grid",
+                            ),
+                            _ => crate::ui::i18n::text(&prefs.language, "prefs.value.white"),
+                        })
                         .width(120.0)
                         .show_ui(ui, |ui| {
                             ui.selectable_value(
                                 &mut prefs.artboard_bg_mode,
-                                "ホワイト".to_string(),
-                                "ホワイト",
+                                crate::core::prefs::ArtboardBgMode::White,
+                                crate::ui::i18n::text(&prefs.language, "prefs.value.white"),
                             );
                             ui.selectable_value(
                                 &mut prefs.artboard_bg_mode,
-                                "透明グリッド".to_string(),
-                                "透明グリッド",
+                                crate::core::prefs::ArtboardBgMode::Checker,
+                                crate::ui::i18n::text(
+                                    &prefs.language,
+                                    "prefs.value.transparency_grid",
+                                ),
                             );
                         });
                 });
-                ui.checkbox(&mut prefs.show_boundary_lines, "境界線を表示");
-                ui.checkbox(&mut prefs.show_dimension_labels, "ディメンションラベルを表示");
+                ui.checkbox(
+                    &mut prefs.show_boundary_lines,
+                    crate::ui::i18n::text(&prefs.language, "prefs.show_boundaries"),
+                );
+                ui.checkbox(
+                    &mut prefs.show_dimension_labels,
+                    crate::ui::i18n::text(&prefs.language, "prefs.show_dimensions"),
+                );
 
                 ui.add_space(6.0);
                 ui.separator();
                 ui.add_space(6.0);
 
                 ui.label(
-                    RichText::new("通知")
-                        .strong()
-                        .size(11.5)
-                        .color(Color32::from_rgb(180, 180, 180)),
+                    RichText::new(crate::ui::i18n::text(
+                        &prefs.language,
+                        "prefs.notifications",
+                    ))
+                    .strong()
+                    .size(11.5)
+                    .color(Color32::from_rgb(180, 180, 180)),
                 );
                 ui.checkbox(
                     &mut prefs.notify_file_compat,
-                    "ファイルの互換性に関する問題",
+                    crate::ui::i18n::text(&prefs.language, "prefs.file_compat"),
                 );
                 ui.checkbox(
                     &mut prefs.notify_font_substitute,
-                    "フォントの置換が発生したとき",
+                    crate::ui::i18n::text(&prefs.language, "prefs.font_substitution"),
                 );
                 ui.checkbox(
                     &mut prefs.notify_plugin_load,
-                    "プラグインの読み込みに関するメッセージ",
+                    crate::ui::i18n::text(&prefs.language, "prefs.plugin_messages"),
+                );
+            }
+            PrefCategory::Interface => {
+                ui.label(
+                    RichText::new(crate::ui::i18n::text(
+                        &prefs.language,
+                        "prefs.category.interface",
+                    ))
+                    .strong()
+                    .size(14.0),
+                );
+                ui.add_space(6.0);
+                ui.horizontal_wrapped(|ui| {
+                    ui.label(crate::ui::i18n::text(
+                        &prefs.language,
+                        "prefs.language.label",
+                    ));
+                    egui::ComboBox::from_id_salt("pref_language")
+                        .selected_text(crate::ui::i18n::locale_name(&prefs.language))
+                        .show_ui(ui, |ui| {
+                            for (locale, native_name) in crate::ui::i18n::available_locales() {
+                                ui.selectable_value(
+                                    &mut prefs.language,
+                                    locale.to_string(),
+                                    native_name,
+                                );
+                            }
+                        });
+                });
+                ui.label(
+                    RichText::new(crate::ui::i18n::text(
+                        &prefs.language,
+                        "prefs.language.note",
+                    ))
+                    .size(11.0)
+                    .color(Color32::from_rgb(150, 150, 150)),
                 );
             }
             PrefCategory::GuidesAndGrid => {
-                ui.label(RichText::new("ガイド・グリッド").strong().size(14.0));
+                ui.label(
+                    RichText::new(crate::ui::i18n::text(
+                        &prefs.language,
+                        "prefs.guides_grid_title",
+                    ))
+                    .strong()
+                    .size(14.0),
+                );
                 ui.add_space(6.0);
                 ui.label(
-                    RichText::new("グリッド")
+                    RichText::new(crate::ui::i18n::text(&prefs.language, "prefs.grid"))
                         .strong()
                         .size(11.5)
                         .color(Color32::from_rgb(180, 180, 180)),
                 );
-                ui.checkbox(&mut prefs.show_grid, "グリッドを表示");
+                ui.checkbox(
+                    &mut prefs.show_grid,
+                    crate::ui::i18n::text(&prefs.language, "prefs.show_grid"),
+                );
                 ui.horizontal_wrapped(|ui| {
-                    ui.label(RichText::new("グリッドの間隔:").size(11.0));
+                    ui.label(
+                        RichText::new(crate::ui::i18n::text(&prefs.language, "prefs.grid_spacing"))
+                            .size(11.0),
+                    );
                     ui.add(
                         egui::DragValue::new(&mut prefs.grid_size)
                             .speed(1.0)
@@ -425,53 +569,86 @@ impl PreferencesDialog {
                 ui.add_space(6.0);
 
                 ui.label(
-                    RichText::new("スナップ")
+                    RichText::new(crate::ui::i18n::text(&prefs.language, "prefs.snap"))
                         .strong()
                         .size(11.5)
                         .color(Color32::from_rgb(180, 180, 180)),
                 );
-                ui.checkbox(&mut prefs.snap_to_grid, "グリッドにスナップ");
-                ui.checkbox(&mut prefs.snap_to_objects, "オブジェクトにスナップ");
-                ui.checkbox(&mut prefs.snap_to_guides, "ガイドにスナップ");
-                ui.checkbox(&mut prefs.snap_to_points, "アンカーポイントにスナップ");
-                ui.checkbox(&mut prefs.snap_to_pixels, "ピクセルにスナップ");
+                ui.checkbox(
+                    &mut prefs.snap_to_grid,
+                    crate::ui::i18n::text(&prefs.language, "prefs.snap_grid"),
+                );
+                ui.checkbox(
+                    &mut prefs.snap_to_objects,
+                    crate::ui::i18n::text(&prefs.language, "prefs.snap_objects"),
+                );
+                ui.checkbox(
+                    &mut prefs.snap_to_guides,
+                    crate::ui::i18n::text(&prefs.language, "prefs.snap_guides"),
+                );
+                ui.checkbox(
+                    &mut prefs.snap_to_points,
+                    crate::ui::i18n::text(&prefs.language, "prefs.snap_anchors"),
+                );
+                ui.checkbox(
+                    &mut prefs.snap_to_pixels,
+                    crate::ui::i18n::text(&prefs.language, "prefs.snap_pixels"),
+                );
 
                 ui.add_space(6.0);
                 ui.separator();
                 ui.add_space(6.0);
 
                 ui.label(
-                    RichText::new("定規")
+                    RichText::new(crate::ui::i18n::text(&prefs.language, "prefs.ruler"))
                         .strong()
                         .size(11.5)
                         .color(Color32::from_rgb(180, 180, 180)),
                 );
-                ui.checkbox(&mut prefs.show_rulers, "定規を表示");
+                ui.checkbox(
+                    &mut prefs.show_rulers,
+                    crate::ui::i18n::text(&prefs.language, "prefs.show_rulers"),
+                );
             }
             PrefCategory::Units => {
-                ui.label(RichText::new("単位").strong().size(14.0));
+                ui.label(
+                    RichText::new(crate::ui::i18n::text(&prefs.language, "prefs.units_title"))
+                        .strong()
+                        .size(14.0),
+                );
                 ui.add_space(6.0);
                 ui.label(
-                    RichText::new(
-                        "座標やサイズは96dpiのピクセルとして保存されたまま \
-                         変わらず、ここでは表示単位だけを切り替えます。",
-                    )
+                    RichText::new(crate::ui::i18n::text(
+                        &prefs.language,
+                        "prefs.units_description",
+                    ))
                     .size(11.0)
                     .color(Color32::from_rgb(150, 150, 150)),
                 );
                 ui.add_space(8.0);
-                unit_row(ui, "定規・座標・サイズ", &mut prefs.ruler_unit);
-                unit_row(ui, "ストローク", &mut prefs.stroke_unit);
-                unit_row(ui, "新規ドキュメント", &mut prefs.default_doc_unit);
+                unit_row(
+                    ui,
+                    &crate::ui::i18n::text(&prefs.language, "prefs.unit_ruler_coordinates_size"),
+                    &mut prefs.ruler_unit,
+                );
+                unit_row(
+                    ui,
+                    &crate::ui::i18n::text(&prefs.language, "prefs.unit_stroke"),
+                    &mut prefs.stroke_unit,
+                );
+                unit_row(
+                    ui,
+                    &crate::ui::i18n::text(&prefs.language, "prefs.unit_new_document"),
+                    &mut prefs.default_doc_unit,
+                );
             }
             other => {
-                ui.label(
-                    RichText::new(format!("{:?}", other))
-                        .strong()
-                        .size(14.0),
-                );
+                ui.label(RichText::new(format!("{:?}", other)).strong().size(14.0));
                 ui.add_space(10.0);
-                ui.label("このカテゴリのすべての標準プロファイルが適用されています。");
+                ui.label(crate::ui::i18n::text(
+                    &prefs.language,
+                    "prefs.category_fallback",
+                ));
             }
         }
     }

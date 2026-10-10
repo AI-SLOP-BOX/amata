@@ -1,0 +1,1014 @@
+{
+  "name": "SNS縦 (9:16)",
+  "layers": [
+    {
+      "id": "433efe04-3550-4f9d-a492-a9b57e39c4f8",
+      "name": "Layer 1",
+      "objects": [
+        {
+          "id": "2d7fd22d-736d-40a1-bbff-090f33106613",
+          "name": "背景",
+          "object_type": {
+            "Rectangle": {
+              "width": 1080.0,
+              "height": 1920.0,
+              "corner_radius": 0.0
+            }
+          },
+          "transform": {
+            "x": 0.0,
+            "y": 0.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": {
+            "color": [
+              0.07,
+              0.09,
+              0.16,
+              1.0
+            ],
+            "fill_type": {
+              "Solid": [
+                0.07,
+                0.09,
+                0.16,
+                1.0
+              ]
+            },
+            "rule": "NonZero",
+            "overprint": false,
+            "spot": null
+          },
+          "stroke": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "width": 1.0,
+            "dash_pattern": null,
+            "cap": "Butt",
+            "join": "Miter",
+            "miter_limit": 4.0,
+            "arrow_start": "None",
+            "arrow_end": "None",
+            "overprint": false,
+            "spot": null
+          },
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        },
+        {
+          "id": "5dece245-71c1-4849-b981-ad0cc2debace",
+          "name": "見出し",
+          "object_type": {
+            "Text": {
+              "text": "｜新《しん》機能\nOpenType",
+              "font_size": 110.0,
+              "style": {
+                "font_family": "Noto Sans JP",
+                "font_size": 110.0,
+                "font_weight": 700,
+                "font_style": "Normal",
+                "letter_spacing": 0.0,
+                "text_anchor": "Start",
+                "line_height": null,
+                "max_width": null,
+                "word_wrap": false,
+                "variations": [],
+                "vertical": false,
+                "auto_spacing": true,
+                "auto_spacing_em": 0.25,
+                "ligatures": true,
+                "ot_features": [],
+                "list": "None",
+                "burasage": true
+              },
+              "area": {
+                "x": 90.0,
+                "y": 220.0,
+                "width": 900.0,
+                "height": 420.0,
+                "cols": 1,
+                "gutter": 12.0
+              },
+              "next_frame": null
+            }
+          },
+          "transform": {
+            "x": 90.0,
+            "y": 220.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "fill_type": {
+              "Solid": [
+                0.0,
+                0.0,
+                0.0,
+                1.0
+              ]
+            },
+            "rule": "NonZero",
+            "overprint": false,
+            "spot": null
+          },
+          "stroke": null,
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        },
+        {
+          "id": "3869775c-6853-4cda-8710-81053d10f5eb",
+          "name": "リード",
+          "object_type": {
+            "Text": {
+              "text": "約物の半角化・縦組グリフ・\n和欧間の自動挿入に対応。",
+              "font_size": 52.0,
+              "style": {
+                "font_family": "Noto Sans JP",
+                "font_size": 52.0,
+                "font_weight": 400,
+                "font_style": "Normal",
+                "letter_spacing": 0.0,
+                "text_anchor": "Start",
+                "line_height": null,
+                "max_width": null,
+                "word_wrap": false,
+                "variations": [],
+                "vertical": false,
+                "auto_spacing": true,
+                "auto_spacing_em": 0.25,
+                "ligatures": true,
+                "ot_features": [],
+                "list": "None",
+                "burasage": true
+              },
+              "area": {
+                "x": 90.0,
+                "y": 720.0,
+                "width": 900.0,
+                "height": 240.0,
+                "cols": 1,
+                "gutter": 12.0
+              },
+              "next_frame": null
+            }
+          },
+          "transform": {
+            "x": 90.0,
+            "y": 720.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "fill_type": {
+              "Solid": [
+                0.0,
+                0.0,
+                0.0,
+                1.0
+              ]
+            },
+            "rule": "NonZero",
+            "overprint": false,
+            "spot": null
+          },
+          "stroke": null,
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        },
+        {
+          "id": "1f207ee5-2f16-4f00-93c2-d34cc1b52d58",
+          "name": "card_0",
+          "object_type": {
+            "Rectangle": {
+              "width": 900.0,
+              "height": 200.0,
+              "corner_radius": 24.0
+            }
+          },
+          "transform": {
+            "x": 90.0,
+            "y": 1100.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": {
+            "color": [
+              0.13,
+              0.16,
+              0.26,
+              1.0
+            ],
+            "fill_type": {
+              "Solid": [
+                0.13,
+                0.16,
+                0.26,
+                1.0
+              ]
+            },
+            "rule": "NonZero",
+            "overprint": false,
+            "spot": null
+          },
+          "stroke": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "width": 1.0,
+            "dash_pattern": null,
+            "cap": "Butt",
+            "join": "Miter",
+            "miter_limit": 4.0,
+            "arrow_start": "None",
+            "arrow_end": "None",
+            "overprint": false,
+            "spot": null
+          },
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        },
+        {
+          "id": "24111a49-01fe-4d3b-bc64-6b6c26934e6a",
+          "name": "card_t_0",
+          "object_type": {
+            "Text": {
+              "text": "｜palt《タグ》",
+              "font_size": 60.0,
+              "style": {
+                "font_family": "Noto Sans JP",
+                "font_size": 60.0,
+                "font_weight": 700,
+                "font_style": "Normal",
+                "letter_spacing": 0.0,
+                "text_anchor": "Start",
+                "line_height": null,
+                "max_width": null,
+                "word_wrap": false,
+                "variations": [],
+                "vertical": false,
+                "auto_spacing": true,
+                "auto_spacing_em": 0.25,
+                "ligatures": true,
+                "ot_features": [],
+                "list": "None",
+                "burasage": true
+              },
+              "area": null,
+              "next_frame": null
+            }
+          },
+          "transform": {
+            "x": 140.0,
+            "y": 1170.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "fill_type": {
+              "Solid": [
+                0.0,
+                0.0,
+                0.0,
+                1.0
+              ]
+            },
+            "rule": "NonZero",
+            "overprint": false,
+            "spot": null
+          },
+          "stroke": null,
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        },
+        {
+          "id": "c516afd8-c017-4a02-a31a-1dde21e91b49",
+          "name": "card_d_0",
+          "object_type": {
+            "Text": {
+              "text": "約物を半角に",
+              "font_size": 48.0,
+              "style": {
+                "font_family": "Noto Sans JP",
+                "font_size": 48.0,
+                "font_weight": 400,
+                "font_style": "Normal",
+                "letter_spacing": 0.0,
+                "text_anchor": "Start",
+                "line_height": null,
+                "max_width": null,
+                "word_wrap": false,
+                "variations": [],
+                "vertical": false,
+                "auto_spacing": true,
+                "auto_spacing_em": 0.25,
+                "ligatures": true,
+                "ot_features": [],
+                "list": "None",
+                "burasage": true
+              },
+              "area": null,
+              "next_frame": null
+            }
+          },
+          "transform": {
+            "x": 560.0,
+            "y": 1170.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "fill_type": {
+              "Solid": [
+                0.0,
+                0.0,
+                0.0,
+                1.0
+              ]
+            },
+            "rule": "NonZero",
+            "overprint": false,
+            "spot": null
+          },
+          "stroke": null,
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        },
+        {
+          "id": "c16c8be0-3645-4d40-9fe6-65d530fd2e21",
+          "name": "card_1",
+          "object_type": {
+            "Rectangle": {
+              "width": 900.0,
+              "height": 200.0,
+              "corner_radius": 24.0
+            }
+          },
+          "transform": {
+            "x": 90.0,
+            "y": 1350.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": {
+            "color": [
+              0.13,
+              0.16,
+              0.26,
+              1.0
+            ],
+            "fill_type": {
+              "Solid": [
+                0.13,
+                0.16,
+                0.26,
+                1.0
+              ]
+            },
+            "rule": "NonZero",
+            "overprint": false,
+            "spot": null
+          },
+          "stroke": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "width": 1.0,
+            "dash_pattern": null,
+            "cap": "Butt",
+            "join": "Miter",
+            "miter_limit": 4.0,
+            "arrow_start": "None",
+            "arrow_end": "None",
+            "overprint": false,
+            "spot": null
+          },
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        },
+        {
+          "id": "901d246b-8155-483c-8823-d72c13e9c5eb",
+          "name": "card_t_1",
+          "object_type": {
+            "Text": {
+              "text": "｜vert《タグ》",
+              "font_size": 60.0,
+              "style": {
+                "font_family": "Noto Sans JP",
+                "font_size": 60.0,
+                "font_weight": 700,
+                "font_style": "Normal",
+                "letter_spacing": 0.0,
+                "text_anchor": "Start",
+                "line_height": null,
+                "max_width": null,
+                "word_wrap": false,
+                "variations": [],
+                "vertical": false,
+                "auto_spacing": true,
+                "auto_spacing_em": 0.25,
+                "ligatures": true,
+                "ot_features": [],
+                "list": "None",
+                "burasage": true
+              },
+              "area": null,
+              "next_frame": null
+            }
+          },
+          "transform": {
+            "x": 140.0,
+            "y": 1420.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "fill_type": {
+              "Solid": [
+                0.0,
+                0.0,
+                0.0,
+                1.0
+              ]
+            },
+            "rule": "NonZero",
+            "overprint": false,
+            "spot": null
+          },
+          "stroke": null,
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        },
+        {
+          "id": "0823bd95-2e11-46a0-bc07-c73d06435ae4",
+          "name": "card_d_1",
+          "object_type": {
+            "Text": {
+              "text": "縦組グリフ",
+              "font_size": 48.0,
+              "style": {
+                "font_family": "Noto Sans JP",
+                "font_size": 48.0,
+                "font_weight": 400,
+                "font_style": "Normal",
+                "letter_spacing": 0.0,
+                "text_anchor": "Start",
+                "line_height": null,
+                "max_width": null,
+                "word_wrap": false,
+                "variations": [],
+                "vertical": false,
+                "auto_spacing": true,
+                "auto_spacing_em": 0.25,
+                "ligatures": true,
+                "ot_features": [],
+                "list": "None",
+                "burasage": true
+              },
+              "area": null,
+              "next_frame": null
+            }
+          },
+          "transform": {
+            "x": 560.0,
+            "y": 1420.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "fill_type": {
+              "Solid": [
+                0.0,
+                0.0,
+                0.0,
+                1.0
+              ]
+            },
+            "rule": "NonZero",
+            "overprint": false,
+            "spot": null
+          },
+          "stroke": null,
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        },
+        {
+          "id": "9ead7bf1-a49d-4253-8a31-84930ff4b7d6",
+          "name": "card_2",
+          "object_type": {
+            "Rectangle": {
+              "width": 900.0,
+              "height": 200.0,
+              "corner_radius": 24.0
+            }
+          },
+          "transform": {
+            "x": 90.0,
+            "y": 1600.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": {
+            "color": [
+              0.13,
+              0.16,
+              0.26,
+              1.0
+            ],
+            "fill_type": {
+              "Solid": [
+                0.13,
+                0.16,
+                0.26,
+                1.0
+              ]
+            },
+            "rule": "NonZero",
+            "overprint": false,
+            "spot": null
+          },
+          "stroke": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "width": 1.0,
+            "dash_pattern": null,
+            "cap": "Butt",
+            "join": "Miter",
+            "miter_limit": 4.0,
+            "arrow_start": "None",
+            "arrow_end": "None",
+            "overprint": false,
+            "spot": null
+          },
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        },
+        {
+          "id": "2098840d-cede-42ba-944e-1a55335a5822",
+          "name": "card_t_2",
+          "object_type": {
+            "Text": {
+              "text": "｜ruby《タグ》",
+              "font_size": 60.0,
+              "style": {
+                "font_family": "Noto Sans JP",
+                "font_size": 60.0,
+                "font_weight": 700,
+                "font_style": "Normal",
+                "letter_spacing": 0.0,
+                "text_anchor": "Start",
+                "line_height": null,
+                "max_width": null,
+                "word_wrap": false,
+                "variations": [],
+                "vertical": false,
+                "auto_spacing": true,
+                "auto_spacing_em": 0.25,
+                "ligatures": true,
+                "ot_features": [],
+                "list": "None",
+                "burasage": true
+              },
+              "area": null,
+              "next_frame": null
+            }
+          },
+          "transform": {
+            "x": 140.0,
+            "y": 1670.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "fill_type": {
+              "Solid": [
+                0.0,
+                0.0,
+                0.0,
+                1.0
+              ]
+            },
+            "rule": "NonZero",
+            "overprint": false,
+            "spot": null
+          },
+          "stroke": null,
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        },
+        {
+          "id": "368109b3-e396-4a67-b87b-e5c6b81c4309",
+          "name": "card_d_2",
+          "object_type": {
+            "Text": {
+              "text": "ルビ注",
+              "font_size": 48.0,
+              "style": {
+                "font_family": "Noto Sans JP",
+                "font_size": 48.0,
+                "font_weight": 400,
+                "font_style": "Normal",
+                "letter_spacing": 0.0,
+                "text_anchor": "Start",
+                "line_height": null,
+                "max_width": null,
+                "word_wrap": false,
+                "variations": [],
+                "vertical": false,
+                "auto_spacing": true,
+                "auto_spacing_em": 0.25,
+                "ligatures": true,
+                "ot_features": [],
+                "list": "None",
+                "burasage": true
+              },
+              "area": null,
+              "next_frame": null
+            }
+          },
+          "transform": {
+            "x": 560.0,
+            "y": 1670.0,
+            "rotation": 0.0,
+            "scale_x": 1.0,
+            "scale_y": 1.0,
+            "skew_x": 0.0,
+            "skew_y": 0.0
+          },
+          "fill": {
+            "color": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ],
+            "fill_type": {
+              "Solid": [
+                0.0,
+                0.0,
+                0.0,
+                1.0
+              ]
+            },
+            "rule": "NonZero",
+            "overprint": false,
+            "spot": null
+          },
+          "stroke": null,
+          "shadow": null,
+          "glow": null,
+          "appearance": {
+            "effects": []
+          },
+          "opacity": 1.0,
+          "blend_mode": "Normal",
+          "width_profile": null,
+          "auto_layout": null,
+          "visible": true,
+          "locked": false,
+          "text_wrap": false,
+          "wrap_margin": 6.0
+        }
+      ],
+      "visible": true,
+      "locked": false,
+      "opacity": 1.0
+    }
+  ],
+  "active_layer_idx": 0,
+  "width": 1080.0,
+  "height": 1920.0,
+  "symbols": [],
+  "timeline": {
+    "fps": 60.0,
+    "total_frames": 180,
+    "current_frame": 0,
+    "is_playing": false,
+    "loop_playback": true,
+    "tracks": []
+  },
+  "guides": [],
+  "color_mode": "Rgb",
+  "spots": [
+    {
+      "name": "Spot Reflex Blue",
+      "cmyk": [
+        1.0,
+        0.72,
+        0.0,
+        0.04
+      ]
+    },
+    {
+      "name": "Spot Warm Red",
+      "cmyk": [
+        0.0,
+        0.91,
+        0.76,
+        0.0
+      ]
+    },
+    {
+      "name": "Spot Green",
+      "cmyk": [
+        0.95,
+        0.0,
+        1.0,
+        0.0
+      ]
+    }
+  ],
+  "bleed": 0.0,
+  "perspective": null,
+  "artboards": [
+    {
+      "id": "4f88384c-8d3b-466d-a8ea-00746336b9cb",
+      "name": "9:16",
+      "x": 0.0,
+      "y": 0.0,
+      "width": 1080.0,
+      "height": 1920.0,
+      "layout_grid": null
+    }
+  ],
+  "trap_width": 0.0,
+  "toc_threshold": 18.0,
+  "paragraph_styles": [
+    {
+      "name": "見出し",
+      "style": {
+        "font_family": "Inter, sans-serif",
+        "font_size": 24.0,
+        "font_weight": 700,
+        "font_style": "Normal",
+        "letter_spacing": 0.0,
+        "text_anchor": "Start",
+        "line_height": null,
+        "max_width": null,
+        "word_wrap": false,
+        "variations": [],
+        "vertical": false,
+        "auto_spacing": true,
+        "auto_spacing_em": 0.25,
+        "ligatures": true,
+        "ot_features": [],
+        "list": "None",
+        "burasage": true
+      }
+    },
+    {
+      "name": "本文",
+      "style": {
+        "font_family": "Inter, sans-serif",
+        "font_size": 12.0,
+        "font_weight": 400,
+        "font_style": "Normal",
+        "letter_spacing": 0.0,
+        "text_anchor": "Start",
+        "line_height": null,
+        "max_width": null,
+        "word_wrap": false,
+        "variations": [],
+        "vertical": false,
+        "auto_spacing": true,
+        "auto_spacing_em": 0.25,
+        "ligatures": true,
+        "ot_features": [],
+        "list": "None",
+        "burasage": true
+      }
+    },
+    {
+      "name": "キャプション",
+      "style": {
+        "font_family": "Inter, sans-serif",
+        "font_size": 9.0,
+        "font_weight": 400,
+        "font_style": "Normal",
+        "letter_spacing": 0.0,
+        "text_anchor": "Start",
+        "line_height": null,
+        "max_width": null,
+        "word_wrap": false,
+        "variations": [],
+        "vertical": false,
+        "auto_spacing": true,
+        "auto_spacing_em": 0.25,
+        "ligatures": true,
+        "ot_features": [],
+        "list": "None",
+        "burasage": true
+      }
+    }
+  ]
+}

@@ -96,6 +96,7 @@ fn test_cli_convert_and_info() {
             input: sample_svg.clone(),
             output: sample_json.clone(),
             scale: 1.0,
+            outline_text: false,
         }),
     };
     assert!(run_cli(cli_convert).is_ok());

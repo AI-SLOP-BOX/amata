@@ -9,12 +9,22 @@ pub struct ExportModal {
     pub convert_to_outlines: bool,
     pub embed_images: bool,
     pub preserve_editability: bool,
-    pub export_scope: String,
+    pub export_scope: ExportScope,
     pub custom_range: String,
-    pub scale_factor: String,
     pub color_profile: String,
     pub embed_color_profile: bool,
     pub assets: Vec<ExportAssetItem>,
+}
+
+/// Locale-independent export range. The old `String` held Japanese
+/// literals (`"すべてのアートボード"` …) compared verbatim, so any
+/// catalog change silently broke filtering.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ExportScope {
+    #[default]
+    All,
+    Selected,
+    Range,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -57,9 +67,8 @@ impl Default for ExportModal {
             convert_to_outlines: true,
             embed_images: true,
             preserve_editability: false,
-            export_scope: "すべてのアートボード".to_string(),
+            export_scope: ExportScope::All,
             custom_range: "1".to_string(),
-            scale_factor: "1x".to_string(),
             color_profile: "sRGB IEC61966-2.1".to_string(),
             embed_color_profile: false,
             assets: vec![
@@ -106,18 +115,16 @@ impl ExportModal {
         if !self.is_open {
             return;
         }
+        let locale = state.prefs.language.clone();
 
         let mut is_open = self.is_open;
         let mut close_clicked = false;
         let mut export_clicked = false;
         let screen = ctx.screen_rect();
-        let (size, min_size, pos) = crate::ui::window_defaults(
-            screen,
-            Vec2::new(720.0, 640.0),
-            Vec2::new(320.0, 300.0),
-        );
+        let (size, min_size, pos) =
+            crate::ui::window_defaults(screen, Vec2::new(720.0, 640.0), Vec2::new(320.0, 300.0));
         let total_h_outer = size.y;
-        egui::Window::new("書き出し")
+        egui::Window::new(crate::ui::i18n::text(&locale, "export.title"))
             .open(&mut is_open)
             .collapsible(false)
             .resizable(true)
@@ -134,7 +141,10 @@ impl ExportModal {
                         let cancel_w = ((avail - gap) * 0.35).max(80.0);
                         let export_w = (avail - gap - cancel_w).max(90.0);
                         if ui
-                            .add(egui::Button::new("キャンセル").min_size(Vec2::new(cancel_w, btn_h)))
+                            .add(
+                                egui::Button::new(crate::ui::i18n::text(&locale, "export.cancel"))
+                                    .min_size(Vec2::new(cancel_w, btn_h)),
+                            )
                             .clicked()
                         {
                             close_clicked = true;
@@ -142,7 +152,9 @@ impl ExportModal {
                         if ui
                             .add(
                                 egui::Button::new(
-                                    RichText::new("書き出し").strong().color(Color32::WHITE),
+                                    RichText::new(crate::ui::i18n::text(&locale, "export.submit"))
+                                        .strong()
+                                        .color(Color32::WHITE),
                                 )
                                 .fill(Color32::from_rgb(20, 115, 230))
                                 .min_size(Vec2::new(export_w, btn_h)),
@@ -154,20 +166,21 @@ impl ExportModal {
                         return;
                     }
                     ui.set_width(total_w);
-                    self.show_left_sidebar(ui, total_w);
+                    self.show_left_sidebar(ui, total_w, &locale);
                     ui.add_space(8.0);
                     ui.separator();
                     ui.add_space(4.0);
-                    self.show_center_preview_and_table(ui, state, total_w, total_h_outer);
+                    self.show_center_preview_and_table(ui, state, total_w, total_h_outer, &locale);
                     ui.add_space(8.0);
                     ui.separator();
                     ui.add_space(4.0);
-                    self.show_right_settings(ui, state, total_w);
+                    self.show_right_settings(ui, state, total_w, &locale);
                 });
             });
         if export_clicked {
-            self.run_export(state);
-            self.is_open = false;
+            if self.run_export(state) {
+                self.is_open = false;
+            }
         } else if close_clicked {
             self.is_open = false;
         } else {
@@ -175,11 +188,11 @@ impl ExportModal {
         }
     }
 
-    fn show_left_sidebar(&mut self, ui: &mut Ui, w: f32) {
+    fn show_left_sidebar(&mut self, ui: &mut Ui, w: f32, locale: &str) {
         ui.set_width(w);
         ui.add_space(4.0);
         ui.label(
-            RichText::new("書き出し")
+            RichText::new(crate::ui::i18n::text(locale, "export.title"))
                 .strong()
                 .size(13.5)
                 .color(Color32::WHITE),
@@ -189,22 +202,29 @@ impl ExportModal {
         // Mode tabs: always wrapped across the full width (no sidebar).
         ui.horizontal_wrapped(|ui| {
             let main_tabs = [
-                (ExportSidebarTab::Export, "書き出し"),
-                (ExportSidebarTab::ExportForWeb, "Web 用に書き出し"),
-                (ExportSidebarTab::ExportAssets, "アセットを書き出し"),
+                (
+                    ExportSidebarTab::Export,
+                    crate::ui::i18n::text(locale, "export.title"),
+                ),
+                (
+                    ExportSidebarTab::ExportForWeb,
+                    crate::ui::i18n::text(locale, "export.tab.web"),
+                ),
+                (
+                    ExportSidebarTab::ExportAssets,
+                    crate::ui::i18n::text(locale, "export.tab.assets"),
+                ),
             ];
             for (tab, label) in main_tabs {
                 let is_sel = self.active_sidebar_tab == tab;
                 if ui
                     .selectable_label(
                         is_sel,
-                        RichText::new(label)
-                            .size(11.5)
-                            .color(if is_sel {
-                                Color32::WHITE
-                            } else {
-                                Color32::from_rgb(180, 180, 180)
-                            }),
+                        RichText::new(label).size(11.5).color(if is_sel {
+                            Color32::WHITE
+                        } else {
+                            Color32::from_rgb(180, 180, 180)
+                        }),
                     )
                     .clicked()
                 {
@@ -216,7 +236,7 @@ impl ExportModal {
         ui.add_space(10.0);
         ui.horizontal(|ui| {
             ui.label(
-                RichText::new("書き出しプリセット")
+                RichText::new(crate::ui::i18n::text(locale, "export.presets"))
                     .size(10.5)
                     .color(Color32::from_rgb(150, 150, 150)),
             );
@@ -232,12 +252,12 @@ impl ExportModal {
 
         let presets = [
             ("Web (SVG)", ExportFormatTab::Svg),
-            ("印刷用 (PDF)", ExportFormatTab::Pdf),
-            ("Illustrator互換 (.ai)", ExportFormatTab::Ai),
-            ("スクリーン用 (PNG)", ExportFormatTab::Png),
-            ("ソーシャル投稿 (JPEG)", ExportFormatTab::Jpeg),
-            ("Web 最適化 (WebP)", ExportFormatTab::Webp),
-            ("次世代 Web (AVIF)", ExportFormatTab::Avif),
+            ("export.preset.pdf", ExportFormatTab::Pdf),
+            ("export.preset.ai", ExportFormatTab::Ai),
+            ("export.preset.png", ExportFormatTab::Png),
+            ("export.preset.jpeg", ExportFormatTab::Jpeg),
+            ("export.preset.webp", ExportFormatTab::Webp),
+            ("export.preset.avif", ExportFormatTab::Avif),
         ];
         ui.horizontal_wrapped(|ui| {
             for (p_name, fmt) in presets {
@@ -245,11 +265,13 @@ impl ExportModal {
                 if ui
                     .selectable_label(
                         is_active,
-                        RichText::new(p_name).size(10.5).color(if is_active {
-                            Color32::WHITE
-                        } else {
-                            Color32::from_rgb(160, 160, 160)
-                        }),
+                        RichText::new(crate::ui::i18n::text(locale, p_name))
+                            .size(10.5)
+                            .color(if is_active {
+                                Color32::WHITE
+                            } else {
+                                Color32::from_rgb(160, 160, 160)
+                            }),
                     )
                     .clicked()
                 {
@@ -265,13 +287,14 @@ impl ExportModal {
         _state: &AppState,
         center_w: f32,
         avail_h: f32,
+        locale: &str,
     ) {
         ui.set_width(center_w);
 
         // Preview Toolbar
         ui.horizontal(|ui| {
             ui.label(
-                RichText::new("プレビュー")
+                RichText::new(crate::ui::i18n::text(locale, "export.preview"))
                     .strong()
                     .size(12.0)
                     .color(Color32::WHITE),
@@ -279,16 +302,14 @@ impl ExportModal {
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.label("🔍 ➕ ➖ ⛶");
                 ui.label("100%");
-                ui.label("アートボード 1  ▾");
+                ui.label(crate::ui::i18n::text(locale, "export.artboard_one"));
             });
         });
 
         ui.add_space(4.0);
 
         // Preview shrinks with window height so the table below stays reachable.
-        let preview_h = (avail_h * 0.35)
-            .clamp(120.0, 260.0)
-            .min(center_w * 0.7);
+        let preview_h = (avail_h * 0.35).clamp(120.0, 260.0).min(center_w * 0.7);
         let (p_rect, _) =
             ui.allocate_exact_size(Vec2::new(center_w, preview_h), egui::Sense::hover());
         ui.painter()
@@ -310,11 +331,8 @@ impl ExportModal {
         let c2 = Pos2::new(paper_rect.center().x + 20.0, paper_rect.center().y - 10.0);
         ui.painter()
             .circle_filled(c1, 45.0, Color32::from_rgb(20, 115, 230));
-        ui.painter().circle_filled(
-            c2,
-            35.0,
-            Color32::from_rgba_unmultiplied(20, 180, 180, 220),
-        );
+        ui.painter()
+            .circle_filled(c2, 35.0, Color32::from_rgba_unmultiplied(20, 180, 180, 220));
 
         // Brand text under circles
         ui.painter().text(
@@ -337,14 +355,14 @@ impl ExportModal {
         // Export Assets Table Header
         ui.horizontal(|ui| {
             ui.label(
-                RichText::new("書き出すアートボード・アセット")
+                RichText::new(crate::ui::i18n::text(locale, "export.assets_table"))
                     .strong()
                     .size(11.5)
                     .color(Color32::WHITE),
             );
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.label(
-                    RichText::new("＋ 追加  − 削除  ⛶ すべて選択")
+                    RichText::new(crate::ui::i18n::text(locale, "export.table_actions"))
                         .size(10.0)
                         .color(Color32::from_rgb(160, 160, 160)),
                 );
@@ -497,11 +515,17 @@ impl ExportModal {
         }
     }
 
-    fn show_right_settings(&mut self, ui: &mut Ui, state: &mut AppState, right_w: f32) {
+    fn show_right_settings(
+        &mut self,
+        ui: &mut Ui,
+        state: &mut AppState,
+        right_w: f32,
+        locale: &str,
+    ) {
         ui.set_width(right_w);
         ui.add_space(4.0);
         ui.label(
-            RichText::new("書き出し設定")
+            RichText::new(crate::ui::i18n::text(locale, "export.settings"))
                 .strong()
                 .size(12.0)
                 .color(Color32::WHITE),
@@ -548,12 +572,15 @@ impl ExportModal {
         ui.add_space(8.0);
         ui.checkbox(
             &mut self.convert_to_outlines,
-            "フォントをアウトラインに変換",
+            crate::ui::i18n::text(locale, "export.outline_fonts"),
         );
-        ui.checkbox(&mut self.embed_images, "画像を埋め込み");
+        ui.checkbox(
+            &mut self.embed_images,
+            crate::ui::i18n::text(locale, "export.embed_images"),
+        );
         ui.checkbox(
             &mut self.preserve_editability,
-            "編集用のSVGを保持 (拡張メタデータ)",
+            crate::ui::i18n::text(locale, "export.preserve_editability"),
         );
 
         ui.add_space(6.0);
@@ -561,7 +588,7 @@ impl ExportModal {
         // Raster Resolution (DPI / PPI) options for PNG / JPEG / PDF
         ui.horizontal_wrapped(|ui| {
             ui.label(
-                RichText::new("解像度:")
+                RichText::new(crate::ui::i18n::text(locale, "export.resolution"))
                     .size(10.5)
                     .color(Color32::from_rgb(180, 180, 180)),
             );
@@ -569,40 +596,56 @@ impl ExportModal {
             let scale = state.export_scale;
             let approx = |a: f32, b: f32| (a - b).abs() < 1e-4;
             let selected: String = if approx(scale, 1.0) {
-                "スクリーン (72 ppi / 1x)".into()
+                crate::ui::i18n::text(locale, "export.resolution.screen").into_owned()
             } else if approx(scale, 2.0) {
                 "Retina (2x)".into()
             } else if approx(scale, 150.0 / 72.0) {
-                "中 (150 ppi)".into()
+                crate::ui::i18n::text(locale, "export.resolution.medium").into_owned()
             } else if approx(scale, 300.0 / 72.0) {
-                "高 (300 ppi / 印刷)".into()
+                crate::ui::i18n::text(locale, "export.resolution.high").into_owned()
             } else {
-                format!("カスタム ({}x)", (scale * 100.0).round() / 100.0)
+                crate::ui::i18n::format(
+                    locale,
+                    "export.resolution.custom",
+                    &[("scale", &format!("{}", (scale * 100.0).round() / 100.0))],
+                )
             };
             egui::ComboBox::from_id_salt("exp_modal_ppi")
                 .selected_text(selected)
                 .width(combo_w.min(280.0))
                 .show_ui(ui, |ui| {
                     if ui
-                        .selectable_label(approx(scale, 1.0), "スクリーン (72 ppi / 1x)")
+                        .selectable_label(
+                            approx(scale, 1.0),
+                            crate::ui::i18n::text(locale, "export.resolution.screen"),
+                        )
                         .clicked()
                     {
                         state.export_scale = 1.0;
                     }
                     if ui
-                        .selectable_label(approx(scale, 150.0 / 72.0), "中 (150 ppi)")
+                        .selectable_label(
+                            approx(scale, 150.0 / 72.0),
+                            crate::ui::i18n::text(locale, "export.resolution.medium"),
+                        )
                         .clicked()
                     {
                         state.export_scale = 150.0 / 72.0;
                     }
                     if ui
-                        .selectable_label(approx(scale, 300.0 / 72.0), "高 (300 ppi / 印刷)")
+                        .selectable_label(
+                            approx(scale, 300.0 / 72.0),
+                            crate::ui::i18n::text(locale, "export.resolution.high"),
+                        )
                         .clicked()
                     {
                         state.export_scale = 300.0 / 72.0;
                     }
                     if ui
-                        .selectable_label(approx(scale, 2.0), "Retina (2x)")
+                        .selectable_label(
+                            approx(scale, 2.0),
+                            crate::ui::i18n::text(locale, "export.resolution.retina"),
+                        )
                         .clicked()
                     {
                         state.export_scale = 2.0;
@@ -616,23 +659,27 @@ impl ExportModal {
 
         // Export Scope
         ui.label(
-            RichText::new("書き出し範囲")
+            RichText::new(crate::ui::i18n::text(locale, "export.scope"))
                 .strong()
                 .size(11.0)
                 .color(Color32::from_rgb(180, 180, 180)),
         );
         ui.radio_value(
             &mut self.export_scope,
-            "すべてのアートボード".to_string(),
-            "すべてのアートボード",
+            ExportScope::All,
+            crate::ui::i18n::text(locale, "export.scope.all"),
         );
         ui.radio_value(
             &mut self.export_scope,
-            "選択したアートボード".to_string(),
-            "選択したアートボード",
+            ExportScope::Selected,
+            crate::ui::i18n::text(locale, "export.scope.selected"),
         );
         ui.horizontal_wrapped(|ui| {
-            ui.radio_value(&mut self.export_scope, "範囲指定".to_string(), "範囲指定:");
+            ui.radio_value(
+                &mut self.export_scope,
+                ExportScope::Range,
+                crate::ui::i18n::text(locale, "export.scope.range"),
+            );
             ui.add(egui::TextEdit::singleline(&mut self.custom_range).desired_width(70.0));
         });
 
@@ -642,7 +689,7 @@ impl ExportModal {
 
         // Color profile
         ui.label(
-            RichText::new("カラープロファイル")
+            RichText::new(crate::ui::i18n::text(locale, "export.color_profile"))
                 .strong()
                 .size(11.0)
                 .color(Color32::from_rgb(180, 180, 180)),
@@ -666,26 +713,103 @@ impl ExportModal {
             });
         ui.checkbox(
             &mut self.embed_color_profile,
-            "カラープロファイルを埋め込む",
+            crate::ui::i18n::text(locale, "export.embed_profile"),
         );
     }
 
-    fn run_export(&mut self, state: &mut AppState) {
-        // Scope: "選択のみ" exports only selected objects (same filter as
-        // the ExportPanel). Previously the radio did nothing.
-        let selected_only = self.export_scope == "選択のみ";
-        let mut export_doc;
-        let doc_ref: &crate::core::document::Document = if selected_only {
-            export_doc = state.document.clone();
-            let keep: std::collections::HashSet<String> =
-                state.selected_ids.iter().cloned().collect();
-            for layer in &mut export_doc.layers {
-                layer.objects.retain(|o| keep.contains(&o.id));
+    /// Keep only objects whose bbox center falls on one of the given
+    /// (0-based) artboards. Out-of-range indices select nothing.
+    fn filter_artboards(
+        doc: &crate::core::document::Document,
+        indices: &[usize],
+    ) -> crate::core::document::Document {
+        let boards = doc.effective_artboards();
+        let mut out = doc.clone();
+        for layer in &mut out.layers {
+            layer.objects.retain(|o| {
+                let Some((mn, mx)) = o.bounding_box() else {
+                    return true;
+                };
+                let cx = (mn.x + mx.x) / 2.0;
+                let cy = (mn.y + mx.y) / 2.0;
+                indices.iter().any(|&i| {
+                    boards.get(i).is_some_and(|b| {
+                        cx >= b.x && cx <= b.x + b.width && cy >= b.y && cy <= b.y + b.height
+                    })
+                })
+            });
+        }
+        out
+    }
+
+    /// Parse "1,3" / "2-4" (1-based, like the dialog hint) into 0-based
+    /// artboard indices. `None` = unparseable.
+    fn parse_range(spec: &str) -> Option<Vec<usize>> {
+        let mut ids = Vec::new();
+        let spec = spec.trim();
+        if spec.is_empty() {
+            return None;
+        }
+        for part in spec.split(',') {
+            let part = part.trim();
+            if let Some((a, b)) = part.split_once('-') {
+                let (a, b): (usize, usize) = (a.trim().parse().ok()?, b.trim().parse().ok()?);
+                if a == 0 || b == 0 || a > b {
+                    return None;
+                }
+                ids.extend((a - 1)..b);
+            } else {
+                let n: usize = part.parse().ok()?;
+                if n == 0 {
+                    return None;
+                }
+                ids.push(n - 1);
             }
-            &export_doc
-        } else {
-            &state.document
+        }
+        if ids.is_empty() {
+            return None;
+        }
+        ids.sort_unstable();
+        ids.dedup();
+        Some(ids)
+    }
+
+    fn run_export(&mut self, state: &mut AppState) -> bool {
+        let locale = state.prefs.language.clone();
+        // Single scale source: the visible PPI combo writes
+        // `state.export_scale`; every raster arm below consumes it.
+        // (A second `scale_factor` string used to shadow it and was
+        // always 1x — dead PPI choice.)
+        let scale = state.export_scale;
+        let scale_label = format!("{:.2}x", (scale * 100.0).round() / 100.0);
+        // Scope filters by enum (locale-independent):
+        // - All: whole document
+        // - Selected: active artboard only
+        // - Range: 1-based list/ranges like "1,3" or "2-4".
+        let export_doc;
+        let doc_ref: &crate::core::document::Document = match self.export_scope {
+            ExportScope::Selected => {
+                export_doc = Self::filter_artboards(&state.document, &[state.active_artboard_idx]);
+                &export_doc
+            }
+            ExportScope::Range => match Self::parse_range(&self.custom_range) {
+                Some(ids) => {
+                    export_doc = Self::filter_artboards(&state.document, &ids);
+                    &export_doc
+                }
+                None => {
+                    state.notify_error(
+                        crate::ui::i18n::text(&locale, "export.range_invalid").into_owned(),
+                    );
+                    return false;
+                }
+            },
+            ExportScope::All => &state.document,
         };
+        // `true` = a file was chosen and written (or attempted); the
+        // caller closes the dialog. `false` = validation failure or
+        // file-dialog cancel; keep the dialog open for retry.
+        let mut chose_file = false;
 
         match self.active_format {
             ExportFormatTab::Svg => {
@@ -694,18 +818,31 @@ impl ExportModal {
                     .set_file_name(format!("{}.svg", self.file_name))
                     .save_file()
                 {
+                    chose_file = true;
                     let svg = crate::io::svg::export_svg_with_options(
                         doc_ref,
                         state.export_svg_embed_fonts,
                         self.embed_color_profile
                             .then_some(self.color_profile.as_str()),
+                        state.export_outline_text,
                     );
                     match crate::io::atomic::atomic_write_str(&path, &svg) {
-                        Ok(_) => state.notify_info(format!(
-                            "SVGを書き出しました: {}",
-                            path.file_name().and_then(|n| n.to_str()).unwrap_or("file")
+                        Ok(_) => state.notify_info(crate::ui::i18n::format(
+                            &locale,
+                            "export.saved.plain",
+                            &[
+                                ("format", "SVG"),
+                                (
+                                    "file",
+                                    path.file_name().and_then(|n| n.to_str()).unwrap_or("file"),
+                                ),
+                            ],
                         )),
-                        Err(e) => state.notify_error(format!("SVG書き出しに失敗しました: {e}")),
+                        Err(e) => state.notify_error(crate::ui::i18n::format(
+                            &locale,
+                            "export.svg_failed",
+                            &[("error", &e.to_string())],
+                        )),
                     }
                 }
             }
@@ -715,17 +852,29 @@ impl ExportModal {
                     .set_file_name(format!("{}.pdf", self.file_name))
                     .save_file()
                 {
+                    chose_file = true;
                     let pdf_bytes = crate::io::pdf::export_pdf_with_profile(
                         doc_ref,
                         self.embed_color_profile
                             .then_some(self.color_profile.as_str()),
                     );
                     match crate::io::atomic::atomic_write_bytes(&path, &pdf_bytes) {
-                        Ok(_) => state.notify_info(format!(
-                            "PDFを書き出しました: {}",
-                            path.file_name().and_then(|n| n.to_str()).unwrap_or("file")
+                        Ok(_) => state.notify_info(crate::ui::i18n::format(
+                            &locale,
+                            "export.saved.plain",
+                            &[
+                                ("format", "PDF"),
+                                (
+                                    "file",
+                                    path.file_name().and_then(|n| n.to_str()).unwrap_or("file"),
+                                ),
+                            ],
                         )),
-                        Err(e) => state.notify_error(format!("PDF書き出しに失敗しました: {e}")),
+                        Err(e) => state.notify_error(crate::ui::i18n::format(
+                            &locale,
+                            "export.pdf_failed",
+                            &[("error", &e.to_string())],
+                        )),
                     }
                 }
             }
@@ -738,13 +887,22 @@ impl ExportModal {
                     .set_file_name(format!("{}.ai", self.file_name))
                     .save_file()
                 {
+                    chose_file = true;
                     let ai_bytes = crate::io::pdf::export_pdf(doc_ref);
                     match crate::io::atomic::atomic_write_bytes(&path, &ai_bytes) {
-                        Ok(_) => state.notify_info(format!(
-                            "Illustrator互換を書き出しました（PDF互換のみ・編集用データなし）: {}",
-                            path.file_name().and_then(|n| n.to_str()).unwrap_or("file")
+                        Ok(_) => state.notify_info(crate::ui::i18n::format(
+                            &locale,
+                            "export.ai_saved",
+                            &[(
+                                "file",
+                                path.file_name().and_then(|n| n.to_str()).unwrap_or("file"),
+                            )],
                         )),
-                        Err(e) => state.notify_error(format!("保存に失敗しました: {e}")),
+                        Err(e) => state.notify_error(crate::ui::i18n::format(
+                            &locale,
+                            "export.write_failed",
+                            &[("error", &e.to_string())],
+                        )),
                     }
                 }
             }
@@ -754,27 +912,41 @@ impl ExportModal {
                     .set_file_name(format!("{}.png", self.file_name))
                     .save_file()
                 {
-                    let scale = match self.scale_factor.as_str() {
-                        "2x" => 2.0_f32,
-                        "3x" => 3.0_f32,
-                        "4x" => 4.0_f32,
-                        "0.5x" => 0.5_f32,
-                        _ => 1.0_f32,
-                    };
-                    match crate::io::raster::export_png(doc_ref, scale, true) {
+                    chose_file = true;
+                    match crate::io::raster::export_png_with_outline(
+                        doc_ref,
+                        scale,
+                        true,
+                        state.export_outline_text,
+                    ) {
                         Ok(png_bytes) => {
                             match crate::io::atomic::atomic_write_bytes(&path, &png_bytes) {
-                                Ok(_) => state.notify_info(format!(
-                                    "PNGを書き出しました ({}): {}",
-                                    self.scale_factor,
-                                    path.file_name().and_then(|n| n.to_str()).unwrap_or("file")
+                                Ok(_) => state.notify_info(crate::ui::i18n::format(
+                                    &locale,
+                                    "export.saved_with_scale",
+                                    &[
+                                        ("format", "PNG"),
+                                        ("scale", &scale_label),
+                                        (
+                                            "file",
+                                            path.file_name()
+                                                .and_then(|n| n.to_str())
+                                                .unwrap_or("file"),
+                                        ),
+                                    ],
                                 )),
-                                Err(e) => state.notify_error(format!("保存に失敗しました: {e}")),
+                                Err(e) => state.notify_error(crate::ui::i18n::format(
+                                    &locale,
+                                    "export.write_failed",
+                                    &[("error", &e.to_string())],
+                                )),
                             }
                         }
-                        Err(e) => {
-                            state.notify_error(format!("PNGラスタライズに失敗しました: {e}"))
-                        }
+                        Err(e) => state.notify_error(crate::ui::i18n::format(
+                            &locale,
+                            "export.raster_failed",
+                            &[("format", "PNG"), ("error", &e.to_string())],
+                        )),
                     }
                 }
             }
@@ -784,27 +956,36 @@ impl ExportModal {
                     .set_file_name(format!("{}.jpg", self.file_name))
                     .save_file()
                 {
-                    let scale = match self.scale_factor.as_str() {
-                        "2x" => 2.0_f32,
-                        "3x" => 3.0_f32,
-                        "4x" => 4.0_f32,
-                        "0.5x" => 0.5_f32,
-                        _ => 1.0_f32,
-                    };
-                    match crate::io::raster::export_jpeg(&state.document, scale) {
+                    chose_file = true;
+                    match crate::io::raster::export_jpeg(doc_ref, scale) {
                         Ok(jpeg_bytes) => {
                             match crate::io::atomic::atomic_write_bytes(&path, &jpeg_bytes) {
-                                Ok(_) => state.notify_info(format!(
-                                    "JPEGを書き出しました ({}): {}",
-                                    self.scale_factor,
-                                    path.file_name().and_then(|n| n.to_str()).unwrap_or("file")
+                                Ok(_) => state.notify_info(crate::ui::i18n::format(
+                                    &locale,
+                                    "export.saved_with_scale",
+                                    &[
+                                        ("format", "JPEG"),
+                                        ("scale", &scale_label),
+                                        (
+                                            "file",
+                                            path.file_name()
+                                                .and_then(|n| n.to_str())
+                                                .unwrap_or("file"),
+                                        ),
+                                    ],
                                 )),
-                                Err(e) => state.notify_error(format!("保存に失敗しました: {e}")),
+                                Err(e) => state.notify_error(crate::ui::i18n::format(
+                                    &locale,
+                                    "export.write_failed",
+                                    &[("error", &e.to_string())],
+                                )),
                             }
                         }
-                        Err(e) => {
-                            state.notify_error(format!("JPEGラスタライズに失敗しました: {e}"))
-                        }
+                        Err(e) => state.notify_error(crate::ui::i18n::format(
+                            &locale,
+                            "export.raster_failed",
+                            &[("format", "JPEG"), ("error", &e.to_string())],
+                        )),
                     }
                 }
             }
@@ -814,27 +995,36 @@ impl ExportModal {
                     .set_file_name(format!("{}.webp", self.file_name))
                     .save_file()
                 {
-                    let scale = match self.scale_factor.as_str() {
-                        "2x" => 2.0_f32,
-                        "3x" => 3.0_f32,
-                        "4x" => 4.0_f32,
-                        "0.5x" => 0.5_f32,
-                        _ => 1.0_f32,
-                    };
-                    match crate::io::raster::export_webp(&state.document, scale, true) {
+                    chose_file = true;
+                    match crate::io::raster::export_webp(doc_ref, scale, true) {
                         Ok(webp_bytes) => {
                             match crate::io::atomic::atomic_write_bytes(&path, &webp_bytes) {
-                                Ok(_) => state.notify_info(format!(
-                                    "WebPを書き出しました ({}): {}",
-                                    self.scale_factor,
-                                    path.file_name().and_then(|n| n.to_str()).unwrap_or("file")
+                                Ok(_) => state.notify_info(crate::ui::i18n::format(
+                                    &locale,
+                                    "export.saved_with_scale",
+                                    &[
+                                        ("format", "WebP"),
+                                        ("scale", &scale_label),
+                                        (
+                                            "file",
+                                            path.file_name()
+                                                .and_then(|n| n.to_str())
+                                                .unwrap_or("file"),
+                                        ),
+                                    ],
                                 )),
-                                Err(e) => state.notify_error(format!("保存に失敗しました: {e}")),
+                                Err(e) => state.notify_error(crate::ui::i18n::format(
+                                    &locale,
+                                    "export.write_failed",
+                                    &[("error", &e.to_string())],
+                                )),
                             }
                         }
-                        Err(e) => {
-                            state.notify_error(format!("WebPラスタライズに失敗しました: {e}"))
-                        }
+                        Err(e) => state.notify_error(crate::ui::i18n::format(
+                            &locale,
+                            "export.raster_failed",
+                            &[("format", "WebP"), ("error", &e.to_string())],
+                        )),
                     }
                 }
             }
@@ -844,30 +1034,40 @@ impl ExportModal {
                     .set_file_name(format!("{}.avif", self.file_name))
                     .save_file()
                 {
-                    let scale = match self.scale_factor.as_str() {
-                        "2x" => 2.0_f32,
-                        "3x" => 3.0_f32,
-                        "4x" => 4.0_f32,
-                        "0.5x" => 0.5_f32,
-                        _ => 1.0_f32,
-                    };
-                    match crate::io::raster::export_avif(&state.document, scale, true) {
+                    chose_file = true;
+                    match crate::io::raster::export_avif(doc_ref, scale, true) {
                         Ok(avif_bytes) => {
                             match crate::io::atomic::atomic_write_bytes(&path, &avif_bytes) {
-                                Ok(_) => state.notify_info(format!(
-                                    "AVIFを書き出しました ({}): {}",
-                                    self.scale_factor,
-                                    path.file_name().and_then(|n| n.to_str()).unwrap_or("file")
+                                Ok(_) => state.notify_info(crate::ui::i18n::format(
+                                    &locale,
+                                    "export.saved_with_scale",
+                                    &[
+                                        ("format", "AVIF"),
+                                        ("scale", &scale_label),
+                                        (
+                                            "file",
+                                            path.file_name()
+                                                .and_then(|n| n.to_str())
+                                                .unwrap_or("file"),
+                                        ),
+                                    ],
                                 )),
-                                Err(e) => state.notify_error(format!("保存に失敗しました: {e}")),
+                                Err(e) => state.notify_error(crate::ui::i18n::format(
+                                    &locale,
+                                    "export.write_failed",
+                                    &[("error", &e.to_string())],
+                                )),
                             }
                         }
-                        Err(e) => {
-                            state.notify_error(format!("AVIFラスタライズに失敗しました: {e}"))
-                        }
+                        Err(e) => state.notify_error(crate::ui::i18n::format(
+                            &locale,
+                            "export.raster_failed",
+                            &[("format", "AVIF"), ("error", &e.to_string())],
+                        )),
                     }
                 }
             }
         }
+        chose_file
     }
 }

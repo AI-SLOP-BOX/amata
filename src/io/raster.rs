@@ -15,6 +15,57 @@ pub fn export_png(doc: &Document, scale: f32, transparent: bool) -> Result<Vec<u
     export_png_with_limit(doc, scale, transparent, MAX_EXPORT_DIM)
 }
 
+/// PNG export with text outlined (glyph paths instead of live text).
+/// Needed because the raster engine (resvg) ignores
+/// `font-feature-settings`, so OpenType features and the font's vertical
+/// forms only survive if the SVG carries outlines.
+pub fn export_png_with_outline(
+    doc: &Document,
+    scale: f32,
+    transparent: bool,
+    outline_text: bool,
+) -> Result<Vec<u8>, String> {
+    export_png_with_outline_limit(doc, scale, transparent, outline_text, MAX_EXPORT_DIM)
+}
+
+/// [`export_png_with_outline`] with an explicit dimension cap.
+pub fn export_png_with_outline_limit(
+    doc: &Document,
+    scale: f32,
+    transparent: bool,
+    outline_text: bool,
+    max_dim: u32,
+) -> Result<Vec<u8>, String> {
+    let requested_scale = scale.clamp(0.1, 16.0);
+    let max_dim = max_dim.max(1) as f32;
+    let svg_data = crate::io::svg::export_svg_with_options(doc, false, None, outline_text);
+    let opt = resvg::usvg::Options {
+        fontdb: std::sync::Arc::new(crate::core::font::FontRegistry::global().database().clone()),
+        ..Default::default()
+    };
+    let rtree = resvg::usvg::Tree::from_str(&svg_data, &opt)
+        .map_err(|e| format!("Failed to parse SVG for raster export: {}", e))?;
+    let base_size = rtree.size();
+    let base_width = (base_size.width() as f64).max(1.0) as f32;
+    let base_height = (base_size.height() as f64).max(1.0) as f32;
+    let longest_side = base_width.max(base_height);
+    let scale = if longest_side * requested_scale > max_dim {
+        max_dim / longest_side
+    } else {
+        requested_scale
+    };
+    let target_width = ((base_width * scale).round().max(1.0) as u32).min(max_dim as u32);
+    let target_height = ((base_height * scale).round().max(1.0) as u32).min(max_dim as u32);
+    let mut pixmap = resvg::tiny_skia::Pixmap::new(target_width, target_height)
+        .ok_or_else(|| "Failed to allocate pixmap buffer".to_string())?;
+    if !transparent {
+        pixmap.fill(resvg::tiny_skia::Color::WHITE);
+    }
+    let transform = resvg::tiny_skia::Transform::from_scale(scale, scale);
+    resvg::render(&rtree, transform, &mut pixmap.as_mut());
+    pixmap.encode_png().map_err(|e| e.to_string())
+}
+
 /// [`export_png`] with an explicit dimension cap.
 ///
 /// The requested `scale` is honoured unless it would exceed `max_dim`; in that
@@ -75,8 +126,7 @@ pub fn decode_placed_image(bytes: &[u8]) -> Result<(f64, f64, Vec<u8>), String> 
     if bytes.len() > 64 * 1024 * 1024 {
         return Err("Image file too large (64MB limit)".to_string());
     }
-    let img = image::load_from_memory(bytes)
-        .map_err(|e| format!("Could not decode image: {e}"))?;
+    let img = image::load_from_memory(bytes).map_err(|e| format!("Could not decode image: {e}"))?;
     let (w, h) = (img.width(), img.height());
     if w == 0 || h == 0 {
         return Err("Image has zero size".to_string());
@@ -94,10 +144,7 @@ pub fn decode_placed_image(bytes: &[u8]) -> Result<(f64, f64, Vec<u8>), String> 
     let (w, h) = (img.width(), img.height());
     let mut png = Vec::new();
     img.to_rgba8()
-        .write_to(
-            &mut std::io::Cursor::new(&mut png),
-            image::ImageFormat::Png,
-        )
+        .write_to(&mut std::io::Cursor::new(&mut png), image::ImageFormat::Png)
         .map_err(|e| format!("Failed to encode PNG: {e}"))?;
     Ok((w as f64, h as f64, png))
 }

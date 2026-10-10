@@ -126,6 +126,7 @@ fn print_pdf_scales_the_stroke_with_the_baked_geometry() {
         marks: false,
         bleed: Some(0.0),
         pdfx: false,
+        outline_text: false,
     };
     let (pdf, _) = export_pdf_print(&stroked_rect(2.0), &opts);
     assert_eq!(
@@ -141,6 +142,7 @@ fn print_pdf_scales_the_dash_spacing_with_the_baked_geometry() {
         marks: false,
         bleed: Some(0.0),
         pdfx: false,
+        outline_text: false,
     };
     let (pdf, _) = export_pdf_print(&dashed_rect(2.0), &opts);
     let streams = press_streams(&pdf);

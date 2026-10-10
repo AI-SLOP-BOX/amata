@@ -7,11 +7,113 @@ pub fn save_project(doc: &Document, path: &Path) -> Result<(), String> {
     super::atomic::atomic_write_str(path, &json).map_err(|e| e.to_string())
 }
 
+/// Max project file size (DoS guard: nested groups deserialize
+/// recursively, and embedded images inflate memory far past file size).
+pub const MAX_PROJECT_BYTES: usize = 256 * 1024 * 1024;
+
 pub fn load_project(path: &Path) -> Result<Document, String> {
+    let meta = fs::metadata(path).map_err(|e| e.to_string())?;
+    if meta.len() > MAX_PROJECT_BYTES as u64 {
+        return Err(format!(
+            "プロジェクトが大きすぎます（上限{}MB）",
+            MAX_PROJECT_BYTES / 1024 / 1024
+        ));
+    }
     let data = fs::read_to_string(path).map_err(|e| e.to_string())?;
+    check_json_depth(&data)?;
     let mut doc: Document = serde_json::from_str(&data).map_err(|e| e.to_string())?;
+    sanitize_document(&mut doc);
     doc.normalize();
     Ok(doc)
+}
+
+/// Reject deeply-nested JSON before serde recursion (stack overflow).
+/// String literals and escapes are skipped so `{"text":"[[["}` is safe.
+pub(crate) fn check_json_depth(data: &str) -> Result<(), String> {
+    const MAX_DEPTH: usize = 200;
+    let mut depth = 0usize;
+    let mut in_str = false;
+    let mut escape = false;
+    for b in data.bytes() {
+        if in_str {
+            if escape {
+                escape = false;
+            } else if b == b'\\' {
+                escape = true;
+            } else if b == b'"' {
+                in_str = false;
+            }
+            continue;
+        }
+        match b {
+            b'"' => in_str = true,
+            b'{' | b'[' => {
+                depth += 1;
+                if depth > MAX_DEPTH {
+                    return Err("プロジェクトのネストが深すぎます".into());
+                }
+            }
+            b'}' | b']' => {
+                depth = depth.saturating_sub(1);
+            }
+            _ => {}
+        }
+    }
+    Ok(())
+}
+
+/// Clamp adversarial dimensions/counts after load: serde recursion on
+/// hostile nesting is bounded by the file cap above, but absurd-but-valid
+/// values (NaN transforms, gigapixel canvases, million-object layers)
+/// must not reach the renderer/canvas.
+pub(crate) fn sanitize_document(doc: &mut Document) {
+    fn finite_or(v: f64, fallback: f64) -> f64 {
+        if v.is_finite() {
+            v
+        } else {
+            fallback
+        }
+    }
+    doc.width = finite_or(doc.width, 1920.0).clamp(1.0, 16384.0);
+    doc.height = finite_or(doc.height, 1080.0).clamp(1.0, 16384.0);
+    doc.bleed = finite_or(doc.bleed, 0.0).clamp(0.0, 144.0);
+    const MAX_OBJECTS: usize = 200_000;
+    let mut count = 0usize;
+    fn cap_objects(objs: &mut Vec<crate::core::document::Object>, count: &mut usize) {
+        objs.retain(|_| {
+            *count += 1;
+            *count <= MAX_OBJECTS
+        });
+        for o in objs.iter_mut() {
+            // Scrub non-finite transforms (NaN/Inf poison bbox math and
+            // hit-testing all the way down the pipeline).
+            let t = &mut o.transform;
+            t.x = finite_or(t.x, 0.0);
+            t.y = finite_or(t.y, 0.0);
+            t.rotation = finite_or(t.rotation, 0.0);
+            t.scale_x = finite_or(t.scale_x, 1.0);
+            t.scale_y = finite_or(t.scale_y, 1.0);
+            t.skew_x = finite_or(t.skew_x, 0.0);
+            t.skew_y = finite_or(t.skew_y, 0.0);
+            match &mut o.object_type {
+                crate::core::document::ObjectType::Group(children)
+                | crate::core::document::ObjectType::ClippingMask { children } => {
+                    cap_objects(children, count);
+                }
+                crate::core::document::ObjectType::Image { png_bytes, .. }
+                    if png_bytes.len() > 32 * 1024 * 1024 =>
+                {
+                    // Oversized embedded rasters blow up renderer memory
+                    // and project JSON alike: drop the bytes, keep the box.
+                    png_bytes.clear();
+                }
+                _ => {}
+            }
+        }
+    }
+    for layer in &mut doc.layers {
+        cap_objects(&mut layer.objects, &mut count);
+    }
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]

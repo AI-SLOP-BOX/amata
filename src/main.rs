@@ -46,7 +46,7 @@ fn main() -> eframe::Result<()> {
         Box::new(move |cc| {
             let prefs = crate::core::prefs::Prefs::load();
             crate::ui::setup_custom_fonts(&cc.egui_ctx);
-            crate::ui::apply_adobe_theme(&cc.egui_ctx, &prefs.color_theme);
+            crate::ui::apply_adobe_theme(&cc.egui_ctx, prefs.color_theme);
             cc.egui_ctx.set_zoom_factor(prefs.ui_scale_factor());
             Ok(Box::new(IrasuApp::with_file(initial_file)))
         }),

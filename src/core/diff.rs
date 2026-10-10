@@ -900,7 +900,7 @@ fn format_fill(fill: &Option<crate::core::path::FillStyle>) -> String {
             FillType::Pattern(_) => "pattern".to_string(),
             FillType::Image(ImageFill { image_id, .. }) => {
                 format!("image-fill({})", image_id)
-            },
+            }
         },
     }
 }

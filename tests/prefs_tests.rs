@@ -89,7 +89,10 @@ fn missing_fields_fall_back_to_defaults() {
     let p: Prefs = serde_json::from_str(legacy).expect("legacy prefs load");
     assert!(!p.show_home_on_startup);
     assert_eq!(p.recent_files_count, 50);
-    assert_eq!(p.color_theme, "ライト");
+    assert_eq!(
+        p.color_theme,
+        irasu_illustrator::core::prefs::ColorTheme::Light
+    );
     let d = Prefs::default();
     assert_eq!(p.grid_size, d.grid_size);
     assert_eq!(p.show_grid, d.show_grid);
@@ -109,7 +112,7 @@ fn unknown_fields_are_dropped_not_fatal() {
 fn prefs_round_trip_through_json() {
     let p = Prefs {
         ui_scale: "150%".to_string(),
-        artboard_bg_mode: "ホワイト".to_string(),
+        artboard_bg_mode: irasu_illustrator::core::prefs::ArtboardBgMode::White,
         grid_size: 25.0,
         anchor_point_size: 7.5,
         handle_size: 3.0,
@@ -144,11 +147,11 @@ fn artboard_and_handle_mode_helpers() {
         !p.artboard_is_white(),
         "default artboard is the checkerboard"
     );
-    p.artboard_bg_mode = "ホワイト".to_string();
+    p.artboard_bg_mode = irasu_illustrator::core::prefs::ArtboardBgMode::White;
     assert!(p.artboard_is_white());
 
     assert!(!p.high_contrast_handles());
-    p.point_handle_color_mode = "ハイコントラスト".to_string();
+    p.point_handle_color_mode = irasu_illustrator::core::prefs::HandleColorMode::HighContrast;
     assert!(p.high_contrast_handles());
 }
 

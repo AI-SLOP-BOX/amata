@@ -1,9 +1,8 @@
+use super::util::*;
 use crate::core::document::{Document, FontStyle, Object, ObjectType, TextAnchor, Transform};
 use crate::core::effects::color_adjust_matrix;
-use image::ImageEncoder;use crate::core::path::{
-    ArrowHead, FillType, PathData, PathElement, StrokeStyle,
-};
-use super::util::*;
+use crate::core::path::{ArrowHead, FillType, PathData, PathElement, StrokeStyle};
+use image::ImageEncoder;
 
 /// Emit a `<pattern>` containing an embedded `<image>` for use as an image fill.
 /// Returns the full `<pattern>...</pattern>` block (not the fill attribute),
@@ -166,14 +165,14 @@ fn font_face_css(doc: &Document) -> String {
 }
 
 pub fn export_svg(doc: &Document) -> String {
-    export_svg_with_options(doc, false, None)
+    export_svg_with_options(doc, false, None, false)
 }
 
 /// Emit SVG, optionally recording an ICC profile name as a comment so
 /// downstream tools (and our own re-import) can recover the intent.
 /// Actual ICC embedding requires profile blobs we do not vendor yet.
 pub fn export_svg_with_profile(doc: &Document, color_profile: Option<&str>) -> String {
-    export_svg_with_options(doc, false, color_profile)
+    export_svg_with_options(doc, false, color_profile, false)
 }
 
 /// Full-option entry point.
@@ -186,6 +185,7 @@ pub fn export_svg_with_options(
     doc: &Document,
     embed_fonts: bool,
     color_profile: Option<&str>,
+    outline_text: bool,
 ) -> String {
     let profile_comment = color_profile
         .filter(|p| !p.trim().is_empty())
@@ -207,7 +207,14 @@ pub fn export_svg_with_options(
 
     for sym in &doc.symbols {
         sym_defs.push_str(&format!("  <symbol id=\"{}\">\n", sym.id));
-        render_object_to_svg(&sym.object, doc, &mut sym_defs, &mut defs, &mut id_counter);
+        render_object_to_svg(
+            &sym.object,
+            doc,
+            &mut sym_defs,
+            &mut defs,
+            &mut id_counter,
+            outline_text,
+        );
         sym_defs.push_str("  </symbol>\n");
     }
     defs.push_str(&sym_defs);
@@ -221,7 +228,14 @@ pub fn export_svg_with_options(
         if (layer.opacity - 1.0).abs() > 1e-3 {
             let mut group = String::new();
             for obj in &layer.objects {
-                render_object_to_svg(obj, doc, &mut group, &mut defs, &mut id_counter);
+                render_object_to_svg(
+                    obj,
+                    doc,
+                    &mut group,
+                    &mut defs,
+                    &mut id_counter,
+                    outline_text,
+                );
             }
             svg.push_str(&format!(
                 "  <g opacity=\"{:.3}\">\n{}  </g>\n",
@@ -229,7 +243,7 @@ pub fn export_svg_with_options(
             ));
         } else {
             for obj in &layer.objects {
-                render_object_to_svg(obj, doc, &mut svg, &mut defs, &mut id_counter);
+                render_object_to_svg(obj, doc, &mut svg, &mut defs, &mut id_counter, outline_text);
             }
         }
     }
@@ -284,6 +298,32 @@ fn path_data_to_d(path: &PathData, transform: &Transform) -> String {
             PathElement::ClosePath => {
                 d.push_str("Z ");
             }
+        }
+    }
+    d
+}
+
+/// Like [`path_data_to_d`] but for text outlines, whose coordinates are
+/// baseline-relative in the app's **y-down** convention (ink above the
+/// baseline is negative y — the same convention the canvas mesh cache and
+/// the PDF printer use). `bx`/`by` place the baseline in document space.
+fn path_data_to_d_flipped(path: &PathData, bx: f64, by: f64) -> String {
+    let mut d = String::new();
+    let f = |y: f64| by + y;
+    for elem in &path.elements {
+        match elem {
+            PathElement::MoveTo(p) => d.push_str(&format!("M {} {} ", bx + p.x, f(p.y))),
+            PathElement::LineTo(p) => d.push_str(&format!("L {} {} ", bx + p.x, f(p.y))),
+            PathElement::CurveTo(seg) => d.push_str(&format!(
+                "C {} {} {} {} {} {} ",
+                bx + seg.control1.x,
+                f(seg.control1.y),
+                bx + seg.control2.x,
+                f(seg.control2.y),
+                bx + seg.end.x,
+                f(seg.end.y)
+            )),
+            PathElement::ClosePath => d.push_str("Z "),
         }
     }
     d
@@ -435,12 +475,75 @@ fn svg_transform_attr(t: &Transform) -> String {
     )
 }
 
+/// ルビ (horizontal) readings as `<tspan>`s sitting above their group.
+/// Positions come from the same advance estimates the canvas and the
+/// outline path use, so the three renderers agree.
+fn svg_ruby_tspans(
+    base: &str,
+    anns: &[crate::core::document::RubyAnnotation],
+    style: &crate::core::document::TextStyle,
+    x0: f64,
+    base_y: f64,
+) -> String {
+    if anns.is_empty() {
+        return String::new();
+    }
+    let gap = if style.auto_spacing {
+        crate::core::document::ja_latin_gap_em(style.font_size, style.auto_spacing_em as f64)
+    } else {
+        0.0
+    };
+    let ls = style.effective_letter_spacing();
+    let mut out = String::new();
+    let mut x = x0;
+    let mut prev: Option<char> = None;
+    let mut open: Option<(f64, usize)> = None;
+    for (i, ch) in base.chars().enumerate() {
+        if crate::core::document::char_advance_estimate(ch) == 0.0 {
+            continue;
+        }
+        if style.auto_spacing {
+            if let Some(p) = prev {
+                if crate::core::document::is_ja_latin_boundary(p, ch) {
+                    x += gap;
+                }
+            }
+        }
+        if let Some(ann) = anns.iter().find(|a| a.start == i) {
+            open = Some((x, ann.len));
+        }
+        x += crate::core::document::char_advance_estimate(ch) * style.font_size + ls;
+        if let Some((sx, left)) = open {
+            if left <= 1 {
+                open = None;
+                if let Some(ann) = anns.iter().find(|a| a.start + a.len == i + 1) {
+                    // Absolute x AND y: a `dy` here would leak into the
+                    // following base tspan (which only resets `x`) and
+                    // shift the whole run upward.
+                    out.push_str(&format!(
+                        "<tspan x=\"{}\" y=\"{}\" text-anchor=\"middle\" font-size=\"{:.0}%\">{}</tspan>",
+                        (sx + x) / 2.0,
+                        base_y - style.font_size * crate::core::document::RUBY_ABOVE_EM,
+                        crate::core::document::RUBY_SCALE * 100.0,
+                        xml_escape(&ann.reading)
+                    ));
+                }
+            } else {
+                open = Some((sx, left - 1));
+            }
+        }
+        prev = Some(ch);
+    }
+    out
+}
+
 fn render_object_to_svg(
     obj: &Object,
     doc: &Document,
     svg: &mut String,
     defs: &mut String,
     counter: &mut usize,
+    outline_text: bool,
 ) {
     if !obj.visible {
         return;
@@ -664,9 +767,7 @@ fn render_object_to_svg(
                             );
                             if band.len() >= 3 {
                                 let mut sub =
-                                    crate::core::path::PathData::from_polygon_points(
-                                        &band, true,
-                                    );
+                                    crate::core::path::PathData::from_polygon_points(&band, true);
                                 combined.elements.append(&mut sub.elements);
                             }
                         }
@@ -784,7 +885,10 @@ fn render_object_to_svg(
             } else {
                 fill_attr
             };
-            let escaped_text = xml_escape(text);
+            // Ruby markup never reaches the file: the base text is drawn,
+            // readings ride tspans above (horizontal) or right (vertical).
+            let (text_base, text_ruby) = crate::core::document::parse_ruby(text);
+            let escaped_text = xml_escape(&text_base);
 
             let font_fam = if style.font_family.is_empty() {
                 "Inter, sans-serif".to_string()
@@ -793,6 +897,22 @@ fn render_object_to_svg(
             };
 
             let mut extra_attrs = String::new();
+            // CSS `font-feature-settings` carries explicit OpenType
+            // overrides to the renderer (browser/resvg honour it), so the
+            // SVG matches the canvas/PDF shaping.
+            let mut ff = String::new();
+            if !style.ligatures {
+                ff.push_str("'liga' 0, ");
+            }
+            for f in &style.ot_features {
+                if f.tag_bytes().is_some() {
+                    ff.push_str(&format!("'{}' {}, ", f.tag, u8::from(f.on)));
+                }
+            }
+            let ff = ff.trim_end_matches(", ").to_string();
+            if !ff.is_empty() {
+                extra_attrs.push_str(&format!(" font-feature-settings=\"{ff}\""));
+            }
             // Area text round-trips through a private attribute: the box is a
             // layout input that plain `x`/`y`/tspans cannot express.
             if let Some(a) = *area {
@@ -816,8 +936,11 @@ fn render_object_to_svg(
                     style.font_style.as_svg_str()
                 ));
             }
-            if style.letter_spacing != 0.0 {
-                extra_attrs.push_str(&format!(" letter-spacing=\"{}\"", style.letter_spacing));
+            if style.effective_letter_spacing() != 0.0 {
+                extra_attrs.push_str(&format!(
+                    " letter-spacing=\"{}\"",
+                    style.effective_letter_spacing()
+                ));
             }
             if !style.variations.is_empty() {
                 // Standard CSS property; also our round-trip channel (parse
@@ -836,16 +959,13 @@ fn render_object_to_svg(
                 ));
             }
             if style.vertical {
-                extra_attrs.push_str(" writing-mode=\"vertical-rl\"");
+                extra_attrs.push_str(" data-text-vertical=\"1\"");
             }
             if !style.ligatures {
                 extra_attrs.push_str(" font-variant-ligatures=\"none\"");
             }
             if let Some(nf) = next_frame {
-                extra_attrs.push_str(&format!(
-                    " data-text-thread=\"{}\"",
-                    xml_escape(nf)
-                ));
+                extra_attrs.push_str(&format!(" data-text-thread=\"{}\"", xml_escape(nf)));
             }
 
             // Explicit line breaks become positioned tspans (line-height advance,
@@ -861,8 +981,7 @@ fn render_object_to_svg(
             // the first baseline sits at the em-box origin, and lines past the
             // box bottom are clipped (drawn in a clipPath) so raster export
             // matches the canvas.
-            let layout =
-                crate::core::document::layout_text_full(doc, &obj.id, text, style, *area);
+            let layout = crate::core::document::layout_text_full(doc, &obj.id, text, style, *area);
             let emit_lines = layout.lines.clone();
             let (area_tx, area_ty) = layout.origin;
             // Text position: local layout origin, plus the object offset in
@@ -883,9 +1002,19 @@ fn render_object_to_svg(
                     } else {
                         (tx + a.x, ty + a.y)
                     };
+                    // ぶら下げ: a hanging 閉じ約物's ink overruns the box by
+                    // up to one em, so widen the clip horizontally (or
+                    // vertically for 縦組み) by that much — otherwise the
+                    // hanging ink is cut off in SVG/resvg output.
+                    let hang = if style.burasage { style.font_size } else { 0.0 };
+                    let (rx, rw, ry, rh) = if style.vertical {
+                        (cx, a.width, cy, a.height + hang)
+                    } else {
+                        (cx, a.width + hang, cy, a.height)
+                    };
                     defs.push_str(&format!(
                         "  <clipPath id=\"{}\">\n    <rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" />\n  </clipPath>\n",
-                        cid, cx, cy, a.width, a.height
+                        cid, rx, ry, rw, rh
                     ));
                     Some(cid)
                 } else {
@@ -894,7 +1023,202 @@ fn render_object_to_svg(
             } else {
                 None
             };
-            let body = if emit_lines.len() > 1 {
+            // テキストのアウトライン化: glyphs become <path> data. The raster
+            // export's engine (resvg) ignores `font-feature-settings`, and live
+            // text cannot carry the font's `vert` forms, so this is the only way
+            // SVG/PNG honour the OpenType settings — the same reason press PDFs
+            // outline text. Falls back to live text when no face resolves (a
+            // missing font must not silently drop the copy).
+            let mut outlined: Option<String> = None;
+            if outline_text {
+                let mut body = String::new();
+                let mut produced = false;
+                for (li, line) in layout.lines.iter().take(layout.visible).enumerate() {
+                    let Some(ol) =
+                        crate::core::text_path::try_text_to_outline_path_with_style(line, style)
+                    else {
+                        continue;
+                    };
+                    // Same per-line placement as the canvas mesh cache:
+                    // column x-offset + anchor, line height down Y.
+                    let col = layout.col_of_line.get(li).copied().unwrap_or(0);
+                    let col_x = layout.col_x.get(col).copied().unwrap_or(layout.origin.0);
+                    let indent = layout.line_indent.get(li).copied().unwrap_or(0.0);
+                    let xoff = layout.line_xoff.get(li).copied().unwrap_or(0.0);
+                    let width = ol.bounding_box().map(|(mn, mx)| mx.x - mn.x).unwrap_or(0.0);
+                    let (ox, _) = layout.origin;
+                    let anchor = match style.text_anchor {
+                        TextAnchor::Start => 0.0,
+                        TextAnchor::Middle => -width / 2.0,
+                        TextAnchor::End => -width,
+                    };
+                    let ax = (col_x - ox) + anchor + indent + xoff;
+                    let ay = if style.vertical {
+                        0.0
+                    } else {
+                        li as f64 * line_height
+                    };
+                    let d = path_data_to_d_flipped(&ol, base_x + ax, base_y + ay);
+                    body.push_str(&format!("    <path d=\"{d}\"/>\n"));
+                    produced = true;
+                }
+                if produced {
+                    outlined = Some(body);
+                }
+            }
+            let outlined_svg: Option<String> = outlined.map(|paths| {
+                let tr_attr = if transform_has_linear_part(&obj.transform) {
+                    svg_transform_attr(&obj.transform)
+                } else {
+                    String::new()
+                };
+                let clip_attr = clip_id
+                    .as_ref()
+                    .map(|c| format!(" clip-path=\"url(#{c})\" data-text-clip=\"1\""))
+                    .unwrap_or_default();
+                format!("  <g{id_attr}{clip_attr}{tr_attr}{fill}{effect_attr}>\n{paths}  </g>\n")
+            });
+
+            let body = if style.vertical {
+                // 縦組み: position every glyph explicitly. Upright CJK sits
+                // in its fullwidth cell; halfwidth glyphs rotate 90° CW.
+                // A `writing-mode` attribute alone is not portable (resvg
+                // ignores it), so the exporter carries it in `data` here —
+                // the `vertical` flag is restored via `data-text-vertical`.
+                let mut spans = String::new();
+                for (i, ln) in emit_lines.iter().enumerate() {
+                    let col = layout.col_of_line.get(i).copied().unwrap_or(0);
+                    let lx = layout.col_x.get(col).copied().unwrap_or(
+                        if transform_has_linear_part(&obj.transform) {
+                            area_tx
+                        } else {
+                            tx + area_tx
+                        },
+                    );
+                    let col_x_out = if transform_has_linear_part(&obj.transform) {
+                        lx + layout.line_indent.get(i).copied().unwrap_or(0.0)
+                            + layout.line_xoff.get(i).copied().unwrap_or(0.0)
+                    } else {
+                        tx + lx
+                            + layout.line_indent.get(i).copied().unwrap_or(0.0)
+                            + layout.line_xoff.get(i).copied().unwrap_or(0.0)
+                    };
+                    let mut cursor = 0.0;
+                    let mut prev: Option<char> = None;
+                    let (base_line, ruby_anns) = crate::core::document::parse_ruby(ln.as_str());
+                    let chars: Vec<char> = base_line.chars().collect();
+                    let mut ci = 0;
+                    let mut ruby_open: Option<(f64, usize)> = None;
+                    while ci < chars.len() {
+                        let ch = chars[ci];
+                        ci += 1;
+                        if crate::core::document::char_advance_estimate(ch) == 0.0 {
+                            continue;
+                        }
+                        if style.auto_spacing {
+                            if let Some(p) = prev {
+                                if crate::core::document::is_ja_latin_boundary(p, ch) {
+                                    cursor += crate::core::document::ja_latin_gap_em(
+                                        style.font_size,
+                                        style.auto_spacing_em as f64,
+                                    );
+                                }
+                            }
+                        }
+                        // Ruby group starting at this char.
+                        if let Some(ann) = ruby_anns.iter().find(|a| a.start == ci - 1) {
+                            ruby_open = Some((cursor, ann.len));
+                        }
+                        // 縦中横: 2–3 digits share one em cell, set as a
+                        // small horizontal run at the cell's centre.
+                        if let Some(n) = crate::core::document::tatechuyoko_run(&chars, ci - 1) {
+                            let unit: String = chars[ci - 1..ci - 1 + n].iter().collect();
+                            ci += n - 1;
+                            let adv_unit = style.font_size + style.effective_letter_spacing();
+                            let ax = col_x_out + style.font_size * 0.5;
+                            let ay = base_y + cursor + adv_unit / 2.0;
+                            spans.push_str(&format!(
+                                "<tspan x=\"{ax}\" y=\"{ay}\" text-anchor=\"middle\" font-size=\"{:.0}%\">{}</tspan>",
+                                crate::core::document::tatechuyoko_scale(n) * 100.0,
+                                xml_escape(&unit)
+                            ));
+                            cursor += adv_unit;
+                            prev = Some(chars[ci - 1]);
+                            // Ruby group closing on this char: the reading
+                            // rides a half-size run to the right of the column.
+                            if let Some((start_y, left)) = ruby_open {
+                                if left <= 1 {
+                                    ruby_open = None;
+                                    if let Some(ann) =
+                                        ruby_anns.iter().find(|a| a.start + a.len == ci)
+                                    {
+                                        let rx = col_x_out
+                                            + style.font_size
+                                                * crate::core::document::RUBY_STRIP_CENTER_EM;
+                                        let ry = base_y + (start_y + cursor) / 2.0;
+                                        spans.push_str(&format!(
+                                            "<tspan x=\"{rx}\" y=\"{ry}\" text-anchor=\"middle\" font-size=\"{:.0}%\">{}</tspan>",
+                                            crate::core::document::RUBY_SCALE * 100.0,
+                                            xml_escape(&ann.reading)
+                                        ));
+                                    }
+                                } else {
+                                    ruby_open = Some((start_y, left - 1));
+                                }
+                            }
+                            continue;
+                        }
+                        let adv = crate::core::document::char_advance_estimate(ch)
+                            * style.font_size
+                            + style.effective_letter_spacing();
+                        let baseline = base_y + cursor;
+                        // Brackets whose vertical OpenType form is a
+                        // 90° rotation are emitted rotated, matching the
+                        // outline/PDF path (see is_vert_rotated_char).
+                        if crate::core::document::is_fullwidth_char(ch)
+                            && !crate::core::document::is_vert_rotated_char(ch)
+                        {
+                            spans.push_str(&format!(
+                                "<tspan x=\"{col_x_out}\" y=\"{baseline}\">{}</tspan>",
+                                xml_escape(&ch.to_string())
+                            ));
+                        } else {
+                            // Anchor at the rotated cell's center; rotate
+                            // the glyph 90° CW around it.
+                            let ax = col_x_out + style.font_size * 0.3;
+                            let ay = baseline + adv / 2.0;
+                            spans.push_str(&format!(
+                                "<tspan x=\"{ax}\" y=\"{ay}\" text-anchor=\"middle\" transform=\"rotate(90 {ax} {ay})\">{}</tspan>",
+                                xml_escape(&ch.to_string())
+                            ));
+                        }
+                        cursor += adv;
+                        prev = Some(ch);
+                        // Ruby group closing on this char: the reading
+                        // rides a half-size run to the right of the column.
+                        if let Some((start_y, left)) = ruby_open {
+                            if left <= 1 {
+                                ruby_open = None;
+                                if let Some(ann) = ruby_anns.iter().find(|a| a.start + a.len == ci)
+                                {
+                                    let rx = col_x_out
+                                        + style.font_size
+                                            * crate::core::document::RUBY_STRIP_CENTER_EM;
+                                    let ry = base_y + (start_y + cursor) / 2.0;
+                                    spans.push_str(&format!(
+                                        "<tspan x=\"{rx}\" y=\"{ry}\" text-anchor=\"middle\" font-size=\"{:.0}%\">{}</tspan>",
+                                        crate::core::document::RUBY_SCALE * 100.0,
+                                        xml_escape(&ann.reading)
+                                    ));
+                                }
+                            } else {
+                                ruby_open = Some((start_y, left - 1));
+                            }
+                        }
+                    }
+                }
+                spans
+            } else if emit_lines.len() > 1 {
                 let mut spans = String::new();
                 for (i, ln) in emit_lines.iter().enumerate() {
                     // Column-aware x: multi-column frames offset each line
@@ -908,11 +1232,37 @@ fn render_object_to_svg(
                     } else {
                         tx + lx + indent + xoff
                     };
+                    // ルビ: readings ride above their base group.
+                    let (ln_base, ln_ruby) = crate::core::document::parse_ruby(ln);
+                    let ruby_tspans = svg_ruby_tspans(&ln_base, &ln_ruby, style, line_x, base_y);
+                    // 和欧間 auto-spacing: split into script segments with
+                    // explicit `dx` gaps between them.
+                    let seg_body = if style.auto_spacing
+                        && crate::core::document::has_ja_latin_boundary(&ln_base)
+                    {
+                        let mut inner = String::new();
+                        for (seg, gap) in
+                            crate::core::document::split_ja_latin_segments(&ln_base, style)
+                        {
+                            if gap {
+                                inner.push_str(&format!(
+                                    "<tspan dx=\"{}\">{}</tspan>",
+                                    crate::core::document::ja_latin_gap_em(
+                                        style.font_size,
+                                        style.auto_spacing_em as f64
+                                    ),
+                                    xml_escape(&seg)
+                                ));
+                            } else {
+                                inner.push_str(&xml_escape(&seg));
+                            }
+                        }
+                        inner
+                    } else {
+                        xml_escape(&ln_base)
+                    };
                     if i == 0 {
-                        spans.push_str(&format!(
-                            "<tspan x=\"{line_x}\">{}</tspan>",
-                            xml_escape(ln)
-                        ));
+                        spans.push_str(&format!("<tspan x=\"{line_x}\">{seg_body}</tspan>",));
                     } else {
                         let ratio = line_height / style.font_size;
                         let dy_str = if (ratio - 1.2).abs() < 0.001 {
@@ -921,54 +1271,91 @@ fn render_object_to_svg(
                             format!("{:.2}em", ratio)
                         };
                         spans.push_str(&format!(
-                            "<tspan x=\"{line_x}\" dy=\"{dy_str}\">{}</tspan>",
-                            xml_escape(ln)
+                            "<tspan x=\"{line_x}\" dy=\"{dy_str}\">{seg_body}</tspan>",
                         ));
+                    }
+                    // Readings come last: a tspan inside a <text> inherits
+                    // the position the previous one left off at, so emitting
+                    // the reading first would shift the base run with it.
+                    if !ruby_tspans.is_empty() {
+                        spans.push_str(&ruby_tspans);
                     }
                 }
                 spans
             } else {
-                escaped_text
+                // Single-line text: 和欧間 segments and/or ルビ readings.
+                let mut inner = String::new();
+                if style.auto_spacing && crate::core::document::has_ja_latin_boundary(&text_base) {
+                    for (seg, gap) in
+                        crate::core::document::split_ja_latin_segments(&text_base, style)
+                    {
+                        if gap {
+                            inner.push_str(&format!(
+                                "<tspan dx=\"{}\">{}</tspan>",
+                                crate::core::document::ja_latin_gap_em(
+                                    style.font_size,
+                                    style.auto_spacing_em as f64
+                                ),
+                                xml_escape(&seg)
+                            ));
+                        } else {
+                            inner.push_str(&xml_escape(&seg));
+                        }
+                    }
+                } else {
+                    inner.push_str(&escaped_text);
+                }
+                // Readings last: see the multi-line branch above.
+                if !text_ruby.is_empty() {
+                    inner.push_str(&svg_ruby_tspans(
+                        &text_base, &text_ruby, style, base_x, base_y,
+                    ));
+                }
+                inner
             };
-            let transform_attr = if transform_has_linear_part(&obj.transform) {
-                svg_transform_attr(&obj.transform)
+            if let Some(g) = outlined_svg {
+                svg.push_str(&g);
             } else {
-                String::new()
-            };
-            // `data-text-clip` marks the wrapper as *intrinsic* to the area
-            // text: the box (`data-text-area`) already re-clips on canvas and
-            // on every re-export, so this <g clip-path> exists purely for
-            // external renderers. Without the marker the importer turns it
-            // into a ClippingMask and nests the <text> out of the flat
-            // `all_objects()` walk, so the text can no longer be found by
-            // round-trip (see tests/text_engine_tests.rs).
-            let clip_attr = clip_id
-                .as_ref()
-                .map(|c| format!(" clip-path=\"url(#{c})\" data-text-clip=\"1\""))
-                .unwrap_or_default();
-            // The clip rect lives in local coordinates, so in the linear
-            // case the object transform moves onto the wrapping `<g>` (with
-            // the clip) and the text itself stays untransformed — otherwise
-            // the clip would apply in outer space and misalign.
-            if transform_has_linear_part(&obj.transform) && !clip_attr.is_empty() {
-                svg.push_str(&format!(
+                let transform_attr = if transform_has_linear_part(&obj.transform) {
+                    svg_transform_attr(&obj.transform)
+                } else {
+                    String::new()
+                };
+                // `data-text-clip` marks the wrapper as *intrinsic* to the area
+                // text: the box (`data-text-area`) already re-clips on canvas and
+                // on every re-export, so this <g clip-path> exists purely for
+                // external renderers. Without the marker the importer turns it
+                // into a ClippingMask and nests the <text> out of the flat
+                // `all_objects()` walk, so the text can no longer be found by
+                // round-trip (see tests/text_engine_tests.rs).
+                let clip_attr = clip_id
+                    .as_ref()
+                    .map(|c| format!(" clip-path=\"url(#{c})\" data-text-clip=\"1\""))
+                    .unwrap_or_default();
+                // The clip rect lives in local coordinates, so in the linear
+                // case the object transform moves onto the wrapping `<g>` (with
+                // the clip) and the text itself stays untransformed — otherwise
+                // the clip would apply in outer space and misalign.
+                if transform_has_linear_part(&obj.transform) && !clip_attr.is_empty() {
+                    svg.push_str(&format!(
                     "  <g{clip_attr}{transform_attr}>\n  <text{id_attr} x=\"{base_x}\" y=\"{base_y}\" font-size=\"{font_size}\" font-family=\"{font_fam}\"{extra_attrs}{fill}{effect_attr}>{body}</text>\n  </g>\n",
                 ));
-            } else if clip_attr.is_empty() {
-                svg.push_str(&format!(
+                } else if clip_attr.is_empty() {
+                    svg.push_str(&format!(
                     "  <text{id_attr} x=\"{base_x}\" y=\"{base_y}\" font-size=\"{font_size}\" font-family=\"{font_fam}\"{extra_attrs}{fill}{transform_attr}{effect_attr}>{body}</text>\n",
                 ));
-            } else {
-                svg.push_str(&format!(
+                } else {
+                    svg.push_str(&format!(
                     "  <g{clip_attr}>\n  <text{id_attr} x=\"{base_x}\" y=\"{base_y}\" font-size=\"{font_size}\" font-family=\"{font_fam}\"{extra_attrs}{fill}{transform_attr}{effect_attr}>{body}</text>\n  </g>\n",
                 ));
+                }
             }
         }
         ObjectType::Group(children) => {
             let transform_attr = svg_transform_attr(&obj.transform);
             svg.push_str(&format!("  <g{id_attr}{transform_attr}{effect_attr}>\n"));
             for child in children {
-                render_object_to_svg(child, doc, svg, defs, counter);
+                render_object_to_svg(child, doc, svg, defs, counter, outline_text);
             }
             svg.push_str("  </g>\n");
         }
@@ -988,7 +1375,7 @@ fn render_object_to_svg(
                     "  <g{id_attr} clip-path=\"url(#{clip_id})\"{transform_attr}{effect_attr}>\n"
                 ));
                 for child in &children[1..] {
-                    render_object_to_svg(child, doc, svg, defs, counter);
+                    render_object_to_svg(child, doc, svg, defs, counter, outline_text);
                 }
                 svg.push_str("  </g>\n");
             }
@@ -1026,8 +1413,7 @@ fn render_object_to_svg(
             // only picks this up from inline `style`, not from the
             // presentation attribute, so both are emitted (browsers honor
             // either; the attribute is the standards-clean one).
-            let rendering =
-                " image-rendering=\"pixelated\" style=\"image-rendering:pixelated\"";
+            let rendering = " image-rendering=\"pixelated\" style=\"image-rendering:pixelated\"";
             if transform_has_linear_part(&obj.transform) {
                 let transform_attr = svg_transform_attr(&obj.transform);
                 svg.push_str(&format!(
@@ -1075,8 +1461,7 @@ fn render_object_to_svg(
             // One group per mesh keeps the markup navigable.
             svg.push_str(&format!("  <g{id_attr}{effect_attr}>\n"));
             for (corners, color) in &quads {
-                let pts: Vec<(f64, f64)> =
-                    corners.iter().map(|p| map(p.x, p.y)).collect();
+                let pts: Vec<(f64, f64)> = corners.iter().map(|p| map(p.x, p.y)).collect();
                 let opac = if (color[3] - 1.0).abs() > 1e-3 {
                     format!(" fill-opacity=\"{:.3}\"", color[3].clamp(0.0, 1.0))
                 } else {
@@ -1121,7 +1506,7 @@ fn render_object_to_svg(
         ObjectType::Envelope { .. } => {
             // Same proxy recursion as canvas: deformed source as Path.
             if let Some(proxy) = obj.envelope_proxy() {
-                render_object_to_svg(&proxy, doc, svg, defs, counter);
+                render_object_to_svg(&proxy, doc, svg, defs, counter, outline_text);
             }
         }
     }
@@ -1221,7 +1606,7 @@ mod tests {
             .expect("at least one font family must be installed");
         let doc = text_doc(&family);
 
-        let svg = export_svg_with_options(&doc, true, None);
+        let svg = export_svg_with_options(&doc, true, None, false);
         assert!(svg.contains("@font-face"), "no embedded face: {svg}");
         assert!(svg.contains("src: url(data:font/"), "no data URI: {svg}");
         assert!(
@@ -1236,7 +1621,7 @@ mod tests {
     #[test]
     fn embed_fonts_skips_families_that_are_not_installed() {
         let doc = text_doc("Zzz-no-such-family-xyz");
-        let svg = export_svg_with_options(&doc, true, None);
+        let svg = export_svg_with_options(&doc, true, None, false);
         assert!(!svg.contains("@font-face"), "embedded a fallback: {svg}");
         // The text element itself is still there for the viewer to resolve.
         assert!(svg.contains("<text"), "{svg}");
@@ -1256,7 +1641,7 @@ mod tests {
                 ..Default::default()
             }
         }));
-        let svg = export_svg_with_options(&doc, true, None);
+        let svg = export_svg_with_options(&doc, true, None, false);
         assert_eq!(
             svg.matches("@font-face").count(),
             1,
@@ -1264,4 +1649,3 @@ mod tests {
         );
     }
 }
-

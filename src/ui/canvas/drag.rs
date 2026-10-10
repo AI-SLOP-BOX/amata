@@ -183,7 +183,13 @@ impl CanvasWidget {
                         let cmd = Box::new(crate::core::history::AddObjectCommand::new(obj));
                         state.undo_manager.execute(cmd, &mut state.document);
                         state.selected_ids = vec![new_id];
-                        state.notify_success("エリアテキストを作成しました");
+                        state.notify_success(
+                            crate::ui::i18n::text(
+                                &state.prefs.language,
+                                "canvas.area_text_created",
+                            )
+                            .into_owned(),
+                        );
                     }
                 }
                 DragMode::MoveObject => {
@@ -339,12 +345,11 @@ impl CanvasWidget {
                                     for w in 0..poly.len() {
                                         let p0 = poly[w];
                                         let p1 = poly[(w + 1) % poly.len()];
-                                        let d =
-                                            crate::core::geometry::distance_to_segment(
-                                                crate::core::path::AnchorPoint::new(ep.x, ep.y),
-                                                p0,
-                                                p1,
-                                            );
+                                        let d = crate::core::geometry::distance_to_segment(
+                                            crate::core::path::AnchorPoint::new(ep.x, ep.y),
+                                            p0,
+                                            p1,
+                                        );
                                         if d <= eraser_radius {
                                             touched = true;
                                             break;
@@ -363,12 +368,11 @@ impl CanvasWidget {
                             // Record the true parent/position so Undo restores
                             // the original place instead of position 0.
                             if let Some(obj) = state.document.find_object(id).cloned() {
-                                let cmd: Box<dyn crate::core::history::Command> = Box::new(
-                                    crate::core::history::RemoveObjectCommand::located(
+                                let cmd: Box<dyn crate::core::history::Command> =
+                                    Box::new(crate::core::history::RemoveObjectCommand::located(
                                         obj,
                                         &state.document,
-                                    ),
-                                );
+                                    ));
                                 state.undo_manager.execute(cmd, &mut state.document);
                             }
                         }
@@ -429,14 +433,14 @@ impl CanvasWidget {
                 DragMode::MoveNode(_) => {
                     if let Some(initial) = drag.initial_elements {
                         if let Some(ref obj_id) = self.node_edit_state.selected_object_id {
-                            let current_elements = state
-                                .document
-                                .find_object(obj_id)
-                                .and_then(|o| match &o.object_type {
-                                    crate::core::document::ObjectType::Path(p) => {
-                                        Some(p.elements.clone())
+                            let current_elements =
+                                state.document.find_object(obj_id).and_then(|o| {
+                                    match &o.object_type {
+                                        crate::core::document::ObjectType::Path(p) => {
+                                            Some(p.elements.clone())
+                                        }
+                                        _ => None,
                                     }
-                                    _ => None,
                                 });
                             if let Some(current) = current_elements {
                                 if current != initial {

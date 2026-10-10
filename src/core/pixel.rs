@@ -255,7 +255,8 @@ impl PixelArt {
             if c[3] <= 0.0 {
                 continue;
             }
-            let d = (c[0] - color[0]).powi(2) + (c[1] - color[1]).powi(2) + (c[2] - color[2]).powi(2);
+            let d =
+                (c[0] - color[0]).powi(2) + (c[1] - color[1]).powi(2) + (c[2] - color[2]).powi(2);
             if best.map(|(_, bd)| d < bd).unwrap_or(true) {
                 best = Some((i as u8, d));
             }
@@ -307,11 +308,7 @@ mod tests {
 
     #[test]
     fn flood_fill_stays_inside_bounds() {
-        let mut p = PixelArt::new(
-            4,
-            4,
-            vec![[1.0, 0.0, 0.0, 1.0], [0.0, 0.0, 1.0, 1.0]],
-        );
+        let mut p = PixelArt::new(4, 4, vec![[1.0, 0.0, 0.0, 1.0], [0.0, 0.0, 1.0, 1.0]]);
         // Border of color 0, hollow interior.
         for x in 0..4 {
             p.set(x, 0, 0);

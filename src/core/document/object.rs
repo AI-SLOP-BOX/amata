@@ -186,6 +186,27 @@ impl TextArea {
         }
     }
 
+    /// Copy with hostile values scrubbed: hand-edited files may carry
+    /// NaN/Inf geometry (the constructor only clamps w/h, and serde bypasses
+    /// it entirely). NaN origins poison every export stream downstream.
+    pub fn sanitized(&self) -> TextArea {
+        fn finite_or(v: f64, fallback: f64) -> f64 {
+            if v.is_finite() {
+                v
+            } else {
+                fallback
+            }
+        }
+        TextArea {
+            x: finite_or(self.x, 0.0),
+            y: finite_or(self.y, 0.0),
+            width: finite_or(self.width, 1.0).max(1.0),
+            height: finite_or(self.height, 1.0).max(1.0),
+            cols: self.cols.max(1),
+            gutter: finite_or(self.gutter, 12.0).max(0.0),
+        }
+    }
+
     /// Per-column widths for `cols` columns across `width`.
     pub fn column_widths(&self) -> Vec<f64> {
         let n = self.cols.max(1) as usize;
@@ -286,14 +307,63 @@ pub struct TextStyle {
     /// each "line" is a column stacked on X instead of Y.
     #[serde(default)]
     pub vertical: bool,
+    /// Auto-insert spacing at Japanese/Latin boundaries (和欧間).
+    #[serde(default = "default_auto_spacing")]
+    pub auto_spacing: bool,
+    /// Size of the [`TextStyle::auto_spacing`] gap, in em
+    /// (0.25 = the classic 1/4em; 0.5 is the wider 1/2em some
+    /// houses use).
+    #[serde(default = "default_auto_spacing_em")]
+    pub auto_spacing_em: f32,
     /// Enable GSUB `liga`/`dlig`/`clig`/`rlig` ligature substitution
     /// when the face provides them (outline path only; SVG keeps raw text).
-    #[serde(default)]
+    #[serde(default = "default_ligatures")]
     pub ligatures: bool,
+    /// Explicit OpenType feature overrides (4-char tag + on/off), applied
+    /// after the `ligatures` toggle. Empty = shaper defaults. Used for the
+    /// Japanese typography features the shaper leaves off by default
+    /// (`palt`, `halt`, `vert`, `vrt2`, `ruby`, `kern`, `vkrn`, …).
+    #[serde(default)]
+    pub ot_features: Vec<OtFeature>,
     /// List marker style (DTP): prefixes each paragraph and hangs wrapped
     /// continuation lines by the marker width.
     #[serde(default)]
     pub list: ListStyle,
+    /// ぶら下げ (hanging punctuation): let a line's trailing 閉じ約物
+    /// (、。・」）…) overrun the wrap width by its *ink*, instead of the
+    /// whole em box. Japanese typesetting convention; Illustrator exposes
+    /// the same switch in its Japanese typesography settings.
+    #[serde(default = "default_burasage")]
+    pub burasage: bool,
+}
+
+/// One OpenType feature override: a 4-char tag (`palt`, `vert`, `ruby`,
+/// `jp90`, …) and whether it is forced on or off. Entries with an
+/// unknown/oversized tag are ignored at shaping time.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OtFeature {
+    pub tag: String,
+    pub on: bool,
+}
+
+impl OtFeature {
+    pub fn new(tag: impl Into<String>, on: bool) -> Self {
+        Self {
+            tag: tag.into(),
+            on,
+        }
+    }
+
+    /// The tag as exactly 4 ASCII bytes, or `None` when malformed.
+    pub fn tag_bytes(&self) -> Option<[u8; 4]> {
+        let bytes = self.tag.as_bytes();
+        if bytes.len() != 4 || !bytes.iter().all(|b| b.is_ascii_alphanumeric()) {
+            return None;
+        }
+        let mut out = [0u8; 4];
+        out.copy_from_slice(bytes);
+        Some(out)
+    }
 }
 
 /// Paragraph list marker style.
@@ -322,8 +392,12 @@ impl Default for TextStyle {
             word_wrap: false,
             variations: Vec::new(),
             vertical: false,
+            auto_spacing: true,
+            auto_spacing_em: 0.25,
             ligatures: true,
+            ot_features: Vec::new(),
             list: ListStyle::None,
+            burasage: true,
         }
     }
 }
@@ -342,8 +416,12 @@ impl TextStyle {
             word_wrap: false,
             variations: Vec::new(),
             vertical: false,
+            auto_spacing: true,
+            auto_spacing_em: 0.25,
             ligatures: true,
+            ot_features: Vec::new(),
             list: ListStyle::None,
+            burasage: true,
         }
     }
 
@@ -356,7 +434,13 @@ impl TextStyle {
     }
 
     /// Insert or replace a variation coordinate (undo is the caller's job).
+    /// Non-finite values are ignored: a NaN/Inf coordinate would reach the
+    /// HarfBuzz instance and ttf-parser as NaN advances (poisoning every
+    /// outline bbox downstream).
     pub fn set_variation(&mut self, axis: impl Into<String>, value: f64) {
+        if !value.is_finite() {
+            return;
+        }
         let axis = axis.into();
         if let Some(entry) = self
             .variations
@@ -373,6 +457,66 @@ impl TextStyle {
     pub fn clear_variation(&mut self, axis: &str) {
         self.variations
             .retain(|v| !v.axis.eq_ignore_ascii_case(axis));
+    }
+
+    /// Current explicit OpenType override for a 4-char tag, if any.
+    pub fn ot_feature_state(&self, tag: &str) -> Option<bool> {
+        self.ot_features
+            .iter()
+            .find(|f| f.tag.eq_ignore_ascii_case(tag))
+            .map(|f| f.on)
+    }
+
+    /// True when the `halt` (Alternate Half Widths) feature is forced on.
+    /// Default is off, matching HarfBuzz.
+    pub fn halt_on(&self) -> bool {
+        self.ot_feature_state("halt") == Some(true)
+    }
+
+    /// Force a 4-char OpenType feature on or off (undo is the caller's
+    /// job). Malformed tags are ignored.
+    pub fn set_ot_feature(&mut self, tag: impl Into<String>, on: bool) {
+        let feature = OtFeature::new(tag, on);
+        if feature.tag_bytes().is_none() {
+            return;
+        }
+        if let Some(entry) = self
+            .ot_features
+            .iter_mut()
+            .find(|f| f.tag.eq_ignore_ascii_case(&feature.tag))
+        {
+            entry.on = on;
+        } else {
+            self.ot_features.push(feature);
+        }
+    }
+
+    /// Drop an explicit override, returning to the shaper default.
+    pub fn clear_ot_feature(&mut self, tag: &str) {
+        self.ot_features
+            .retain(|f| !f.tag.eq_ignore_ascii_case(tag));
+    }
+
+    /// Effective feature pairs for the shaper: the legacy `ligatures`
+    /// toggle first (it predates explicit overrides), then `ot_features`
+    /// in order so a later entry wins. Tags are 4 bytes; values are
+    /// HarfBuzz-style booleans (1 = on, 0 = off).
+    pub fn ot_feature_pairs(&self) -> Vec<([u8; 4], u32)> {
+        let mut out: Vec<([u8; 4], u32)> = Vec::new();
+        let liga_on = if self.ligatures { 1 } else { 0 };
+        for tag in [b"liga", b"dlig", b"clig", b"rlig"] {
+            out.push((*tag, liga_on));
+        }
+        for feature in &self.ot_features {
+            let Some(tag) = feature.tag_bytes() else {
+                continue;
+            };
+            match out.iter_mut().find(|(t, _)| *t == tag) {
+                Some(slot) => slot.1 = u32::from(feature.on),
+                None => out.push((tag, u32::from(feature.on))),
+            }
+        }
+        out
     }
 
     /// Serialize for SVG `font-variation-settings` / CSS round-trip.
@@ -397,15 +541,49 @@ impl TextStyle {
                 continue;
             }
             if let Ok(value) = tokens[1].parse::<f64>() {
-                out.push(VariationSetting::new(tag, value));
+                // "NaN"/"inf" parse successfully — never store them (see
+                // `set_variation` for why non-finite coordinates poison).
+                if value.is_finite() {
+                    out.push(VariationSetting::new(tag, value));
+                }
             }
         }
         out
     }
 
-    /// Effective line height in document units.
+    /// Effective line height in document units, hardened for hostile input:
+    /// deserialized documents may carry NaN/Inf/negative multipliers or sizes
+    /// (the UI clamps its own widgets, JSON does not). Falls back to the
+    /// 1.2em default so layout math never goes NaN (which would poison
+    /// bounding boxes and export streams downstream).
     pub fn effective_line_height(&self) -> f64 {
-        self.line_height.unwrap_or(1.2) * self.font_size
+        let mult = match self.line_height {
+            Some(v) if v.is_finite() && v > 0.0 => v,
+            Some(_) => 1.2,
+            None => 1.2,
+        };
+        mult * self.effective_font_size()
+    }
+
+    /// Font size with hostile values (NaN/Inf/<=0 from hand-edited files)
+    /// replaced by the default, so advances and scales stay finite.
+    pub fn effective_font_size(&self) -> f64 {
+        if self.font_size.is_finite() && self.font_size > 0.0 {
+            self.font_size
+        } else {
+            default_font_size()
+        }
+    }
+
+    /// Letter spacing with non-finite hostile values dropped to zero, so
+    /// advances never go NaN (a NaN advance poisons outline bboxes and the
+    /// PDF content stream alike).
+    pub fn effective_letter_spacing(&self) -> f64 {
+        if self.letter_spacing.is_finite() {
+            self.letter_spacing
+        } else {
+            0.0
+        }
     }
 }
 
@@ -597,15 +775,20 @@ impl Transform {
 /// Approximate text block metrics: max line width and total height for
 /// explicit `\n` line breaks at 1.2em advance (matches canvas + SVG export).
 pub fn text_block_size(text: &str, font_size: f64) -> (f64, f64) {
-    text_block_size_with_style(text, &TextStyle {
-        font_size,
-        ..Default::default()
-    })
+    text_block_size_with_style(
+        text,
+        &TextStyle {
+            font_size,
+            ..Default::default()
+        },
+    )
 }
 
 /// Measure a text block, honouring explicit line height and word-wrap
 /// settings when a `TextStyle` is available.
 pub fn text_block_size_with_style(text: &str, style: &TextStyle) -> (f64, f64) {
+    let normalized = normalize_text(text);
+    let text = normalized.as_ref();
     let lines = if style.word_wrap {
         if let Some(max_w) = style.max_width {
             compute_wrapped_lines(text, style, max_w)
@@ -620,27 +803,245 @@ pub fn text_block_size_with_style(text: &str, style: &TextStyle) -> (f64, f64) {
     // letter-spacing, so measurement agrees with wrapping.
     let width = lines
         .iter()
-        .map(|l| {
-            l.chars()
-                .map(|ch| char_advance_estimate(ch) * style.font_size + style.letter_spacing)
-                .sum::<f64>()
-        })
+        .map(|l| text_advance_estimate(l, style))
         .fold(0.0_f64, f64::max);
     let height = line_h + line_h * (lines.len().saturating_sub(1) as f64);
     (width, height)
 }
 
+/// Normalize line/paragraph separators to `\n` before layout, measurement
+/// or shaping. Pasted Windows text (`\r\n`), legacy Mac (`\r`) and
+/// U+2028/2029 paragraph separators otherwise leave a stray control char at
+/// the end of a line: no font maps it, so the whole run degrades to
+/// `.notdef`/mock-block fallback (visible tofu for otherwise fine text).
+pub fn normalize_text(text: &str) -> std::borrow::Cow<'_, str> {
+    if !text
+        .chars()
+        .any(|c| c == '\r' || c == '\u{2028}' || c == '\u{2029}')
+    {
+        return std::borrow::Cow::Borrowed(text);
+    }
+    let mut out = String::with_capacity(text.len());
+    let mut chars = text.chars().peekable();
+    while let Some(c) = chars.next() {
+        match c {
+            '\r' => {
+                // Collapse CRLF to a single break.
+                if chars.peek() == Some(&'\n') {
+                    chars.next();
+                }
+                out.push('\n');
+            }
+            '\u{2028}' | '\u{2029}' => out.push('\n'),
+            _ => out.push(c),
+        }
+    }
+    std::borrow::Cow::Owned(out)
+}
+
+/// Serde default for [`TextStyle::auto_spacing`] (on, matching the
+/// constructor defaults).
+fn default_auto_spacing() -> bool {
+    true
+}
+
+/// Serde default for [`TextStyle::auto_spacing_em`] (1/4em).
+fn default_auto_spacing_em() -> f32 {
+    0.25
+}
+
+/// Serde default for [`TextStyle::ligatures`]: documents written before
+/// the field existed keep the constructor's on-state.
+fn default_ligatures() -> bool {
+    true
+}
+
+/// Serde default for [`TextStyle::burasage`].
+fn default_burasage() -> bool {
+    true
+}
+
+/// How far a hanging char may overrun the wrap width, in em:
+/// half-width for punctuation (、。・…), full-width for closing brackets
+/// (」）〕…), zero for everything else. With `burasage` off the whole em
+/// box overruns instead (the classic 追い込み behaviour).
+pub fn burasage_hang(ch: char) -> f64 {
+    if matches!(
+        ch,
+        '、' | '。'
+            | '，'
+            | '．'
+            | '・'
+            | '：'
+            | '；'
+            | '！'
+            | '？'
+            | '･'
+            | '…'
+            | '‥'
+            | '—'
+            | '―'
+            | '〜'
+            | '～'
+    ) {
+        0.5
+    } else if matches!(
+        ch,
+        '」' | '』'
+            | '）'
+            | '〕'
+            | '］'
+            | '｝'
+            | '〉'
+            | '》'
+            | '】'
+            | '｣'
+            | '’'
+            | '”'
+            | '"'
+            | '\''
+            | ')'
+            | ']'
+            | '}'
+    ) {
+        1.0
+    } else {
+        0.0
+    }
+}
+
+/// True when two adjacent significant characters straddle the
+/// 和文/欧文 boundary (fullwidth Japanese punctuation, kana, CJK, against
+/// an ASCII letter or digit).
+pub fn is_ja_latin_boundary(a: char, b: char) -> bool {
+    let a_ja = is_fullwidth(a) && !is_zero_width(a);
+    let b_ja = is_fullwidth(b) && !is_zero_width(b);
+    let a_lat = a.is_ascii_alphanumeric();
+    let b_lat = b.is_ascii_alphanumeric();
+    (a_ja && b_lat) || (a_lat && b_ja)
+}
+
+/// Fullwidth detection (vertical stacking: these stand upright).
+pub fn is_fullwidth_char(ch: char) -> bool {
+    is_fullwidth(ch)
+}
+
+/// True when the text contains at least one 和/欧 boundary pair.
+pub fn has_ja_latin_boundary(text: &str) -> bool {
+    let mut prev: Option<char> = None;
+    for ch in text.chars() {
+        if !is_zero_width(ch) {
+            if let Some(p) = prev {
+                if is_ja_latin_boundary(p, ch) {
+                    return true;
+                }
+            }
+            prev = Some(ch);
+        }
+    }
+    false
+}
+
+/// Extra advance inserted at a 和欧 boundary: `em` × font size.
+pub fn ja_latin_gap_em(font_size: f64, em: f64) -> f64 {
+    font_size * em
+}
+
+/// Extra advance inserted at a 和欧 boundary: ~1/4em.
+pub fn ja_latin_gap(font_size: f64) -> f64 {
+    ja_latin_gap_em(font_size, 0.25)
+}
+
+/// Advance of every glyph in `text` plus letter-spacing plus auto-spacing
+/// gaps at 和欧 boundaries. Shared by wrapping, measuring and the
+/// outline shaping loops so they all agree.
+pub fn text_advance_estimate(text: &str, style: &TextStyle) -> f64 {
+    let font_size = style.effective_font_size();
+    let letter_spacing = style.effective_letter_spacing();
+    let mut w = 0.0;
+    let mut prev: Option<char> = None;
+    for ch in text.chars() {
+        w += char_advance_styled(ch, style) * font_size + letter_spacing;
+        if style.auto_spacing {
+            if let Some(p) = prev {
+                if is_ja_latin_boundary(p, ch) {
+                    w += ja_latin_gap_em(font_size, style.auto_spacing_em as f64);
+                }
+            }
+        }
+        if !is_zero_width(ch) {
+            prev = Some(ch);
+        }
+    }
+    w
+}
+
+/// Split `text` into runs between 和欧 boundaries. Each entry is
+/// `(segment, gap_before)`: `gap_before` is true for the segment that
+/// starts after a Japanese/Latin boundary (i.e. an explicit gap of
+/// `ja_latin_gap` belongs before it).
+pub fn split_ja_latin_segments(text: &str, style: &TextStyle) -> Vec<(String, bool)> {
+    let mut out: Vec<(String, bool)> = Vec::new();
+    let mut prev: Option<char> = None;
+    for ch in text.chars() {
+        let gap = style.auto_spacing && prev.map(|p| is_ja_latin_boundary(p, ch)).unwrap_or(false);
+        if gap {
+            out.push((ch.to_string(), true));
+        } else if out.is_empty() {
+            out.push((ch.to_string(), false));
+        } else {
+            out.last_mut().unwrap().0.push(ch);
+        }
+        if !is_zero_width(ch) {
+            prev = Some(ch);
+        }
+    }
+    out
+}
+
+/// Advance of `ch` under `style`: [`char_advance_estimate`] plus the
+/// `halt` (Alternate Half Widths) halving when the style forces it on.
+/// Every estimate-driven consumer (wrapping, measurement, canvas
+/// positioning) uses this so they agree with each other — and with the
+/// HarfBuzz outline path, which applies the font's own `halt` forms.
+pub fn char_advance_styled(ch: char, style: &TextStyle) -> f64 {
+    let base = char_advance_estimate(ch);
+    if base > 0.0 && style.halt_on() && is_halt_char(ch) {
+        return base / 2.0;
+    }
+    base
+}
+
 /// Rough per-glyph advance estimate as a fraction of `font_size`.
 ///
 /// Fullwidth characters (hiragana, katakana, CJK ideographs, hangul,
-/// fullwidth forms) advance 1em; halfwidth kana and Latin advance 0.6em.
+/// fullwidth forms, emoji/symbols that Japanese fonts set fullwidth)
+/// advance 1em; combining marks, variation selectors (IVS/VS1–16), ZWJ/ZWNJ
+/// and ZWNBSP advance 0 (they ride on the previous glyph — counting 0.6em
+/// for each VS16/ZWJ made every emoji run wrap far too early);
+/// everything else advances 0.6em.
 /// Shared by wrapping and block measurement so both agree.
 pub fn char_advance_estimate(ch: char) -> f64 {
-    if is_fullwidth(ch) {
+    if is_zero_width(ch) {
+        0.0
+    } else if is_fullwidth(ch) {
         1.0
     } else {
         0.6
     }
+}
+
+/// Zero-advance format characters: variation selectors (U+FE00–FE0F,
+/// incl. text/emoji presentation VS15/VS16), IVS selectors (U+E0100–E01EF),
+/// joiners and combining marks. They modify the previous glyph instead of
+/// advancing the pen.
+fn is_zero_width(ch: char) -> bool {
+    matches!(ch,
+        '\u{200C}' | '\u{200D}' | '\u{FEFF}' // ZWNJ, ZWJ, ZWNBSP
+        | '\u{0300}'..='\u{036F}' // combining diacriticals
+        | '\u{FE00}'..='\u{FE0F}' // variation selectors VS1–VS16
+        | '\u{E0100}'..='\u{E01EF}' // IVS selectors
+    )
 }
 
 fn is_fullwidth(ch: char) -> bool {
@@ -656,27 +1057,261 @@ fn is_fullwidth(ch: char) -> bool {
         | '\u{F900}'..='\u{FAFF}' // CJK Compat Ideographs
         | '\u{FF00}'..='\u{FF60}' // Fullwidth forms…
         | '\u{FFE0}'..='\u{FFE6}' // …and fullwidth symbols
+        | '\u{2500}'..='\u{257F}' // Box drawing (fullwidth in JP fonts)
+        | '\u{25A0}'..='\u{25FF}' // Geometric shapes (■●▲…)
+        | '\u{2600}'..='\u{27BF}' // Misc symbols, dingbats, enclosed forms
+        | '\u{2B00}'..='\u{2BFF}' // Misc symbols and arrows
+        | '\u{1F000}'..='\u{1FAFF}' // Emoji & pictographs (fullwidth advance)
     )
 }
 
 /// Characters that must not start a line (行頭禁則: closing brackets,
-/// punctuation, prolongation mark, small kana…).
+/// punctuation, prolongation mark, iteration marks, small kana…).
 fn kinsoku_cannot_start_line(ch: char) -> bool {
-    matches!(ch,
-        '、' | '。' | '，' | '．' | '！' | '？' | '!' | '?' | '：' | '；'
-        | '）' | '〕' | '］' | '｝' | '〉' | '》' | '」' | '』' | '】' | '\'' | '"' | '’' | '”'
-        | '…' | '‥' | '・' | 'ー' | '〜' | '～'
-        | 'ぁ' | 'ぃ' | 'ぅ' | 'ぇ' | 'ぉ' | 'っ' | 'ゃ' | 'ゅ' | 'ょ' | 'ゎ'
-        | 'ァ' | 'ィ' | 'ゥ' | 'ェ' | 'ォ' | 'ッ' | 'ャ' | 'ュ' | 'ョ'
+    matches!(
+        ch,
+        '、' | '。' | '，' | '．' | '！' | '？' | '!' | '?' | '：' | '；' | '＂' | '＇'
+        | '）' | '〕' | '］' | '｝' | '〉' | '》' | '」' | '』' | '】' | '｣' | '\'' | '"' | '’' | '”'
+        | '…' | '‥' | '・' | 'ー' | 'ｰ' | '—' | '―' | '〜' | '～'
+        | 'ぁ' | 'ぃ' | 'ぅ' | 'ぇ' | 'ぉ' | 'っ' | 'ゃ' | 'ゅ' | 'ょ' | 'ゎ' | 'ゕ' | 'ゖ'
+        | 'ァ' | 'ィ' | 'ゥ' | 'ェ' | 'ォ' | 'ッ' | 'ャ' | 'ュ' | 'ョ' | 'ヮ'
+        | 'ｧ' | 'ｨ' | 'ｩ' | 'ｪ' | 'ｫ' | 'ｯ' | 'ｬ' | 'ｭ' | 'ｮ' // halfwidth small kana
+        | 'ゝ' | 'ゞ' | 'ヽ' | 'ヾ' // iteration marks
     )
 }
 
 /// Characters that must not end a line (行末禁則: opening brackets).
 fn kinsoku_cannot_end_line(ch: char) -> bool {
-    matches!(ch,
-        '「' | '『' | '（' | '〔' | '［' | '｛' | '〈' | '《' | '【' | '(' | '[' | '{' | '<'
+    matches!(
+        ch,
+        '「' | '『'
+            | '（'
+            | '〔'
+            | '［'
+            | '｛'
+            | '〈'
+            | '《'
+            | '【'
+            | '｢'
+            | '('
+            | '['
+            | '{'
+            | '<'
+            | '‘'
+            | '“'
+            | '«'
+            | '‹'
     )
 }
+
+/// 縦中横 (tate-chū-yoko) unit: a short ASCII-digit run inside vertical
+/// text that is typeset horizontally inside one em cell. Returns the run
+/// length (2–3 digits) when `chars[i]` starts such a run, else `None`.
+/// Runs of 4+ digits never fragment: classic Japanese typesetting
+/// rotates long numbers in full.
+pub fn tatechuyoko_run(chars: &[char], i: usize) -> Option<usize> {
+    let first = *chars.get(i)?;
+    if !first.is_ascii_digit() {
+        return None;
+    }
+    // Walk back to the run start so a 4+ digit run never fragments into
+    // "1" + "234" (both callers scan left→right and consume units).
+    let mut start = i;
+    while start > 0 && chars[start - 1].is_ascii_digit() {
+        start -= 1;
+    }
+    if start != i {
+        return None;
+    }
+    let mut end = i;
+    while end < chars.len() && chars[end].is_ascii_digit() {
+        end += 1;
+    }
+    (2..=3).contains(&(end - start)).then_some(end - start)
+}
+
+/// Per-glyph scale inside a 縦中横 unit (`n` chars share one em cell).
+pub fn tatechuyoko_scale(n: usize) -> f64 {
+    1.0 / n as f64
+}
+
+/// True for the fullwidth brackets that Japanese faces set **rotated 90°**
+/// in vertical writing via the `vert`/`vrt2` OpenType features
+/// （）〔〕［］｛〈〉《》【】「」『』 … . The PDF/outline path gets the real
+/// substituted glyph (see `vertical_open_type_outline`); the canvas and SVG
+/// renderers — which draw live text, not outlines — use this set to rotate
+/// the original glyph instead, which is visually the same result.
+pub fn is_vert_rotated_char(ch: char) -> bool {
+    matches!(
+        ch,
+        '（' | '）'
+            | '〔'
+            | '〕'
+            | '［'
+            | '］'
+            | '｛'
+            | '｝'
+            | '〈'
+            | '〉'
+            | '《'
+            | '》'
+            | '【'
+            | '】'
+            | '〖'
+            | '〗'
+            | '〘'
+            | '〙'
+            | '〚'
+            | '〛'
+            | '「'
+            | '」'
+            | '『'
+            | '』'
+            | '｢'
+            | '｣'
+    )
+}
+
+/// True for the fullwidth punctuation the `halt` (Alternate Half Widths)
+/// OpenType feature respaces to half an em: 、。，．・：；！？…‥ and the
+/// halfwidth-adjacent forms. Brackets are deliberately absent — Japanese
+/// faces keep （） at full width under `halt` (measured on Noto Sans JP),
+/// so including them would desync the estimate model from the shaping.
+pub fn is_halt_char(ch: char) -> bool {
+    matches!(
+        ch,
+        '、' | '。'
+            | '，'
+            | '．'
+            | '・'
+            | '：'
+            | '；'
+            | '！'
+            | '？'
+            | '･'
+            | '…'
+            | '‥'
+            | '—'
+            | '―'
+            | '‐'
+            | '－'
+            | '〜'
+            | '～'
+    )
+}
+
+/// One ruby (ルビ) group: `reading` set at half size beside the `len`
+/// base characters starting at char index `start` of the base text.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RubyAnnotation {
+    /// Char index of the group's first base char.
+    pub start: usize,
+    /// How many base chars the reading covers.
+    pub len: usize,
+    /// The reading itself (kana / letters).
+    pub reading: String,
+}
+
+/// Stripped ruby markup: base text, its annotations, and a per-char
+/// "is markup" mask over the ORIGINAL text. The mask lets the vertical
+/// wrapper keep markup inside its column strings (so every renderer
+/// re-parses the same notation) while giving it no horizontal advance.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RubyParse {
+    pub base: String,
+    pub anns: Vec<RubyAnnotation>,
+    /// `true` = markup char (`｜《》` or a `(reading)` run).
+    pub markup: Vec<bool>,
+}
+
+/// Strip ruby notation from `text`.
+///
+/// Two notations are understood:
+/// - `｜漢字《かんじ》` — the reading spans everything between `｜`
+///   and `《` (canonical, used for multi-char bases)
+/// - `字(よみ)` — the reading attaches to the single preceding char
+///
+/// Unbalanced markup is kept verbatim: a stray `(` or `｜` is ordinary
+/// text, and horizontal renders show it that way (only the vertical
+/// pipeline renders readings).
+pub fn parse_ruby_markup(text: &str) -> RubyParse {
+    let chars: Vec<char> = text.chars().collect();
+    let mut markup = vec![false; chars.len()];
+    let mut base = String::new();
+    let mut anns: Vec<RubyAnnotation> = Vec::new();
+    let mut i = 0;
+    while i < chars.len() {
+        // ｜base《reading》
+        if chars[i] == '\u{FF5C}' {
+            let open = (i + 1..chars.len()).find(|&j| chars[j] == '\u{300A}');
+            if let Some(open) = open {
+                let close = (open + 1..chars.len()).find(|&j| chars[j] == '\u{300B}');
+                if let Some(close) = close {
+                    let reading: String = chars[open + 1..close].iter().collect();
+                    let start = base.chars().count();
+                    let len = open - (i + 1);
+                    if len > 0 && !reading.is_empty() {
+                        for b in &chars[i + 1..open] {
+                            base.push(*b);
+                        }
+                        anns.push(RubyAnnotation {
+                            start,
+                            len,
+                            reading,
+                        });
+                        markup[i] = true;
+                        for m in markup.iter_mut().take(close + 1).skip(open) {
+                            *m = true;
+                        }
+                        i = close + 1;
+                        continue;
+                    }
+                }
+            }
+        }
+        // base(reading)
+        if chars[i] == '(' {
+            let close = (i + 1..chars.len()).find(|&j| chars[j] == ')');
+            if let Some(close) = close {
+                let reading: String = chars[i + 1..close].iter().collect();
+                let start = base.chars().count();
+                if !reading.is_empty() && start > 0 {
+                    anns.push(RubyAnnotation {
+                        start: start - 1,
+                        len: 1,
+                        reading,
+                    });
+                    for m in markup.iter_mut().take(close + 1).skip(i) {
+                        *m = true;
+                    }
+                    i = close + 1;
+                    continue;
+                }
+            }
+        }
+        base.push(chars[i]);
+        i += 1;
+    }
+    RubyParse { base, anns, markup }
+}
+
+/// Convenience wrapper: base text plus its annotations.
+pub fn parse_ruby(text: &str) -> (String, Vec<RubyAnnotation>) {
+    let parsed = parse_ruby_markup(text);
+    (parsed.base, parsed.anns)
+}
+
+/// Scale readings are typeset at (half size), matching 縦中横's pair
+/// scaling and the canvas/galley path.
+pub const RUBY_SCALE: f64 = 0.5;
+
+/// Horizontal ruby: vertical centre of the reading, in em above the
+/// base baseline (base ink tops out around 0.7em for CJK).
+pub const RUBY_ABOVE_EM: f64 = 0.95;
+
+/// Vertical ruby: horizontal centre of the reading strip, in em from
+/// the base column's left edge (the strip spans 1em..1.5em).
+pub const RUBY_STRIP_CENTER_EM: f64 = 1.25;
 
 /// Laid-out text: drawable lines, how many fit, and the first baseline
 /// origin in local coordinates.
@@ -708,6 +1343,9 @@ impl TextLayout {
 /// whose baseline falls below the box bottom overflow (still returned —
 /// exporters clip them visually but keep them in markup for round-trip).
 pub fn layout_text(text: &str, style: &TextStyle, area: Option<TextArea>) -> TextLayout {
+    let normalized = normalize_text(text);
+    let text = normalized.as_ref();
+    let area = area.map(|a| a.sanitized());
     if style.vertical {
         return layout_text_vertical(text, style, area);
     }
@@ -756,10 +1394,11 @@ pub fn layout_text(text: &str, style: &TextStyle, area: Option<TextArea>) -> Tex
                 line_xoff.push(0.0);
             }
             let line_h = style.effective_line_height().max(1e-6);
+            let font_size = style.effective_font_size();
             // First baseline at the em-box top + font_size; a line fits
             // while its baseline stays inside the box.
             let per_col =
-                ((((a.height - style.font_size) / line_h).floor() as isize) + 1).max(0) as usize;
+                ((((a.height - font_size) / line_h).floor() as isize) + 1).max(0) as usize;
             let visible = lines.len().min(per_col.saturating_mul(ncols));
             let mut col_of_line = Vec::with_capacity(lines.len());
             for i in 0..lines.len() {
@@ -768,7 +1407,7 @@ pub fn layout_text(text: &str, style: &TextStyle, area: Option<TextArea>) -> Tex
             TextLayout {
                 lines,
                 visible,
-                origin: (origins[0], a.y + style.font_size),
+                origin: (origins[0], a.y + font_size),
                 col_of_line,
                 col_x: origins,
                 col_w: widths,
@@ -785,28 +1424,39 @@ pub fn layout_text(text: &str, style: &TextStyle, area: Option<TextArea>) -> Tex
 /// box *width* / column width. Point text (no area) just splits on `\n`.
 fn layout_text_vertical(text: &str, style: &TextStyle, area: Option<TextArea>) -> TextLayout {
     let col_advance = style.effective_line_height().max(1e-6); // horizontal distance between columns
-    let char_adv = |ch: char| char_advance_estimate(ch) * style.font_size + style.letter_spacing;
+    let font_size = style.effective_font_size();
+    let letter_spacing = style.effective_letter_spacing();
+    // Advance of a char in a vertical column, plus extra advance at a
+    // 和欧 boundary (~1/4em when `auto_spacing` is on).
+    let char_adv = |prev: Option<char>, ch: char| {
+        let mut adv = char_advance_styled(ch, style) * font_size + letter_spacing;
+        if style.auto_spacing {
+            if let Some(p) = prev {
+                if is_ja_latin_boundary(p, ch) {
+                    adv += ja_latin_gap_em(font_size, style.auto_spacing_em as f64);
+                }
+            }
+        }
+        adv
+    };
 
     // Split into source lines, optionally wrapping each to the box height.
+    // Wrapping honours Japanese 禁則 (see `wrap_vertical_run`).
     let mut columns: Vec<String> = Vec::new();
     match area {
         None => {
             for para in text.split('\n') {
                 if style.word_wrap {
                     if let Some(max_h) = style.max_width {
-                        // Wrap by character count fitting in max_h.
-                        let mut col = String::new();
-                        let mut w = 0.0;
-                        for ch in para.chars() {
-                            let cw = char_adv(ch);
-                            if !col.is_empty() && w + cw > max_h {
-                                columns.push(std::mem::take(&mut col));
-                                w = 0.0;
-                            }
-                            col.push(ch);
-                            w += cw;
-                        }
-                        columns.push(col);
+                        // Wrap to `max_h`, kinsoku-aware.
+                        let hang = hang_px(style);
+                        columns.extend(wrap_vertical_run(
+                            para,
+                            char_adv,
+                            font_size + letter_spacing,
+                            max_h,
+                            &hang,
+                        ));
                     } else {
                         columns.push(para.to_string());
                     }
@@ -817,20 +1467,16 @@ fn layout_text_vertical(text: &str, style: &TextStyle, area: Option<TextArea>) -
         }
         Some(a) => {
             // Available height for one column (em-box top to first baseline budget).
-            let max_h = (a.height - style.font_size).max(style.font_size).max(1.0);
+            let max_h = (a.height - font_size).max(font_size).max(1.0);
             for para in text.split('\n') {
-                let mut col = String::new();
-                let mut w = 0.0;
-                for ch in para.chars() {
-                    let cw = char_adv(ch);
-                    if !col.is_empty() && w + cw > max_h {
-                        columns.push(std::mem::take(&mut col));
-                        w = 0.0;
-                    }
-                    col.push(ch);
-                    w += cw;
-                }
-                columns.push(col);
+                let hang = hang_px(style);
+                columns.extend(wrap_vertical_run(
+                    para,
+                    char_adv,
+                    font_size + letter_spacing,
+                    max_h,
+                    &hang,
+                ));
             }
         }
     }
@@ -839,25 +1485,113 @@ fn layout_text_vertical(text: &str, style: &TextStyle, area: Option<TextArea>) -
     let (visible, origin) = match area {
         None => (columns.len(), (0.0, 0.0)),
         Some(a) => {
-            let capacity = ((((a.width - style.font_size) / col_advance).floor() as isize) + 1)
-                .max(0) as usize;
+            let capacity =
+                ((((a.width - font_size) / col_advance).floor() as isize) + 1).max(0) as usize;
             // First column's baseline sits near the right edge of the box (vertical-rl).
-            let origin_x = a.x + a.width - style.font_size;
-            (columns.len().min(capacity), (origin_x, a.y + style.font_size))
+            let origin_x = a.x + a.width - font_size;
+            (columns.len().min(capacity), (origin_x, a.y + font_size))
         }
     };
 
     let n = columns.len();
+    // Per-column placement: column `i` advances left by `i * col_advance`
+    // from the rightmost (first) column — so renderers can position
+    // each column without re-deriving the layout.
+    let col_of_line: Vec<usize> = (0..n).collect();
+    let col_x: Vec<f64> = (0..n).map(|i| origin.0 - i as f64 * col_advance).collect();
+    let col_w: Vec<f64> = vec![col_advance; n];
     TextLayout {
         lines: columns,
         visible,
         origin,
-        col_of_line: vec![0; n],
-        col_x: vec![origin.0],
-        col_w: vec![f64::MAX],
+        col_of_line,
+        col_x,
+        col_w,
         line_indent: vec![0.0; n],
         line_xoff: vec![0.0; n],
     }
+}
+
+/// Greedy column wrap for vertical text, honouring Japanese 禁則:
+/// a 行頭禁則 char that would start a column stays at the end of the
+/// column above (追い込み), and 行末禁則 chars that would end a column
+/// are pushed down to start the next one (追い出し). Columns may
+/// overflow slightly when 追い込み applies — same as the horizontal
+/// wrap. `char_adv(prev, ch)` must include letter-spacing and any
+/// 和欧 boundary gap.
+///
+/// Ruby markup (`｜漢字《かんじ》` / `字(よみ)`) stays in the column
+/// string — the vertical renderers re-parse it — but takes no advance,
+/// so wrapping sees only the base characters.
+fn wrap_vertical_run(
+    para: &str,
+    char_adv: impl Fn(Option<char>, char) -> f64,
+    em_cell: f64,
+    max_h: f64,
+    hang: impl Fn(char) -> f64,
+) -> Vec<String> {
+    let parsed = parse_ruby_markup(para);
+    let markup = parsed.markup;
+    let chars: Vec<char> = para.chars().collect();
+    let mut columns: Vec<String> = Vec::new();
+    let mut col = String::new();
+    let mut w = 0.0;
+    let mut prev: Option<char> = None;
+    let mut i = 0;
+    while i < chars.len() {
+        // Ruby markup: keep it in the column, advance nothing.
+        if markup[i] {
+            col.push(chars[i]);
+            i += 1;
+            continue;
+        }
+        // 縦中横: 2–3 digits share one em cell.
+        if let Some(n) = tatechuyoko_run(&chars, i) {
+            let last = chars[i + n - 1];
+            if !col.is_empty() && w + em_cell > max_h {
+                columns.push(std::mem::take(&mut col));
+                w = 0.0;
+            }
+            for u in &chars[i..i + n] {
+                col.push(*u);
+            }
+            w += em_cell;
+            prev = Some(last);
+            i += n;
+            continue;
+        }
+        let ch = chars[i];
+        let cw = char_adv(prev, ch);
+        // ぶら下げ: a trailing 閉じ約物 may overrun the column budget by
+        // its ink (see `hang_px`), so the punctuation's ink hangs past the
+        // column bottom instead of the whole em box.
+        let next_hang = chars.get(i + 1).copied().unwrap_or('\0');
+        let budget = max_h + hang(next_hang) + hang(ch);
+        if !col.is_empty() && w + cw > budget && !kinsoku_cannot_start_line(ch) {
+            // 追い出し: trailing opening bracket(s) start the next column.
+            let mut head = String::new();
+            while col.chars().count() > 1 && col.chars().last().is_some_and(kinsoku_cannot_end_line)
+            {
+                head.insert(0, col.pop().unwrap_or(ch));
+            }
+            columns.push(std::mem::take(&mut col));
+            w = 0.0;
+            prev = None;
+            for m in head.chars() {
+                col.push(m);
+                w += char_adv(prev, m);
+                prev = Some(m);
+            }
+        }
+        col.push(ch);
+        w += cw;
+        if !is_zero_width(ch) {
+            prev = Some(ch);
+        }
+        i += 1;
+    }
+    columns.push(col);
+    columns
 }
 
 /// Distribute `text` across linked area-text frames (`frames` in link order).
@@ -866,11 +1600,7 @@ fn layout_text_vertical(text: &str, style: &TextStyle, area: Option<TextArea>) -
 ///
 /// This is the core of threaded text stories (テキストスレッド). Callers resolve
 /// the `next_frame` chain and pass areas in order.
-pub fn layout_text_thread(
-    text: &str,
-    style: &TextStyle,
-    frames: &[TextArea],
-) -> Vec<TextLayout> {
+pub fn layout_text_thread(text: &str, style: &TextStyle, frames: &[TextArea]) -> Vec<TextLayout> {
     if frames.is_empty() {
         return vec![layout_text(text, style, None)];
     }
@@ -879,6 +1609,10 @@ pub fn layout_text_thread(
     // never overflowing); per-frame rewrapping would need char-level
     // resume across widths. Same-width stories (the common case) are
     // byte-identical to wrapping at their own width.
+    let frames: Vec<TextArea> = frames.iter().map(|f| f.sanitized()).collect();
+    let normalized = normalize_text(text);
+    let text = normalized.as_ref();
+    let font_size = style.effective_font_size();
     let min_width = frames
         .iter()
         .map(|f| f.width)
@@ -892,10 +1626,9 @@ pub fn layout_text_thread(
     for (i, frame) in frames.iter().enumerate() {
         let col_or_line = style.effective_line_height().max(1e-6);
         let per_col = if style.vertical {
-            ((((frame.width - style.font_size) / col_or_line).floor() as isize) + 1).max(0) as usize
+            ((((frame.width - font_size) / col_or_line).floor() as isize) + 1).max(0) as usize
         } else {
-            ((((frame.height - style.font_size) / col_or_line).floor() as isize) + 1).max(0)
-                as usize
+            ((((frame.height - font_size) / col_or_line).floor() as isize) + 1).max(0) as usize
         };
         let ncols = if style.vertical {
             1
@@ -914,16 +1647,21 @@ pub fn layout_text_thread(
         let slice: Vec<String> = full.lines[consumed..end].to_vec();
         let slice_indent: Vec<f64> = full.line_indent.get(consumed..end).unwrap_or(&[]).to_vec();
         let origin = if style.vertical {
-            (
-                frame.x + frame.width - style.font_size,
-                frame.y + style.font_size,
-            )
+            (frame.x + frame.width - font_size, frame.y + font_size)
         } else {
-            (frame.x, frame.y + style.font_size)
+            (frame.x, frame.y + font_size)
         };
-        // Column assignment inside this frame's slice.
+        // Column assignment inside this frame's slice. Vertical: one
+        // column per laid-out line, advancing right→left.
         let (col_of_line, col_x, col_w) = if style.vertical {
-            (vec![0; slice.len()], vec![origin.0], vec![f64::MAX])
+            let advance = style.effective_line_height().max(1e-6);
+            (
+                (0..slice.len()).collect(),
+                (0..slice.len())
+                    .map(|i| origin.0 - i as f64 * advance)
+                    .collect(),
+                vec![advance; slice.len()],
+            )
         } else {
             let xs = frame.column_origins();
             let ws = frame.column_widths();
@@ -993,37 +1731,100 @@ pub fn layout_text_wrapped(
     style: &TextStyle,
     area: Option<TextArea>,
 ) -> Option<TextLayout> {
-    let a = area?;
+    let a = area?.sanitized();
     if style.vertical || a.cols > 1 || style.list != ListStyle::None {
         return None;
     }
-    // Top-level frame only (nested frames inherit parent transforms that
-    // layout cannot see without a full scene walk).
-    let obj = doc
-        .layers
-        .iter()
-        .flat_map(|l| l.objects.iter())
-        .find(|o| o.id == obj_id)?;
-    let to_doc = obj.transform.matrix();
-    let to_local = affine_inverse(&to_doc)?;
-    // Obstacles in frame-local space.
-    let mut obstacles: Vec<(f64, f64, f64, f64)> = Vec::new();
-    for layer in &doc.layers {
-        if !layer.visible {
-            continue;
+    // Resolve the frame anywhere in the tree, threading the world
+    // transform: grouped area text wraps like top-level text.
+    fn mat_mul(a: &[f64; 6], b: &[f64; 6]) -> [f64; 6] {
+        [
+            a[0] * b[0] + a[2] * b[1],
+            a[1] * b[0] + a[3] * b[1],
+            a[0] * b[2] + a[2] * b[3],
+            a[1] * b[2] + a[3] * b[3],
+            a[0] * b[4] + a[2] * b[5] + a[4],
+            a[1] * b[4] + a[3] * b[5] + a[5],
+        ]
+    }
+    fn find<'a>(
+        objs: &'a [Object],
+        obj_id: &str,
+        parent: &[f64; 6],
+    ) -> Option<(&'a Object, [f64; 6])> {
+        for o in objs {
+            let world = mat_mul(parent, &o.transform.matrix());
+            if o.id == obj_id {
+                return Some((o, world));
+            }
+            match &o.object_type {
+                ObjectType::Group(children) | ObjectType::ClippingMask { children } => {
+                    if let Some(hit) = find(children, obj_id, &world) {
+                        return Some(hit);
+                    }
+                }
+                _ => {}
+            }
         }
-        for other in &layer.objects {
-            if other.id == obj_id || !other.visible || !other.text_wrap {
+        None
+    }
+    let ident = [1.0, 0.0, 0.0, 1.0, 0.0, 0.0];
+    let mut found = None;
+    for layer in &doc.layers {
+        if let Some(hit) = find(&layer.objects, obj_id, &ident) {
+            found = Some(hit);
+            break;
+        }
+    }
+    let (_obj, to_doc) = found?;
+    let to_local = affine_inverse(&to_doc)?;
+    // Obstacles in frame-local space, gathered recursively so grouped
+    // obstacles count too. `bounding_box` already includes the object's
+    // OWN transform (never re-apply it); ancestors compose on top.
+    fn gather_obstacles(
+        objs: &[Object],
+        parent: &[f64; 6],
+        self_id: &str,
+        to_local: &[f64; 6],
+        out: &mut Vec<(f64, f64, f64, f64)>,
+    ) {
+        // Local affine helpers (mat_mul is defined in the enclosing scope).
+        for other in objs {
+            if !other.visible {
+                continue;
+            }
+            let m = other.transform.matrix();
+            let world = [
+                parent[0] * m[0] + parent[2] * m[1],
+                parent[1] * m[0] + parent[3] * m[1],
+                parent[0] * m[2] + parent[2] * m[3],
+                parent[1] * m[2] + parent[3] * m[3],
+                parent[0] * m[4] + parent[2] * m[5] + parent[4],
+                parent[1] * m[4] + parent[3] * m[5] + parent[5],
+            ];
+            match &other.object_type {
+                ObjectType::Group(children) | ObjectType::ClippingMask { children } => {
+                    gather_obstacles(children, &world, self_id, to_local, out);
+                }
+                _ => {}
+            }
+            if other.id == self_id || !other.text_wrap {
                 continue;
             }
             let Some((mn, mx)) = other.bounding_box() else {
                 continue;
             };
-            // `bounding_box` is already in world space for top-level
-            // objects (do NOT re-apply the transform — that double-counts
-            // the offset, as a past bug demonstrated).
+            // bbox is own-transform space: compose ancestors only.
             let corners = [(mn.x, mn.y), (mx.x, mn.y), (mx.x, mx.y), (mn.x, mx.y)];
-            let wx: Vec<(f64, f64)> = corners.to_vec();
+            let wx: Vec<(f64, f64)> = corners
+                .iter()
+                .map(|&(x, y)| {
+                    (
+                        parent[0] * x + parent[2] * y + parent[4],
+                        parent[1] * x + parent[3] * y + parent[5],
+                    )
+                })
+                .collect();
             let (mut x0, mut y0, mut x1, mut y1) = (f64::MAX, f64::MAX, f64::MIN, f64::MIN);
             for &(x, y) in &wx {
                 // Into frame-local space.
@@ -1035,19 +1836,30 @@ pub fn layout_text_wrapped(
                 y1 = y1.max(ly);
             }
             let mg = other.wrap_margin.max(0.0);
-            obstacles.push((x0 - mg, y0 - mg, x1 + mg, y1 + mg));
+            out.push((x0 - mg, y0 - mg, x1 + mg, y1 + mg));
         }
+    }
+    let mut obstacles: Vec<(f64, f64, f64, f64)> = Vec::new();
+    let ident = [1.0, 0.0, 0.0, 1.0, 0.0, 0.0];
+    for layer in &doc.layers {
+        if !layer.visible {
+            continue;
+        }
+        gather_obstacles(&layer.objects, &ident, obj_id, &to_local, &mut obstacles);
     }
     if obstacles.is_empty() {
         return None;
     }
     let line_h = style.effective_line_height().max(1e-6);
-    let unit = |ch: char| char_advance_estimate(ch) * style.font_size + style.letter_spacing;
+    let font_size = style.effective_font_size();
+    let letter_spacing = style.effective_letter_spacing();
+    let unit = |ch: char| char_advance_styled(ch, style) * font_size + letter_spacing;
     // Wrap paragraph by paragraph with live geometry.
     let mut lines: Vec<String> = Vec::new();
     let mut xoffs: Vec<f64> = Vec::new();
     let mut count = 0usize;
-    for paragraph in text.split('\n') {
+    let normalized = normalize_text(text);
+    for paragraph in normalized.split('\n') {
         let chars: Vec<char> = paragraph.chars().collect();
         if chars.is_empty() {
             lines.push(String::new());
@@ -1064,7 +1876,7 @@ pub fn layout_text_wrapped(
         let mut g = |idx: usize, _first: bool| -> (f64, f64) {
             // Band containing the baseline: baselines sit at
             // a.y + font_size + idx*lh, glyphs extend ~line_h above.
-            let y0 = a_ref.y + idx as f64 * lh + style.font_size - lh;
+            let y0 = a_ref.y + idx as f64 * lh + font_size - lh;
             let y1 = y0 + lh;
             let mut x0 = a_ref.x;
             let mut x1 = a_ref.x + a_ref.width;
@@ -1089,19 +1901,31 @@ pub fn layout_text_wrapped(
             }
             ((x0 - a_ref.x).max(0.0), (x1 - x0).max(1.0))
         };
-        for (s, x) in wrap_chars_g(&chars, &unit, base, &mut g) {
+        let hang = hang_px(style);
+        for (s, x) in wrap_chars_g(
+            &chars,
+            &unit,
+            if style.auto_spacing {
+                ja_latin_gap_em(font_size, style.auto_spacing_em as f64)
+            } else {
+                0.0
+            },
+            hang,
+            base,
+            &mut g,
+        ) {
             lines.push(s);
             xoffs.push(x);
             count += 1;
         }
     }
-    let capacity = ((((a.height - style.font_size) / line_h).floor() as isize) + 1).max(0) as usize;
+    let capacity = ((((a.height - font_size) / line_h).floor() as isize) + 1).max(0) as usize;
     let visible = lines.len().min(capacity);
     let n = lines.len();
     Some(TextLayout {
         lines,
         visible,
-        origin: (a.x, a.y + style.font_size),
+        origin: (a.x, a.y + font_size),
         col_of_line: vec![0; n],
         col_x: vec![a.x],
         col_w: vec![a.width],
@@ -1152,11 +1976,21 @@ pub fn collect_toc_entries(doc: &super::Document, min_size: f64) -> Vec<TocEntry
     }
     fn scan(
         obj: &Object,
+        parent: &[f64; 6],
         boards: &[super::Artboard],
         min_size: f64,
         tails: &std::collections::HashSet<String>,
         raw: &mut Vec<Raw>,
     ) {
+        let o = obj.transform.matrix();
+        let w = [
+            parent[0] * o[0] + parent[2] * o[1],
+            parent[1] * o[0] + parent[3] * o[1],
+            parent[0] * o[2] + parent[2] * o[3],
+            parent[1] * o[2] + parent[3] * o[3],
+            parent[0] * o[4] + parent[2] * o[5] + parent[4],
+            parent[1] * o[4] + parent[3] * o[5] + parent[5],
+        ];
         match &obj.object_type {
             ObjectType::Text {
                 text, style, area, ..
@@ -1172,14 +2006,14 @@ pub fn collect_toc_entries(doc: &super::Document, min_size: f64) -> Vec<TocEntry
                 let Some(head) = head else {
                     return;
                 };
-                // Page = artboard containing the object's center.
+                // Page = artboard containing the object's world center
+                // (grouped text composes ancestors; local-only math put
+                // it on the wrong page).
+                let at = |x: f64, y: f64| (w[0] * x + w[2] * y + w[4], w[1] * x + w[3] * y + w[5]);
                 let center = if let Some(a) = area {
-                    (
-                        a.x + a.width / 2.0 + obj.transform.x,
-                        a.y + a.height / 2.0 + obj.transform.y,
-                    )
+                    at(a.x + a.width / 2.0, a.y + a.height / 2.0)
                 } else {
-                    (obj.transform.x, obj.transform.y)
+                    at(0.0, 0.0)
                 };
                 let mut page = None;
                 for (i, b) in boards.iter().enumerate() {
@@ -1200,7 +2034,7 @@ pub fn collect_toc_entries(doc: &super::Document, min_size: f64) -> Vec<TocEntry
             }
             ObjectType::Group(children) | ObjectType::ClippingMask { children } => {
                 for c in children {
-                    scan(c, boards, min_size, tails, raw);
+                    scan(c, &w, boards, min_size, tails, raw);
                 }
             }
             _ => {}
@@ -1211,9 +2045,10 @@ pub fn collect_toc_entries(doc: &super::Document, min_size: f64) -> Vec<TocEntry
             scan_tails(obj, &mut tails);
         }
     }
+    let ident = [1.0, 0.0, 0.0, 1.0, 0.0, 0.0];
     for layer in &doc.layers {
         for obj in &layer.objects {
-            scan(obj, &boards, min_size, &tails, &mut raw);
+            scan(obj, &ident, &boards, min_size, &tails, &mut raw);
         }
     }
     if raw.is_empty() {
@@ -1238,7 +2073,9 @@ pub fn collect_toc_entries(doc: &super::Document, min_size: f64) -> Vec<TocEntry
 /// Render TOC entries as text with dot leaders computed from estimated
 /// advances (real dot-leader tabs need tab stops, which do not exist yet).
 pub fn render_toc_text(entries: &[TocEntry], style: &TextStyle, width: f64) -> String {
-    let unit = |ch: char| char_advance_estimate(ch) * style.font_size + style.letter_spacing;
+    let font_size = style.effective_font_size();
+    let letter_spacing = style.effective_letter_spacing();
+    let unit = |ch: char| char_advance_styled(ch, style) * font_size + letter_spacing;
     let dot_w: f64 = ".".chars().map(&unit).sum::<f64>() + unit(' ');
     let mut out = Vec::new();
     for e in entries {
@@ -1395,14 +2232,13 @@ pub fn deform_path_data(
                 let c1 = map(seg.control1);
                 let c2 = map(seg.control2);
                 let e = map(seg.end);
-                out.elements.push(PathElement::CurveTo(
-                    crate::core::path::BezierSegment {
+                out.elements
+                    .push(PathElement::CurveTo(crate::core::path::BezierSegment {
                         start: s,
                         control1: c1,
                         control2: c2,
                         end: e,
-                    },
-                ));
+                    }));
             }
             PathElement::ClosePath => out.elements.push(PathElement::ClosePath),
         }
@@ -1426,10 +2262,13 @@ pub fn compute_wrapped_lines(text: &str, style: &TextStyle, max_width: f64) -> V
 /// contributes its marker-prefixed first line and indent-matched
 /// continuations. Numbered markers restart at 1 per call (per text object).
 pub fn compute_wrapped_runs(text: &str, style: &TextStyle, max_width: f64) -> Vec<(String, f64)> {
-    let unit = |ch: char| char_advance_estimate(ch) * style.font_size + style.letter_spacing;
+    let font_size = style.effective_font_size();
+    let letter_spacing = style.effective_letter_spacing();
+    let unit = |ch: char| char_advance_styled(ch, style) * font_size + letter_spacing;
     let mut result: Vec<(String, f64)> = Vec::new();
     let mut number = 1u32;
-    for paragraph in text.split('\n') {
+    let normalized = normalize_text(text);
+    for paragraph in normalized.split('\n') {
         let (prefix, indent_w) = match style.list {
             ListStyle::None => (String::new(), 0.0),
             ListStyle::Bullet => {
@@ -1454,9 +2293,16 @@ pub fn compute_wrapped_runs(text: &str, style: &TextStyle, max_width: f64) -> Ve
             }
             continue;
         }
+        let hang = hang_px(style);
         let raws = wrap_chars(
             &chars,
             &unit,
+            if style.auto_spacing {
+                ja_latin_gap_em(font_size, style.auto_spacing_em as f64)
+            } else {
+                0.0
+            },
+            &hang,
             max_width - prefix_visual_width(&prefix, &unit),
             max_width - indent_w,
         );
@@ -1482,15 +2328,30 @@ fn prefix_visual_width(prefix: &str, unit: &impl Fn(char) -> f64) -> f64 {
 fn wrap_chars(
     chars: &[char],
     unit: &impl Fn(char) -> f64,
+    gap: f64,
+    hang: impl Fn(char) -> f64,
     first_max: f64,
     rest_max: f64,
 ) -> Vec<String> {
-    wrap_chars_g(chars, unit, 0, &mut |_, first| {
+    wrap_chars_g(chars, unit, gap, hang, 0, &mut |_, first| {
         (0.0, if first { first_max } else { rest_max })
     })
     .into_iter()
     .map(|(s, _)| s)
     .collect()
+}
+
+/// ぶら下げ budget helper: pixels a hanging char may overrun (0 when the
+/// style disables it, or when the char is not a 閉じ約物).
+fn hang_px(style: &TextStyle) -> impl Fn(char) -> f64 + '_ {
+    let font_size = style.effective_font_size();
+    move |ch: char| {
+        if style.burasage {
+            burasage_hang(ch) * font_size
+        } else {
+            0.0
+        }
+    }
 }
 
 /// Greedy wrap with per-visual-line geometry: `geom(line_idx, is_first)`
@@ -1499,6 +2360,8 @@ fn wrap_chars(
 fn wrap_chars_g(
     chars: &[char],
     unit: &impl Fn(char) -> f64,
+    gap: f64,
+    hang: impl Fn(char) -> f64,
     base_idx: usize,
     geom: &mut dyn FnMut(usize, bool) -> (f64, f64),
 ) -> Vec<(String, f64)> {
@@ -1514,10 +2377,23 @@ fn wrap_chars_g(
     let mut last_break: Option<usize> = None;
     while i < chars.len() {
         let ch = chars[i];
-        let w = unit(ch);
+        let mut w = unit(ch);
+        // 和欧間: visual gap between a Japanese and a Latin glyph on the
+        // same (visual) line.
+        if gap > 0.0 && i > line_start {
+            let prev = chars[i - 1];
+            if is_ja_latin_boundary(prev, ch) {
+                w += gap;
+            }
+        }
         let (_, max_width) = geom(vidx, first);
+        // ぶら下げ: when the NEXT char is a hanging 閉じ約物, this char must
+        // still fit the nominal width — the punctuation's ink then overruns
+        // into the margin by `hang` instead of the whole em box.
+        let next_hang = chars.get(i + 1).copied().unwrap_or('\0');
+        let budget = max_width + hang(next_hang) + hang(ch);
         // Would this char overflow the line?
-        if line_w + w > max_width && i > line_start {
+        if line_w + w > budget && i > line_start {
             // Prefer the last allowed break; otherwise force-break
             // before this char.
             let mut end = last_break.unwrap_or(i);
@@ -1539,10 +2415,10 @@ fn wrap_chars_g(
             }
             let (ex, _) = geom(vidx, first);
             result.push((chars[line_start..end].iter().collect(), ex));
-            // Skip a single leading space on the new line (Western
+            // Skip a single leading space/tab on the new line (Western
             // word-wrap convention); CJK needs no such trimming.
             line_start = end;
-            if line_start < chars.len() && chars[line_start] == ' ' {
+            if line_start < chars.len() && (chars[line_start] == ' ' || chars[line_start] == '\t') {
                 line_start += 1;
             }
             i = line_start;
@@ -1554,9 +2430,11 @@ fn wrap_chars_g(
         }
         line_w += w;
         // A break is allowed *after* this char when the next char may
-        // legally start a line and this char may legally end one.
+        // legally start a line and this char may legally end one. Tabs break
+        // like spaces (TSV pastes otherwise never wrap).
         let next_ok = i + 1 >= chars.len() || !kinsoku_cannot_start_line(chars[i + 1]);
-        if (ch == ' ' || is_fullwidth(ch)) && !kinsoku_cannot_end_line(ch) && next_ok {
+        if (ch == ' ' || ch == '\t' || is_fullwidth(ch)) && !kinsoku_cannot_end_line(ch) && next_ok
+        {
             last_break = Some(i + 1);
         }
         i += 1;
@@ -1913,7 +2791,8 @@ impl Object {
         width: f64,
         height: f64,
         png_bytes: Vec<u8>,
-    ) -> Self {        Self {
+    ) -> Self {
+        Self {
             id: Uuid::new_v4().to_string(),
             name: name.to_string(),
             object_type: ObjectType::Image {
@@ -1942,12 +2821,7 @@ impl Object {
         }
     }
 
-    pub fn new_pixel_art(
-        name: &str,
-        x: f64,
-        y: f64,
-        pixels: crate::core::pixel::PixelArt,
-    ) -> Self {
+    pub fn new_pixel_art(name: &str, x: f64, y: f64, pixels: crate::core::pixel::PixelArt) -> Self {
         Self {
             id: Uuid::new_v4().to_string(),
             name: name.to_string(),
@@ -1973,7 +2847,12 @@ impl Object {
         }
     }
 
-    pub fn new_mesh(name: &str, x: f64, y: f64, mesh: crate::core::gradient_mesh::MeshGradient) -> Self {
+    pub fn new_mesh(
+        name: &str,
+        x: f64,
+        y: f64,
+        mesh: crate::core::gradient_mesh::MeshGradient,
+    ) -> Self {
         Self {
             id: Uuid::new_v4().to_string(),
             name: name.to_string(),
@@ -2142,7 +3021,11 @@ impl Object {
             }
             ObjectType::Line { x2, y2 } => PathData::from_line(0.0, 0.0, *x2, *y2),
             ObjectType::Text {
-                text, font_size, style, area, ..
+                text,
+                font_size,
+                style,
+                area,
+                ..
             } => {
                 // Area text selects by its box; point text by the measured
                 // block (first baseline at y=0, 1.2em line advance).
@@ -2204,9 +3087,11 @@ impl Object {
                 *start_offset,
                 *side,
             ),
-            ObjectType::Envelope { source, kind, amount } => {
-                deform_path_data(&source.to_path_data(), *kind, amount.clamp(-1.0, 1.0))
-            },
+            ObjectType::Envelope {
+                source,
+                kind,
+                amount,
+            } => deform_path_data(&source.to_path_data(), *kind, amount.clamp(-1.0, 1.0)),
         }
     }
 
@@ -2263,7 +3148,11 @@ impl Object {
                 dist <= (stroke_w / 2.0).max(4.0)
             }
             ObjectType::Text {
-                text, font_size, style, area, ..
+                text,
+                font_size,
+                style,
+                area,
+                ..
             } => {
                 if let Some(a) = area {
                     return lx >= a.x && lx <= a.x + a.width && ly >= a.y && ly <= a.y + a.height;
@@ -2298,11 +3187,11 @@ impl Object {
                 let subpaths = outlines.to_subpaths(8);
                 // Glyph counters (holes in A/B/…) require even-odd.
                 crate::core::geometry::point_in_subpaths(lx, ly, &subpaths, true)
-            },
+            }
             ObjectType::Envelope { .. } => {
                 let poly = self.to_path_data().to_polygon(8);
                 crate::core::geometry::point_in_polygon(lx, ly, &poly)
-            },
+            }
         }
     }
 
@@ -2810,5 +3699,170 @@ mod tests {
         let sid = doc2.all_objects().next().unwrap().1.id.clone();
         assert!(super::thread_frame_layout(&doc2, &sid).is_none());
         let _ = layout_text(&text, &style, Some(area1)).lines.len();
+    }
+
+    #[test]
+    fn newline_normalization_collapses_crlf_cr_and_separators() {
+        use super::normalize_text;
+        assert_eq!(normalize_text("a\r\nb"), "a\nb");
+        assert_eq!(normalize_text("a\rb"), "a\nb");
+        assert_eq!(normalize_text("a b"), "a\nb");
+        assert_eq!(normalize_text("a b"), "a\nb");
+        assert_eq!(normalize_text("plain"), "plain");
+    }
+
+    #[test]
+    fn crlf_wraps_and_measures_like_lf() {
+        use super::{compute_wrapped_lines, text_block_size_with_style, TextStyle};
+        let style = TextStyle {
+            font_size: 10.0,
+            word_wrap: true,
+            max_width: Some(25.0),
+            ..Default::default()
+        };
+        let lf = compute_wrapped_lines("あいう\r\nえお", &style, 25.0);
+        let crlf = compute_wrapped_lines("あいう\nえお", &style, 25.0);
+        assert_eq!(lf, crlf, "CRLF must not leave a stray \\r glyph");
+        assert_eq!(crlf.concat(), "あいう\nえお".replace('\n', ""));
+        let (w1, h1) = text_block_size_with_style("a\r\nb", &TextStyle::default());
+        let (w2, h2) = text_block_size_with_style("a\nb", &TextStyle::default());
+        assert_eq!((w1, h1), (w2, h2));
+    }
+
+    #[test]
+    #[allow(clippy::field_reassign_with_default)]
+    fn hostile_style_values_stay_finite() {
+        use super::TextStyle;
+        let mut style = TextStyle::default();
+        style.font_size = f64::NAN;
+        style.letter_spacing = f64::INFINITY;
+        style.line_height = Some(-2.0);
+
+        assert!(style.effective_font_size().is_finite());
+        assert!(style.effective_font_size() > 0.0);
+        assert_eq!(style.effective_letter_spacing(), 0.0);
+        assert!(style.effective_line_height().is_finite());
+        assert!(style.effective_line_height() > 0.0);
+        style.line_height = Some(f64::NAN);
+        assert!((style.effective_line_height() - 1.2 * style.effective_font_size()).abs() < 1e-9);
+        // Layout and measurement never produce NaN from hostile styles.
+        let layout = super::layout_text("あいうえお", &style, None);
+        assert!(!layout.lines.is_empty());
+        let (w, h) = super::text_block_size_with_style("あいうえお", &style);
+        assert!(w.is_finite() && h.is_finite(), "w={w} h={h}");
+    }
+
+    #[test]
+    fn variation_settings_reject_non_finite() {
+        use super::TextStyle;
+        let parsed =
+            TextStyle::parse_variation_settings_css("\"wght\" NaN, \"wdth\" inf, \"opsz\" 12");
+        assert_eq!(parsed.len(), 1);
+        assert_eq!(parsed[0].axis, "opsz");
+        let mut style = TextStyle::default();
+        style.set_variation("wght", f64::NAN);
+        assert!(style.variation("wght").is_none(), "NaN must not be stored");
+        style.set_variation("wght", 700.0);
+        assert_eq!(style.variation("wght"), Some(700.0));
+    }
+
+    #[test]
+    fn emoji_advance_full_em_and_format_chars_zero() {
+        use super::char_advance_estimate;
+        assert_eq!(char_advance_estimate('😀'), 1.0, "emoji sets fullwidth");
+        assert_eq!(
+            char_advance_estimate('■'),
+            1.0,
+            "geometric shapes fullwidth"
+        );
+        assert_eq!(
+            char_advance_estimate('\u{FE0F}'),
+            0.0,
+            "VS16 rides the base glyph"
+        );
+        assert_eq!(
+            char_advance_estimate('\u{200D}'),
+            0.0,
+            "ZWJ rides the base glyph"
+        );
+        assert_eq!(
+            char_advance_estimate('\u{E0101}'),
+            0.0,
+            "IVS rides the base glyph"
+        );
+        assert_eq!(
+            char_advance_estimate('\u{0301}'),
+            0.0,
+            "combining mark rides the base"
+        );
+        assert_eq!(
+            char_advance_estimate('ｱ'),
+            0.6,
+            "halfwidth kana stays narrow"
+        );
+    }
+
+    #[test]
+    fn kinsoku_covers_halfwidth_and_quotes() {
+        use super::{compute_wrapped_lines, TextStyle};
+        let style = TextStyle {
+            font_size: 10.0,
+            word_wrap: true,
+            max_width: Some(10.0),
+            ..Default::default()
+        };
+        // 1-char width: every char on its own line unless kinsoku glues it.
+        for text in ["あ｣あ", "あｰあ", "あ—あ", "あ「あ", "あ｢あ"] {
+            let lines = compute_wrapped_lines(text, &style, 10.0);
+            assert_eq!(lines.concat(), text, "no text lost: {lines:?}");
+        }
+        let lines = compute_wrapped_lines("あいう｣えお", &style, 25.0);
+        for l in &lines {
+            assert!(
+                !l.starts_with('｣'),
+                "halfwidth closing never starts a line: {lines:?}"
+            );
+        }
+        let lines = compute_wrapped_lines("あいう｢えお", &style, 35.0);
+        for l in &lines {
+            assert!(
+                !l.ends_with('｢'),
+                "halfwidth opening never ends a line: {lines:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn tabs_wrap_like_spaces() {
+        use super::{compute_wrapped_lines, TextStyle};
+        let style = TextStyle {
+            font_size: 10.0,
+            word_wrap: true,
+            max_width: Some(30.0),
+            ..Default::default()
+        };
+        let lines = compute_wrapped_lines("aa\tbb\tcc", &style, 30.0);
+        assert_eq!(lines.concat().replace('\t', ""), "aabbcc");
+        assert!(lines.len() >= 2, "tabs must break: {lines:?}");
+    }
+
+    #[test]
+    fn text_area_sanitized_kills_nan() {
+        use super::TextArea;
+        let hostile = TextArea {
+            x: f64::NAN,
+            y: f64::INFINITY,
+            width: f64::NAN,
+            height: -5.0,
+            cols: 0,
+            gutter: f64::NAN,
+        };
+        let clean = hostile.sanitized();
+        assert!(clean.x.is_finite() && clean.y.is_finite());
+        assert!(clean.width >= 1.0 && clean.height >= 1.0);
+        assert!(clean.cols >= 1 && clean.gutter.is_finite());
+        // Sanitized areas flow through layout without NaN origins.
+        let layout = super::layout_text("あいう", &super::TextStyle::default(), Some(hostile));
+        assert!(layout.origin.0.is_finite() && layout.origin.1.is_finite());
     }
 }

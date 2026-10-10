@@ -1,4 +1,5 @@
 use super::parse::parse_svg_color;
+use crate::core::document::object::OtFeature;
 use crate::core::document::{FontStyle, TextAnchor, Transform};
 use crate::core::path::{AnchorPoint, FillStyle, StrokeStyle};
 use std::collections::HashMap;
@@ -92,6 +93,44 @@ pub(super) fn parse_text_anchor(val: &str) -> TextAnchor {
         "end" => TextAnchor::End,
         _ => TextAnchor::Start,
     }
+}
+
+/// Parse CSS `font-feature-settings` into explicit OpenType overrides
+/// (the exporter writes them for `palt`/`vert`/… round-trips).
+/// Items look like `"palt" 1`, `'vert' 0`, `tnum` (bare = on).
+pub fn parse_font_feature_settings(value: &str) -> Vec<OtFeature> {
+    let mut out: Vec<OtFeature> = Vec::new();
+    for item in value.split(',') {
+        let item = item.trim();
+        if item.is_empty() {
+            continue;
+        }
+        // `"palt" 1` / `'palt' 1` (quoted tag, value after it) or the
+        // whitespace-separated `palt 1` / bare `tnum` / `jp90`.
+        let (tag_raw, value) = match item.chars().next() {
+            Some(q @ ('"' | '\'')) => {
+                let rest = &item[q.len_utf8()..];
+                match rest.find(q) {
+                    Some(close) => (&rest[..close], rest[close + q.len_utf8()..].trim()),
+                    None => continue,
+                }
+            }
+            _ => match item.find(char::is_whitespace) {
+                Some(ws) => (&item[..ws], item[ws..].trim()),
+                None => (item, ""),
+            },
+        };
+        if tag_raw.len() != 4 || !tag_raw.bytes().all(|b| b.is_ascii_alphanumeric()) {
+            continue;
+        }
+        let on = match value {
+            "" | "1" | "on" | "true" | "ON" | "On" => true,
+            "0" | "off" | "false" | "OFF" | "Off" => false,
+            _ => continue,
+        };
+        out.push(OtFeature::new(tag_raw, on));
+    }
+    out
 }
 
 pub(super) fn parse_letter_spacing(val: &str) -> f64 {
@@ -291,4 +330,3 @@ pub(super) fn parse_svg_transform(tag: &str) -> [f64; 6] {
     }
     acc
 }
-

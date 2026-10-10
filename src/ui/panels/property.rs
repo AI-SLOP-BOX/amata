@@ -1,8 +1,8 @@
 use crate::app::icons::{
     icon_align_bottom, icon_align_center_h, icon_align_center_v, icon_align_left, icon_align_right,
-    icon_align_top, icon_bolt, icon_button, icon_checkerboard, icon_grid, icon_ruler,
+    icon_align_top, icon_bolt, icon_button_labeled, icon_checkerboard, icon_grid, icon_ruler,
     icon_seek_next, icon_seek_prev, icon_snap_grid, icon_snap_pixels, icon_snap_points,
-    icon_unlink, icon_unlock, toggle_icon_button,
+    icon_unlink, icon_unlock, toggle_icon_button_labeled,
 };
 use crate::core::document::ObjectType;
 use crate::core::path::FillStyle;
@@ -14,8 +14,9 @@ pub struct PropertyPanel;
 
 impl PropertyPanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
+        let locale = state.prefs.language.clone();
         ui.label(
-            RichText::new("プロパティ")
+            RichText::new(crate::ui::i18n::text(&locale, "dock.properties"))
                 .strong()
                 .size(13.0)
                 .color(Color32::WHITE),
@@ -66,9 +67,9 @@ impl PropertyPanel {
             // Header editable name (e.g. "パス", "長方形", "グループ" or custom name)
             ui.horizontal(|ui| {
                 let default_hint = if is_path {
-                    "パス"
+                    crate::ui::i18n::text(&locale, "property.object_path").into_owned()
                 } else {
-                    "オブジェクト"
+                    crate::ui::i18n::text(&locale, "property.object").into_owned()
                 };
                 let mut edit_name = obj_name.clone();
                 let name_resp = ui.add(
@@ -94,7 +95,7 @@ impl PropertyPanel {
 
             // ─── 変形 (Transform) — Image 6 Reference Layout ───
             ui.label(
-                RichText::new("変形")
+                RichText::new(crate::ui::i18n::text(&locale, "property.transform"))
                     .strong()
                     .size(12.0)
                     .color(Color32::WHITE),
@@ -277,9 +278,8 @@ impl PropertyPanel {
                                 .color(Color32::from_rgb(150, 150, 150)),
                         );
                         let mut r_val = rot;
-                        let r_resp = ui.add(
-                            egui::DragValue::new(&mut r_val).speed(1.0).suffix("°"),
-                        );
+                        let r_resp =
+                            ui.add(egui::DragValue::new(&mut r_val).speed(1.0).suffix("°"));
                         if r_resp.changed() {
                             let sel = state.selected_ids.clone();
                             for id in &sel {
@@ -304,7 +304,7 @@ impl PropertyPanel {
                 let max_r = rw.abs().min(rh.abs()) * 0.5;
                 ui.horizontal(|ui| {
                     ui.label(
-                        RichText::new("角丸:")
+                        RichText::new(crate::ui::i18n::text(&locale, "property.corner_radius"))
                             .size(10.5)
                             .color(Color32::from_rgb(150, 150, 150)),
                     );
@@ -318,9 +318,7 @@ impl PropertyPanel {
                     if cr_resp.changed() {
                         let cr = unit.to_px(cr_val).clamp(0.0, max_r);
                         state.object_edit(&id, &cr_resp, |o| {
-                            if let ObjectType::Rectangle {
-                                corner_radius, ..
-                            } = &mut o.object_type
+                            if let ObjectType::Rectangle { corner_radius, .. } = &mut o.object_type
                             {
                                 *corner_radius = cr;
                             }
@@ -338,7 +336,7 @@ impl PropertyPanel {
 
             // ─── アピアランス (Appearance) — Image 6 Reference Layout ───
             ui.label(
-                RichText::new("アピアランス")
+                RichText::new(crate::ui::i18n::text(&locale, "property.appearance"))
                     .strong()
                     .size(12.0)
                     .color(Color32::WHITE),
@@ -374,7 +372,11 @@ impl PropertyPanel {
                 if fill_resp.drag_stopped() {
                     state.commit_object_edits("Edit Object");
                 }
-                ui.label(RichText::new("塗り").size(11.0).color(Color32::WHITE));
+                ui.label(
+                    RichText::new(crate::ui::i18n::text(&locale, "property.fill"))
+                        .size(11.0)
+                        .color(Color32::WHITE),
+                );
             });
 
             // Stroke swatch line
@@ -415,7 +417,11 @@ impl PropertyPanel {
                 if sc_resp.drag_stopped() {
                     state.commit_object_edits("Edit Object");
                 }
-                ui.label(RichText::new("線").size(11.0).color(Color32::WHITE));
+                ui.label(
+                    RichText::new(crate::ui::i18n::text(&locale, "property.stroke"))
+                        .size(11.0)
+                        .color(Color32::WHITE),
+                );
 
                 let su = state.prefs.stroke_unit;
                 let mut sw = su.from_px(
@@ -455,7 +461,7 @@ impl PropertyPanel {
             // Opacity line
             ui.horizontal(|ui| {
                 ui.label(
-                    RichText::new("不透明度")
+                    RichText::new(crate::ui::i18n::text(&locale, "property.opacity"))
                         .size(11.0)
                         .color(Color32::from_rgb(180, 180, 180)),
                 );
@@ -482,7 +488,7 @@ impl PropertyPanel {
 
             // ─── クイックアクション (Quick Actions) — Image 6 Reference Layout ───
             ui.label(
-                RichText::new("クイックアクション")
+                RichText::new(crate::ui::i18n::text(&locale, "property.quick_actions"))
                     .strong()
                     .size(12.0)
                     .color(Color32::WHITE),
@@ -492,8 +498,11 @@ impl PropertyPanel {
             ui.horizontal(|ui| {
                 if ui
                     .add(
-                        egui::Button::new(RichText::new("パスのオフセット").size(10.5))
-                            .min_size(Vec2::new(105.0, 24.0)),
+                        egui::Button::new(
+                            RichText::new(crate::ui::i18n::text(&locale, "property.offset_path"))
+                                .size(10.5),
+                        )
+                        .min_size(Vec2::new(105.0, 24.0)),
                     )
                     .clicked()
                 {
@@ -510,8 +519,11 @@ impl PropertyPanel {
                 }
                 if ui
                     .add(
-                        egui::Button::new(RichText::new("パスを拡張").size(10.5))
-                            .min_size(Vec2::new(105.0, 24.0)),
+                        egui::Button::new(
+                            RichText::new(crate::ui::i18n::text(&locale, "property.expand_path"))
+                                .size(10.5),
+                        )
+                        .min_size(Vec2::new(105.0, 24.0)),
                     )
                     .clicked()
                 {
@@ -533,8 +545,11 @@ impl PropertyPanel {
             ui.horizontal(|ui| {
                 if ui
                     .add(
-                        egui::Button::new(RichText::new("シェイプに変換").size(10.5))
-                            .min_size(Vec2::new(105.0, 24.0)),
+                        egui::Button::new(
+                            RichText::new(crate::ui::i18n::text(&locale, "property.convert_shape"))
+                                .size(10.5),
+                        )
+                        .min_size(Vec2::new(105.0, 24.0)),
                     )
                     .clicked()
                 {
@@ -542,8 +557,11 @@ impl PropertyPanel {
                 }
                 if ui
                     .add(
-                        egui::Button::new(RichText::new("ピクセルグリッドに整合").size(10.5))
-                            .min_size(Vec2::new(105.0, 24.0)),
+                        egui::Button::new(
+                            RichText::new(crate::ui::i18n::text(&locale, "property.pixel_align"))
+                                .size(10.5),
+                        )
+                        .min_size(Vec2::new(105.0, 24.0)),
                     )
                     .clicked()
                 {
@@ -566,7 +584,7 @@ impl PropertyPanel {
             // ─── 整列 (Align) — Image 6 Reference Layout ───
             ui.horizontal(|ui| {
                 ui.label(
-                    RichText::new("整列")
+                    RichText::new(crate::ui::i18n::text(&locale, "property.align"))
                         .strong()
                         .size(12.0)
                         .color(Color32::WHITE),
@@ -576,40 +594,70 @@ impl PropertyPanel {
             ui.horizontal(|ui| {
                 let size = Vec2::new(22.0, 18.0);
                 let sel = state.selected_ids.clone();
-                if icon_button(ui, size, icon_align_left)
-                    .on_hover_text("左揃え")
-                    .clicked()
+                if icon_button_labeled(
+                    ui,
+                    size,
+                    icon_align_left,
+                    crate::ui::i18n::text(&locale, "property.align_left"),
+                )
+                .on_hover_text(crate::ui::i18n::text(&locale, "property.align_left"))
+                .clicked()
                 {
                     crate::ui::AlignPanel::align_left(state, &sel);
                 }
-                if icon_button(ui, size, icon_align_center_h)
-                    .on_hover_text("水平方向中央揃え")
-                    .clicked()
+                if icon_button_labeled(
+                    ui,
+                    size,
+                    icon_align_center_h,
+                    crate::ui::i18n::text(&locale, "property.align_h_center"),
+                )
+                .on_hover_text(crate::ui::i18n::text(&locale, "property.align_h_center"))
+                .clicked()
                 {
                     crate::ui::AlignPanel::align_center_h(state, &sel);
                 }
-                if icon_button(ui, size, icon_align_right)
-                    .on_hover_text("右揃え")
-                    .clicked()
+                if icon_button_labeled(
+                    ui,
+                    size,
+                    icon_align_right,
+                    crate::ui::i18n::text(&locale, "property.align_right"),
+                )
+                .on_hover_text(crate::ui::i18n::text(&locale, "property.align_right"))
+                .clicked()
                 {
                     crate::ui::AlignPanel::align_right(state, &sel);
                 }
                 ui.add_space(4.0);
-                if icon_button(ui, size, icon_align_top)
-                    .on_hover_text("上揃え")
-                    .clicked()
+                if icon_button_labeled(
+                    ui,
+                    size,
+                    icon_align_top,
+                    crate::ui::i18n::text(&locale, "property.align_top"),
+                )
+                .on_hover_text(crate::ui::i18n::text(&locale, "property.align_top"))
+                .clicked()
                 {
                     crate::ui::AlignPanel::align_top(state, &sel);
                 }
-                if icon_button(ui, size, icon_align_center_v)
-                    .on_hover_text("垂直方向中央揃え")
-                    .clicked()
+                if icon_button_labeled(
+                    ui,
+                    size,
+                    icon_align_center_v,
+                    crate::ui::i18n::text(&locale, "property.align_v_center"),
+                )
+                .on_hover_text(crate::ui::i18n::text(&locale, "property.align_v_center"))
+                .clicked()
                 {
                     crate::ui::AlignPanel::align_center_v(state, &sel);
                 }
-                if icon_button(ui, size, icon_align_bottom)
-                    .on_hover_text("下揃え")
-                    .clicked()
+                if icon_button_labeled(
+                    ui,
+                    size,
+                    icon_align_bottom,
+                    crate::ui::i18n::text(&locale, "property.align_bottom"),
+                )
+                .on_hover_text(crate::ui::i18n::text(&locale, "property.align_bottom"))
+                .clicked()
                 {
                     crate::ui::AlignPanel::align_bottom(state, &sel);
                 }
@@ -621,21 +669,29 @@ impl PropertyPanel {
 
             // ─── パスファインダー (Pathfinder) — Image 6 Reference Layout ───
             ui.label(
-                RichText::new("パスファインダー")
+                RichText::new(crate::ui::i18n::text(&locale, "property.pathfinder"))
                     .strong()
                     .size(12.0)
                     .color(Color32::WHITE),
             );
             ui.add_space(2.0);
             ui.horizontal(|ui| {
-                if ui.button(RichText::new("合体").size(10.5)).clicked() {
+                if ui
+                    .button(
+                        RichText::new(crate::ui::i18n::text(&locale, "property.unite")).size(10.5),
+                    )
+                    .clicked()
+                {
                     crate::ui::PathfinderPanel::apply_op(
                         state,
                         crate::core::boolean::BooleanOp::Union,
                     );
                 }
                 if ui
-                    .button(RichText::new("前面オブジェクトで型抜き").size(10.5))
+                    .button(
+                        RichText::new(crate::ui::i18n::text(&locale, "property.subtract"))
+                            .size(10.5),
+                    )
                     .clicked()
                 {
                     crate::ui::PathfinderPanel::apply_op(
@@ -643,13 +699,25 @@ impl PropertyPanel {
                         crate::core::boolean::BooleanOp::Subtract,
                     );
                 }
-                if ui.button(RichText::new("交差").size(10.5)).clicked() {
+                if ui
+                    .button(
+                        RichText::new(crate::ui::i18n::text(&locale, "property.intersect"))
+                            .size(10.5),
+                    )
+                    .clicked()
+                {
                     crate::ui::PathfinderPanel::apply_op(
                         state,
                         crate::core::boolean::BooleanOp::Intersect,
                     );
                 }
-                if ui.button(RichText::new("中マド").size(10.5)).clicked() {
+                if ui
+                    .button(
+                        RichText::new(crate::ui::i18n::text(&locale, "property.exclude"))
+                            .size(10.5),
+                    )
+                    .clicked()
+                {
                     crate::ui::PathfinderPanel::apply_op(
                         state,
                         crate::core::boolean::BooleanOp::Exclude,
@@ -659,13 +727,13 @@ impl PropertyPanel {
         } else {
             // Adobe CC Property Panel: Complete Document & Canvas Settings (Image 2 & 3)
             ui.label(
-                RichText::new("選択なし")
+                RichText::new(crate::ui::i18n::text(&locale, "property.none_selected"))
                     .size(11.0)
                     .color(Color32::from_rgb(140, 140, 140)),
             );
             ui.add_space(2.0);
             ui.label(
-                RichText::new("ドキュメント")
+                RichText::new(crate::ui::i18n::text(&locale, "property.document"))
                     .strong()
                     .size(12.0)
                     .color(Color32::WHITE),
@@ -674,7 +742,7 @@ impl PropertyPanel {
 
             ui.horizontal(|ui| {
                 ui.label(
-                    RichText::new("単位:")
+                    RichText::new(crate::ui::i18n::text(&locale, "property.units"))
                         .size(11.0)
                         .color(Color32::from_rgb(160, 160, 160)),
                 );
@@ -697,7 +765,7 @@ impl PropertyPanel {
 
             ui.horizontal(|ui| {
                 ui.label(
-                    RichText::new("アートボード:")
+                    RichText::new(crate::ui::i18n::text(&locale, "property.artboard"))
                         .size(11.0)
                         .color(Color32::from_rgb(160, 160, 160)),
                 );
@@ -709,16 +777,26 @@ impl PropertyPanel {
                         .color(Color32::WHITE),
                 );
                 let nav = Vec2::new(20.0, 18.0);
-                if icon_button(ui, nav, icon_seek_prev)
-                    .on_hover_text("前のアートボード")
-                    .clicked()
+                if icon_button_labeled(
+                    ui,
+                    nav,
+                    icon_seek_prev,
+                    crate::ui::i18n::text(&locale, "property.previous_artboard"),
+                )
+                .on_hover_text(crate::ui::i18n::text(&locale, "property.previous_artboard"))
+                .clicked()
                     && idx > 0
                 {
                     state.active_artboard_idx = idx - 1;
                 }
-                if icon_button(ui, nav, icon_seek_next)
-                    .on_hover_text("次のアートボード")
-                    .clicked()
+                if icon_button_labeled(
+                    ui,
+                    nav,
+                    icon_seek_next,
+                    crate::ui::i18n::text(&locale, "property.next_artboard"),
+                )
+                .on_hover_text(crate::ui::i18n::text(&locale, "property.next_artboard"))
+                .clicked()
                     && idx + 1 < ab_count
                 {
                     state.active_artboard_idx = idx + 1;
@@ -730,9 +808,9 @@ impl PropertyPanel {
                 .add(
                     egui::Button::new(
                         RichText::new(if state.artboard_edit_open {
-                            "アートボード編集を閉じる"
+                            crate::ui::i18n::text(&locale, "property.close_artboard_edit")
                         } else {
-                            "アートボードを編集"
+                            crate::ui::i18n::text(&locale, "property.edit_artboard")
                         })
                         .size(11.0),
                     )
@@ -753,32 +831,54 @@ impl PropertyPanel {
             // 定規とグリッド (checkerboard / grid / ruler の3トグル)
             ui.horizontal(|ui| {
                 ui.label(
-                    RichText::new("定規とグリッド")
+                    RichText::new(crate::ui::i18n::text(&locale, "property.rulers_grid"))
                         .size(11.0)
                         .color(Color32::from_rgb(160, 160, 160)),
                 );
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     let size = Vec2::new(24.0, 20.0);
-                    let checker = state.prefs.artboard_bg_mode == "透明グリッド";
-                    if toggle_icon_button(ui, size, checker, icon_checkerboard)
-                        .on_hover_text("透明グリッドを表示/非表示")
-                        .clicked()
+                    let checker =
+                        state.prefs.artboard_bg_mode == crate::core::prefs::ArtboardBgMode::Checker;
+                    if toggle_icon_button_labeled(
+                        ui,
+                        size,
+                        checker,
+                        icon_checkerboard,
+                        crate::ui::i18n::text(&locale, "property.toggle_checkerboard"),
+                    )
+                    .on_hover_text(crate::ui::i18n::text(
+                        &locale,
+                        "property.toggle_checkerboard",
+                    ))
+                    .clicked()
                     {
                         state.prefs.artboard_bg_mode = if checker {
-                            "ホワイト".to_string()
+                            crate::core::prefs::ArtboardBgMode::White
                         } else {
-                            "透明グリッド".to_string()
+                            crate::core::prefs::ArtboardBgMode::Checker
                         };
                     }
-                    if toggle_icon_button(ui, size, state.show_grid, icon_grid)
-                        .on_hover_text("グリッドを表示/非表示")
-                        .clicked()
+                    if toggle_icon_button_labeled(
+                        ui,
+                        size,
+                        state.show_grid,
+                        icon_grid,
+                        crate::ui::i18n::text(&locale, "property.toggle_grid"),
+                    )
+                    .on_hover_text(crate::ui::i18n::text(&locale, "property.toggle_grid"))
+                    .clicked()
                     {
                         state.show_grid = !state.show_grid;
                     }
-                    if toggle_icon_button(ui, size, state.show_rulers, icon_ruler)
-                        .on_hover_text("定規を表示/非表示")
-                        .clicked()
+                    if toggle_icon_button_labeled(
+                        ui,
+                        size,
+                        state.show_rulers,
+                        icon_ruler,
+                        crate::ui::i18n::text(&locale, "property.toggle_rulers"),
+                    )
+                    .on_hover_text(crate::ui::i18n::text(&locale, "property.toggle_rulers"))
+                    .clicked()
                     {
                         state.show_rulers = !state.show_rulers;
                     }
@@ -789,15 +889,21 @@ impl PropertyPanel {
             // ガイド (unlink / lock / bolt の3トグル)
             ui.horizontal(|ui| {
                 ui.label(
-                    RichText::new("ガイド")
+                    RichText::new(crate::ui::i18n::text(&locale, "property.guides"))
                         .size(11.0)
                         .color(Color32::from_rgb(160, 160, 160)),
                 );
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     let size = Vec2::new(24.0, 20.0);
-                    if toggle_icon_button(ui, size, false, icon_unlink)
-                        .on_hover_text("ガイドを解除")
-                        .clicked()
+                    if toggle_icon_button_labeled(
+                        ui,
+                        size,
+                        false,
+                        icon_unlink,
+                        crate::ui::i18n::text(&locale, "property.clear_guides"),
+                    )
+                    .on_hover_text(crate::ui::i18n::text(&locale, "property.clear_guides"))
+                    .clicked()
                         && !state.guides.is_empty()
                     {
                         state.guides.clear();
@@ -808,18 +914,35 @@ impl PropertyPanel {
                         } else {
                             icon_unlock
                         };
-                    if toggle_icon_button(ui, size, state.snap_to_guides, lock_painter)
-                        .on_hover_text("ガイドにスナップ")
-                        .clicked()
+                    if toggle_icon_button_labeled(
+                        ui,
+                        size,
+                        state.snap_to_guides,
+                        lock_painter,
+                        crate::ui::i18n::text(&locale, "property.snap_guides"),
+                    )
+                    .on_hover_text(crate::ui::i18n::text(&locale, "property.snap_guides"))
+                    .clicked()
                     {
                         state.snap_to_guides = !state.snap_to_guides;
                     }
-                    if toggle_icon_button(ui, size, state.show_smart_guides, icon_bolt)
-                        .on_hover_text(format!(
-                            "スマートガイド ({}+U)",
-                            crate::app::control_bar::mod_key()
-                        ))
-                        .clicked()
+                    if toggle_icon_button_labeled(
+                        ui,
+                        size,
+                        state.show_smart_guides,
+                        icon_bolt,
+                        crate::ui::i18n::format(
+                            &locale,
+                            "property.smart_guides",
+                            &[("key", crate::app::control_bar::mod_key())],
+                        ),
+                    )
+                    .on_hover_text(crate::ui::i18n::format(
+                        &locale,
+                        "property.smart_guides",
+                        &[("key", crate::app::control_bar::mod_key())],
+                    ))
+                    .clicked()
                     {
                         state.show_smart_guides = !state.show_smart_guides;
                     }
@@ -830,27 +953,45 @@ impl PropertyPanel {
             // スナップオプション (Image 1 & 3: 3つのアイコンボタン [🧲][☵][☶])
             ui.horizontal(|ui| {
                 ui.label(
-                    RichText::new("スナップオプション")
+                    RichText::new(crate::ui::i18n::text(&locale, "property.snap_options"))
                         .size(11.0)
                         .color(Color32::from_rgb(160, 160, 160)),
                 );
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     let size = Vec2::new(24.0, 20.0);
-                    if toggle_icon_button(ui, size, state.snap_to_pixels, icon_snap_pixels)
-                        .on_hover_text("ピクセルにスナップ")
-                        .clicked()
+                    if toggle_icon_button_labeled(
+                        ui,
+                        size,
+                        state.snap_to_pixels,
+                        icon_snap_pixels,
+                        crate::ui::i18n::text(&locale, "property.snap_pixels"),
+                    )
+                    .on_hover_text(crate::ui::i18n::text(&locale, "property.snap_pixels"))
+                    .clicked()
                     {
                         state.snap_to_pixels = !state.snap_to_pixels;
                     }
-                    if toggle_icon_button(ui, size, state.snap_to_grid, icon_snap_grid)
-                        .on_hover_text("グリッドにスナップ")
-                        .clicked()
+                    if toggle_icon_button_labeled(
+                        ui,
+                        size,
+                        state.snap_to_grid,
+                        icon_snap_grid,
+                        crate::ui::i18n::text(&locale, "property.snap_grid"),
+                    )
+                    .on_hover_text(crate::ui::i18n::text(&locale, "property.snap_grid"))
+                    .clicked()
                     {
                         state.snap_to_grid = !state.snap_to_grid;
                     }
-                    if toggle_icon_button(ui, size, state.snap_to_objects, icon_snap_points)
-                        .on_hover_text("ポイントにスナップ")
-                        .clicked()
+                    if toggle_icon_button_labeled(
+                        ui,
+                        size,
+                        state.snap_to_objects,
+                        icon_snap_points,
+                        crate::ui::i18n::text(&locale, "property.snap_points"),
+                    )
+                    .on_hover_text(crate::ui::i18n::text(&locale, "property.snap_points"))
+                    .clicked()
                     {
                         state.snap_to_objects = !state.snap_to_objects;
                     }
@@ -863,16 +1004,19 @@ impl PropertyPanel {
 
             // 環境設定 (Image 3下部)
             ui.label(
-                RichText::new("環境設定")
+                RichText::new(crate::ui::i18n::text(&locale, "property.preferences"))
                     .strong()
                     .size(11.5)
                     .color(Color32::WHITE),
             );
             ui.horizontal(|ui| {
                 ui.label(
-                    RichText::new("キー入力:")
-                        .size(10.5)
-                        .color(Color32::from_rgb(160, 160, 160)),
+                    RichText::new(crate::ui::i18n::text(
+                        &locale,
+                        "property.keyboard_increment",
+                    ))
+                    .size(10.5)
+                    .color(Color32::from_rgb(160, 160, 160)),
                 );
                 ui.label(RichText::new("0.3528 mm").size(10.5).color(Color32::WHITE));
             });
@@ -881,24 +1025,24 @@ impl PropertyPanel {
             // survive a restart like every other 環境設定 — unlike the dummy
             // locals these used to be, they actually reach the transform:
             // `Object::apply_scale_change` and `preview_bounds`.
-            ui.checkbox(&mut state.prefs.use_preview_bounds, "プレビュー境界を使用")
-                .on_hover_text(
-                    "選択ボックスとハンドルを線の外側まで測る\n\
-                     （オフ時は形状のジオメトリのみ）",
-                );
-            ui.checkbox(&mut state.prefs.scale_corners, "角を拡大・縮小")
-                .on_hover_text(
-                    "オフにすると角丸の半径を絶対値で保ち、\n\
-                     オブジェクトを拡大しても角が相対的に鋭くなる",
-                );
+            ui.checkbox(
+                &mut state.prefs.use_preview_bounds,
+                crate::ui::i18n::text(&locale, "property.preview_bounds"),
+            )
+            .on_hover_text(crate::ui::i18n::text(
+                &locale,
+                "property.preview_bounds_tip",
+            ));
+            ui.checkbox(
+                &mut state.prefs.scale_corners,
+                crate::ui::i18n::text(&locale, "property.scale_corners"),
+            )
+            .on_hover_text(crate::ui::i18n::text(&locale, "property.scale_corners_tip"));
             ui.checkbox(
                 &mut state.prefs.scale_strokes_effects,
-                "線幅と効果を拡大・縮小",
+                crate::ui::i18n::text(&locale, "property.scale_strokes"),
             )
-            .on_hover_text(
-                "オフにすると線幅・影・グロー・ブラーを絶対値で保ち、\n\
-                 オブジェクトを拡大しても太さが変わらない",
-            );
+            .on_hover_text(crate::ui::i18n::text(&locale, "property.scale_strokes_tip"));
         }
     }
 
@@ -907,6 +1051,7 @@ impl PropertyPanel {
     /// Each gesture collapses into a single undo step through
     /// [`AppState::artboard_edit`] / [`AppState::commit_artboard_edits`].
     fn show_artboard_editor(ui: &mut Ui, state: &mut AppState) {
+        let locale = state.prefs.language.clone();
         ui.add_space(4.0);
 
         // A fresh document only carries an *implicit* artboard derived from
@@ -932,7 +1077,10 @@ impl PropertyPanel {
         let idx = state.active_artboard_idx;
 
         let mut name = state.document.artboards[idx].name.clone();
-        let name_resp = ui.add(egui::TextEdit::singleline(&mut name).hint_text("アートボード名"));
+        let name_resp = ui.add(
+            egui::TextEdit::singleline(&mut name)
+                .hint_text(crate::ui::i18n::text(&locale, "property.artboard_name")),
+        );
         if name_resp.changed() {
             state.artboard_edit(&name_resp, "Rename Artboard", |abs| {
                 if let Some(ab) = abs.get_mut(idx) {
@@ -962,7 +1110,7 @@ impl PropertyPanel {
             track(&ui.add(egui::DragValue::new(&mut y).speed(1.0)));
         });
         ui.horizontal(|ui| {
-            ui.label("幅:");
+            ui.label(crate::ui::i18n::text(&locale, "property.width"));
             track(
                 &ui.add(
                     egui::DragValue::new(&mut w)
@@ -970,7 +1118,7 @@ impl PropertyPanel {
                         .range(1.0..=100_000.0),
                 ),
             );
-            ui.label("高さ:");
+            ui.label(crate::ui::i18n::text(&locale, "property.height"));
             track(
                 &ui.add(
                     egui::DragValue::new(&mut h)
@@ -997,7 +1145,10 @@ impl PropertyPanel {
         }
 
         ui.horizontal(|ui| {
-            if ui.button("アートボードを追加").clicked() {
+            if ui
+                .button(crate::ui::i18n::text(&locale, "property.add_artboard"))
+                .clicked()
+            {
                 let before = state.document.artboards.clone();
                 let cur = state.document.artboards[idx].clone();
                 let count = state.document.artboards.len() + 1;
@@ -1014,12 +1165,17 @@ impl PropertyPanel {
                 state.active_artboard_idx = state.document.artboards.len() - 1;
                 let after = state.document.artboards.clone();
                 state.push_artboards_undo("Add Artboard", before, after);
-                state.notify_success("アートボードを追加しました");
+                state.notify_success(
+                    crate::ui::i18n::text(&locale, "property.artboard_added").into_owned(),
+                );
             }
             let removable = state.document.artboards.len() > 1;
             if ui
-                .add_enabled(removable, egui::Button::new("削除"))
-                .on_disabled_hover_text("アートボードは最低1枚必要です")
+                .add_enabled(
+                    removable,
+                    egui::Button::new(crate::ui::i18n::text(&locale, "common.delete")),
+                )
+                .on_disabled_hover_text(crate::ui::i18n::text(&locale, "property.minimum_artboard"))
                 .clicked()
             {
                 let before = state.document.artboards.clone();
@@ -1029,7 +1185,9 @@ impl PropertyPanel {
                 }
                 let after = state.document.artboards.clone();
                 state.push_artboards_undo("Remove Artboard", before, after);
-                state.notify_success("アートボードを削除しました");
+                state.notify_success(
+                    crate::ui::i18n::text(&locale, "property.artboard_removed").into_owned(),
+                );
             }
         });
     }

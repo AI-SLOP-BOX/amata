@@ -10,10 +10,10 @@ use crate::core::document::{BlendMode, ColorMode, Document, Object, ObjectType};
 use crate::core::geometry::matrix_scale;
 use crate::core::icc::rgb_to_cmyk;
 use crate::core::path::{
-    FillRule, FillStyle, FillType, LinearGradient, PathData, PathElement, RadialGradient,
-    StrokeCap, StrokeJoin,
+    FillRule, FillStyle, FillType, ImageFill, ImageTileMode, LinearGradient, PathData, PathElement,
+    PatternFill, PatternPrimitive, RadialGradient, StrokeCap, StrokeJoin,
 };
-use crate::core::print::{limit_ink, total_ink, SpotColor, MAX_TOTAL_INK};
+use crate::core::print::{limit_ink, total_ink, SpotColor, MAX_INK_SCAN_PX, MAX_TOTAL_INK};
 use std::collections::HashMap;
 use std::fmt::Write as _;
 
@@ -27,6 +27,11 @@ pub struct PrintPdfOptions {
     /// embedded ICC profile (Japan Color 2001 Coated for plates, sRGB for
     /// RGB documents).
     pub pdfx: bool,
+    /// Outline every text object instead of embedding subsets. Printers
+    /// prefer outlines when they cannot license/verify the face, and it is
+    /// the only way the OpenType features reach the page verbatim (a
+    /// subset maps back to GIDs the viewer may re-shape).
+    pub outline_text: bool,
 }
 
 impl Default for PrintPdfOptions {
@@ -35,6 +40,7 @@ impl Default for PrintPdfOptions {
             marks: true,
             bleed: None,
             pdfx: true,
+            outline_text: false,
         }
     }
 }
@@ -125,14 +131,20 @@ impl<'a> Ctx<'a> {
             if self.spots.contains_key(name) {
                 return Paint::Spot(name.clone(), 1.0);
             }
-            self.warn("spot-missing", format!("特色「{name}」がライブラリにないためプロセス色で出力"));
+            self.warn(
+                "spot-missing",
+                format!("特色「{name}」がライブラリにないためプロセス色で出力"),
+            );
         }
         if self.cmyk {
             let ink = limit_ink(rgb_to_cmyk([color[0], color[1], color[2], 1.0]), 4.0);
             // Report-only cap at TAC: export stays faithful, preflight warns.
             let t = total_ink(ink);
             if t > MAX_TOTAL_INK {
-                self.warn("tac", "インキ総量320%超の色があります（プリフライト参照）".to_string());
+                self.warn(
+                    "tac",
+                    "インキ総量320%超の色があります（プリフライト参照）".to_string(),
+                );
             }
             Paint::Cmyk(ink)
         } else {
@@ -192,11 +204,106 @@ fn cap_str(c: &StrokeCap) -> &'static str {
     }
 }
 
+/// XMP packet identifying the file as PDF/X-1a:2001 (ISO 15930-1), which
+/// is the variant this exporter actually claims via `/GTS_PDFXVersion`.
+/// PDF/X-1 uses the `pdfxid` schema (PDF/A's `pdfaid` does not apply).
+fn xmp_packet(doc_name: &str) -> String {
+    let title = doc_name.replace(['<', '>', '&'], "");
+    format!(
+        concat!(
+            "<?xpacket begin=\"\" id=\"W5M0MpCehiHzreSzNTczkc9d\"?>\n",
+            "<x:xmpmeta xmlns:x=\"adobe:ns:meta/\">\n",
+            " <rdf:RDF xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\">\n",
+            "  <rdf:Description rdf:about=\"\"\n",
+            "    xmlns:pdfxid=\"http://www.npes.org/pdfx/ns/id/\"\n",
+            "    xmlns:pdf=\"http://ns.adobe.com/pdf/1.3/\"\n",
+            "    xmlns:xmp=\"http://ns.adobe.com/xap/1.0/\"\n",
+            "    xmlns:dc=\"http://purl.org/dc/elements/1.1/\">\n",
+            "   <pdfxid:GTS_PDFXVersion>PDF/X-1a:2001</pdfxid:GTS_PDFXVersion>\n",
+            "   <pdf:Producer>Amata print export</pdf:Producer>\n",
+            "   <xmp:CreatorTool>Amata</xmp:CreatorTool>\n",
+            "   <dc:title><rdf:Alt><rdf:li xml:lang=\"x-default\">{title}</rdf:li></rdf:Alt></dc:title>\n",
+            "  </rdf:Description>\n",
+            " </rdf:RDF>\n",
+            "</x:xmpmeta>\n",
+            "<?xpacket end=\"w\"?>"
+        ),
+        title = title
+    )
+}
+
+/// FNV-1a 64-bit over the given seed, rendered as 32 hex digits
+/// (16 bytes = the two identical /ID halves).
+fn file_id(seed: &str) -> String {
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    for b in seed.as_bytes() {
+        h ^= *b as u64;
+        h = h.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    format!("{h:016X}{h:016X}")
+}
+
+/// Compact fingerprint of the document's content (stable, no I/O).
+fn content_fingerprint(contents: &[String], doc_name: &str) -> String {
+    let mut seed = String::from(doc_name);
+    seed.push('|');
+    for c in contents {
+        seed.push_str(c);
+        seed.push('\n');
+    }
+    seed
+}
+
 fn join_str(j: &StrokeJoin) -> &'static str {
     match j {
         StrokeJoin::Miter => "0",
         StrokeJoin::Round => "1",
         StrokeJoin::Bevel => "2",
+    }
+}
+
+/// Which page each top-level object belongs to: the artboard whose rect
+/// contains the object's centre. Objects outside every artboard land on
+/// page 1. A document with a single artboard (the common case) keeps its
+/// exact current output: one page with everything, in object order.
+fn page_assignment(doc: &Document, total: usize) -> Vec<Vec<usize>> {
+    if doc.artboards.len() <= 1 {
+        return vec![(0..total).collect()];
+    }
+    let n = doc.artboards.len();
+    let mut pages: Vec<Vec<usize>> = vec![Vec::new(); n];
+    for (i, obj) in doc.all_objects() {
+        let (cx, cy) = obj_center(obj);
+        let mut hit = 0usize;
+        for (ai, ab) in doc.artboards.iter().enumerate() {
+            if cx >= ab.x && cx <= ab.x + ab.width && cy >= ab.y && cy <= ab.y + ab.height {
+                hit = ai;
+                break;
+            }
+        }
+        pages[hit].push(i);
+    }
+    // A page with no objects still exists (marks only) — stable numbering.
+    pages
+}
+
+/// Object centre in document space.
+fn obj_center(obj: &Object) -> (f64, f64) {
+    let m = obj.transform.matrix();
+    let (cx, cy) = match &obj.object_type {
+        ObjectType::Rectangle { width, height, .. } => (*width / 2.0, *height / 2.0),
+        ObjectType::Ellipse { rx, ry } => (*rx / 2.0, *ry / 2.0),
+        ObjectType::Text { area: Some(a), .. } => (a.x + a.width / 2.0, a.y + a.height / 2.0),
+        _ => (0.0, 0.0),
+    };
+    (m[0] * cx + m[2] * cy + m[4], m[1] * cx + m[3] * cy + m[5])
+}
+
+/// Per-page translate so each artboard's trim box lands at 0,0.
+fn page_shift(doc: &Document, p: usize) -> (f64, f64) {
+    match doc.artboards.get(p) {
+        Some(ab) => (-ab.x, -ab.y),
+        None => (0.0, 0.0),
     }
 }
 
@@ -213,7 +320,11 @@ pub fn export_pdf_print(doc: &Document, opts: &PrintPdfOptions) -> (Vec<u8>, Vec
     let mut ctx = Ctx {
         doc,
         cmyk: doc.color_mode == ColorMode::Cmyk,
-        spots: doc.spots.iter().map(|s| (s.name.clone(), s.clone())).collect(),
+        spots: doc
+            .spots
+            .iter()
+            .map(|s| (s.name.clone(), s.clone()))
+            .collect(),
         gs: HashMap::new(),
         gs_next: 0,
         patterns: Vec::new(),
@@ -222,12 +333,25 @@ pub fn export_pdf_print(doc: &Document, opts: &PrintPdfOptions) -> (Vec<u8>, Vec
         warned: std::collections::HashSet::new(),
     };
 
-    let mut content = String::new();
-    let _ = writeln!(content, "q");
-    // Media space: origin top-left like the canvas, y-down.
-    let _ = writeln!(content, "1 0 0 -1 0 {} cm", f2(mh));
-    // Shift so trim (0,0) lands inside media.
-    let _ = writeln!(content, "1 0 0 1 {} {} cm", f2(ox), f2(-oy));
+    // Page assignment: one content stream per artboard (a single-artboard
+    // document keeps the exact current single-page output).
+    let n_pages = doc.artboards.len().max(1);
+    let pages = page_assignment(doc, doc.all_objects().count());
+    // Flattened regions are collected once (doc level, like embed_lines) and
+    // drawn on the page that contains their centre.
+    let region_page = |r: &FlatRegion| -> usize {
+        if doc.artboards.len() <= 1 {
+            return 0;
+        }
+        let cx = r.x + r.w / 2.0;
+        let cy = r.y + r.h / 2.0;
+        for (ai, ab) in doc.artboards.iter().enumerate() {
+            if cx >= ab.x && cx <= ab.x + ab.width && cy >= ab.y && cy <= ab.y + ab.height {
+                return ai;
+            }
+        }
+        0
+    };
 
     // Transparency flattening for PDF/X: vector objects that carry live
     // transparency are baked into opaque press-DPI raster regions (see
@@ -243,18 +367,20 @@ pub fn export_pdf_print(doc: &Document, opts: &PrintPdfOptions) -> (Vec<u8>, Vec
     let mut face_index: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
     let mut embed_lines: std::collections::HashMap<String, Vec<embed::EmbeddedLine>> =
         std::collections::HashMap::new();
+    #[allow(clippy::too_many_arguments)]
     fn collect_text(
         doc: &Document,
         obj: &Object,
         faces: &mut Vec<embed::EmbedFace>,
         face_index: &mut std::collections::HashMap<String, usize>,
         embed_lines: &mut std::collections::HashMap<String, Vec<embed::EmbeddedLine>>,
+        outline_text: bool,
     ) {
         if let ObjectType::Group(children) | ObjectType::ClippingMask { children } =
             &obj.object_type
         {
             for c in children {
-                collect_text(doc, c, faces, face_index, embed_lines);
+                collect_text(doc, c, faces, face_index, embed_lines, outline_text);
             }
             return;
         }
@@ -264,7 +390,7 @@ pub fn export_pdf_print(doc: &Document, opts: &PrintPdfOptions) -> (Vec<u8>, Vec
             } => (text, style, *area),
             _ => return,
         };
-        if !embed_eligible(obj, style) {
+        if !embed_eligible(obj, style, outline_text) {
             return;
         }
         let key = embed::face_key(style);
@@ -304,18 +430,37 @@ pub fn export_pdf_print(doc: &Document, opts: &PrintPdfOptions) -> (Vec<u8>, Vec
     }
     for layer in &doc.layers {
         for obj in &layer.objects {
-            collect_text(doc, obj, &mut faces, &mut face_index, &mut embed_lines);
+            collect_text(
+                doc,
+                obj,
+                &mut faces,
+                &mut face_index,
+                &mut embed_lines,
+                opts.outline_text,
+            );
         }
     }
     for (i, face) in faces.iter_mut().enumerate() {
         face.res_idx = i + 1;
     }
-    for layer in &doc.layers {
-        if !layer.visible {
-            continue;
-        }
-        for obj in &layer.objects {
-            if flat.iter().any(|r| region_contains(r, obj)) {
+    let mut contents: Vec<String> = Vec::with_capacity(n_pages);
+    for (p, page) in pages.iter().enumerate() {
+        let (sx, sy) = page_shift(doc, p);
+        let mut content = String::new();
+        let _ = writeln!(content, "q");
+        // Media space: origin top-left like the canvas, y-down.
+        let _ = writeln!(content, "1 0 0 -1 0 {} cm", f2(mh));
+        // This artboard's trim (0,0) lands inside the media box.
+        let _ = writeln!(content, "1 0 0 1 {} {} cm", f2(ox + sx), f2(-oy - sy));
+        // Objects of this page, in document order.
+        for i in page {
+            let Some((_, obj)) = doc.all_objects().nth(*i) else {
+                continue;
+            };
+            if flat
+                .iter()
+                .any(|r| region_page(r) == p && region_contains(doc, r, obj))
+            {
                 continue;
             }
             render_obj_embed(
@@ -327,19 +472,27 @@ pub fn export_pdf_print(doc: &Document, opts: &PrintPdfOptions) -> (Vec<u8>, Vec
                 &embed_lines,
             );
         }
-    }
-    // Flattened regions draw as opaque press raster on top, in object
-    // order (regions were merged so they never overlap each other).
-    for (i, r) in flat.iter().enumerate() {
-        let _ = writeln!(
-            content,
-            "q {} 0 0 {} {} {} cm /Fm{} Do Q",
-            f2(r.w),
-            f2(-r.h),
-            f2(r.x),
-            f2(r.y + r.h),
-            i + 1
-        );
+        // Flattened regions draw as opaque press raster on top, in object
+        // order (regions were merged so they never overlap each other).
+        for (i, r) in flat.iter().enumerate() {
+            if region_page(r) != p {
+                continue;
+            }
+            let _ = writeln!(
+                content,
+                "q {} 0 0 {} {} {} cm /Fm{} Do Q",
+                f2(r.w),
+                f2(-r.h),
+                f2(r.x),
+                f2(r.y + r.h),
+                i + 1
+            );
+        }
+        if opts.marks {
+            render_marks(&mut ctx, tw, th, ox + sx, oy + sy, &mut content);
+        }
+        let _ = writeln!(content, "Q");
+        contents.push(content);
     }
     // Missing families outline as generic blocks: flag them per family so
     // the export never silently substitutes glyphs.
@@ -372,7 +525,10 @@ pub fn export_pdf_print(doc: &Document, opts: &PrintPdfOptions) -> (Vec<u8>, Vec
         families.dedup();
         let registry = crate::core::font::FontRegistry::global();
         for family in families {
-            if !registry.is_family_available(&family) {
+            // Same comma/generic-aware gate as preflight: specs that resolve
+            // through fallback (e.g. "Inter, sans-serif") embed fine and
+            // must not warn on every default document.
+            if !registry.is_any_family_available(&family) {
                 // Pushed directly (`warn` dedupes by static key): every
                 // missing family must surface.
                 ctx.warnings.push(format!(
@@ -381,13 +537,9 @@ pub fn export_pdf_print(doc: &Document, opts: &PrintPdfOptions) -> (Vec<u8>, Vec
             }
         }
     }
-    if opts.marks {
-        render_marks(&mut ctx, tw, th, ox, oy, &mut content);
-    }
-    let _ = writeln!(content, "Q");
-
     // ---- assemble objects ----
-    // 1 catalog, 2 pages, 3 page, 4 content, then resources/images/info.
+    // 1 catalog, 2 pages tree, then per page a dict + content, then
+    // resources/images/info.
     let mut pdf: Vec<u8> = Vec::new();
     pdf.extend_from_slice(b"%PDF-1.4\n%\xE2\xE3\xCF\xD3\n");
     let mut offsets: Vec<usize> = Vec::new();
@@ -453,9 +605,26 @@ pub fn export_pdf_print(doc: &Document, opts: &PrintPdfOptions) -> (Vec<u8>, Vec
     } else {
         None
     };
-    // Fixed layout: 1 catalog, 2 pages, 3 page, 4 content, 5 ICC profile when
-    // embedded, then images — so images start at 6 or 5 accordingly.
-    let img_base = if icc_profile.is_some() { 6 } else { 5 };
+    // Layout: 1 catalog, 2 pages, then per page a dict + a content stream,
+    // then the ICC profile (when embedded), then images — so images start
+    // at 3 + 2·pages (+1 for the profile). N=1 reproduces the old 5/6.
+    let n_pages = contents.len();
+    let mut after_pages = 3 + 2 * n_pages;
+    let icc_no = if icc_profile.is_some() {
+        after_pages += 1;
+        Some(after_pages - 1)
+    } else {
+        None
+    };
+    // PDF/X (ISO 15930) requires a document-level XMP packet identifying
+    // the variant, so one object is reserved for the /Metadata stream.
+    let meta_no = if opts.pdfx {
+        after_pages += 1;
+        Some(after_pages - 1)
+    } else {
+        None
+    };
+    let img_base = after_pages;
 
     // Images.
     let mut image_res = String::new();
@@ -495,7 +664,11 @@ pub fn export_pdf_print(doc: &Document, opts: &PrintPdfOptions) -> (Vec<u8>, Vec
     // 1 catalog (+ PDF/X + OutputIntent).
     let n1 = begin(&mut pdf, &mut offsets, &mut obj_no);
     debug_assert_eq!(n1, 1);
-    let mut catalog = String::from("<< /Type /Catalog /Pages 2 0 R");
+    let meta_ref = match meta_no {
+        Some(n) => format!(" /Metadata {n} 0 R"),
+        None => String::new(),
+    };
+    let mut catalog = format!("<< /Type /Catalog /Pages 2 0 R{meta_ref}");
     if opts.pdfx {
         catalog.push_str(" /GTS_PDFXVersion (PDF/X-1a:2001)");
         // The embedded profile is Amata's synthetic UCR model, not a
@@ -513,10 +686,11 @@ pub fn export_pdf_print(doc: &Document, opts: &PrintPdfOptions) -> (Vec<u8>, Vec
         } else {
             "sRGB default"
         };
-        let dest = if icc_profile.is_some() {
-            " /DestOutputProfile 5 0 R"
-        } else {
-            ""
+        // The catalog is written before the ICC stream, so the object number
+        // is reserved analytically (see `icc_no`).
+        let dest = match icc_no {
+            Some(no) => &format!(" /DestOutputProfile {no} 0 R"),
+            None => "",
         };
         catalog.push_str(&format!(
             " /OutputIntents [<< /Type /OutputIntent /S /GTS_PDFX /OutputConditionIdentifier ({condition}) /RegistryName (http://www.color.org) /Info ({info}){dest} >>]"
@@ -526,48 +700,80 @@ pub fn export_pdf_print(doc: &Document, opts: &PrintPdfOptions) -> (Vec<u8>, Vec
     catalog.push_str(" >>");
     pdf.extend_from_slice(format!("1 0 obj\n{catalog}\nendobj\n").as_bytes());
 
-    // 2 pages.
+    // 2 pages tree (one kid per page).
     let n2 = begin(&mut pdf, &mut offsets, &mut obj_no);
     debug_assert_eq!(n2, 2);
-    pdf.extend_from_slice(b"2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n");
-
-    // 3 page with boxes.
-    let n3 = begin(&mut pdf, &mut offsets, &mut obj_no);
-    debug_assert_eq!(n3, 3);
+    let kids: Vec<String> = (0..n_pages).map(|p| format!("{} 0 R", 3 + p * 2)).collect();
     pdf.extend_from_slice(
         format!(
-            "3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {} {}] /CropBox [0 0 {} {}] /BleedBox [{} {} {} {}] /TrimBox [{} {} {} {}] /Contents 4 0 R /Resources {} >>\nendobj\n",
-            f2(mw), f2(mh), f2(mw), f2(mh),
-            f2(slug), f2(slug), f2(mw - slug), f2(mh - slug),
-            f2(ox), f2(oy), f2(ox + tw), f2(oy + th),
-            resources
+            "2 0 obj\n<< /Type /Pages /Kids [{}] /Count {} >>\nendobj\n",
+            kids.join(" "),
+            n_pages
         )
         .as_bytes(),
     );
 
-    // 4 content.
-    let n4 = begin(&mut pdf, &mut offsets, &mut obj_no);
-    debug_assert_eq!(n4, 4);
-    let cbytes = content.as_bytes();
-    pdf.extend_from_slice(
-        format!("4 0 obj\n<< /Length {} >>\nstream\n", cbytes.len()).as_bytes(),
-    );
-    pdf.extend_from_slice(cbytes);
-    pdf.extend_from_slice(b"\nendstream\nendobj\n");
+    // Page dicts (boxes) + content streams, interleaved.
+    for (p, content) in contents.iter().enumerate() {
+        let dict_no = 3 + p * 2;
+        let content_no = dict_no + 1;
+        let nd = begin(&mut pdf, &mut offsets, &mut obj_no);
+        debug_assert_eq!(nd, dict_no);
+        pdf.extend_from_slice(
+            format!(
+                "{} 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {} {}] /CropBox [0 0 {} {}] /BleedBox [{} {} {} {}] /TrimBox [{} {} {} {}] /Contents {} 0 R /Resources {} >>\nendobj\n",
+                dict_no,
+                f2(mw), f2(mh), f2(mw), f2(mh),
+                f2(slug), f2(slug), f2(mw - slug), f2(mh - slug),
+                f2(ox), f2(oy), f2(ox + tw), f2(oy + th),
+                content_no,
+                resources
+            )
+            .as_bytes(),
+        );
+        let nc = begin(&mut pdf, &mut offsets, &mut obj_no);
+        debug_assert_eq!(nc, content_no);
+        let cbytes = content.as_bytes();
+        pdf.extend_from_slice(
+            format!(
+                "{content_no} 0 obj\n<< /Length {} >>\nstream\n",
+                cbytes.len()
+            )
+            .as_bytes(),
+        );
+        pdf.extend_from_slice(cbytes);
+        pdf.extend_from_slice(b"\nendstream\nendobj\n");
+    }
 
     // 5 ICC profile stream (the OutputIntent's /DestOutputProfile).
     if let Some((bytes, n_comp, alternate)) = icc_profile {
         let n5 = begin(&mut pdf, &mut offsets, &mut obj_no);
-        debug_assert_eq!(n5, 5);
+        debug_assert_eq!(n5, icc_no.expect("icc object reserved"));
         let body = flate_compress(&bytes);
         pdf.extend_from_slice(
             format!(
-                "5 0 obj\n<< /N {n_comp} /Alternate /{alternate} /Filter /FlateDecode /Length {} >>\nstream\n",
+                "{n5} 0 obj\n<< /N {n_comp} /Alternate /{alternate} /Filter /FlateDecode /Length {} >>\nstream\n",
                 body.len()
             )
             .as_bytes(),
         );
         pdf.extend_from_slice(&body);
+        pdf.extend_from_slice(b"\nendstream\nendobj\n");
+    }
+
+    // XMP metadata stream (PDF/X identification).
+    if let Some(mno) = meta_no {
+        let nm = begin(&mut pdf, &mut offsets, &mut obj_no);
+        debug_assert_eq!(nm, mno);
+        let xmp = xmp_packet(&ctx.doc.name);
+        pdf.extend_from_slice(
+            format!(
+                "{mno} 0 obj\n<< /Type /Metadata /Subtype /XML /Length {} >>\nstream\n",
+                xmp.len()
+            )
+            .as_bytes(),
+        );
+        pdf.extend_from_slice(xmp.as_bytes());
         pdf.extend_from_slice(b"\nendstream\nendobj\n");
     }
 
@@ -748,8 +954,15 @@ pub fn export_pdf_print(doc: &Document, opts: &PrintPdfOptions) -> (Vec<u8>, Vec
     for off in &offsets {
         pdf.extend_from_slice(format!("{off:010} 00000 n \n").as_bytes());
     }
+    // /ID is required by PDF/X (and PDF 1.1+): two identical hex strings
+    // (original + current), derived from the file content so re-exporting
+    // the same document is stable but a different document differs.
+    let id = file_id(&content_fingerprint(&contents, &ctx.doc.name));
     pdf.extend_from_slice(
-        format!("trailer\n<< /Size {total} /Root 1 0 R /Info {info_no} 0 R >>\nstartxref\n{xref_at}\n%%EOF\n").as_bytes(),
+        format!(
+            "trailer\n<< /Size {total} /Root 1 0 R /Info {info_no} 0 R /ID [<{id}> <{id}>] >>\nstartxref\n{xref_at}\n%%EOF\n"
+        )
+        .as_bytes(),
     );
 
     // Sanity: object-number bookkeeping above assumed images start right
@@ -876,6 +1089,178 @@ pub fn validate_pdfx(pdf: &[u8], cmyk: bool) -> Vec<String> {
             "{rgb_shadings}件のRGBシェーディング — CMYK文書では要変換"
         ));
     }
+    // OutputIntent / box consistency: the catalog claims PDF/X-1a, so verify
+    // the claim against the bytes. A missing intent (or an intent without an
+    // embedded profile), or boxes that disagree with each other, would fail
+    // certified preflight downstream.
+    out.extend(validate_pdfx_intent(&doc, cmyk));
+    out.extend(validate_pdfx_boxes(&doc));
+    out
+}
+
+/// `/GTS_PDFXVersion` + one `OutputIntent` carrying an embedded profile whose
+/// channel count matches the plates.
+fn validate_pdfx_intent(doc: &lopdf::Document, cmyk: bool) -> Vec<String> {
+    let mut out = Vec::new();
+    let catalog = doc
+        .trailer
+        .get(b"Root")
+        .ok()
+        .and_then(|r| r.as_reference().ok())
+        .and_then(|id| doc.get_object(id).ok())
+        .and_then(|o| match o {
+            lopdf::Object::Dictionary(d) => Some(d.clone()),
+            _ => None,
+        });
+    let Some(catalog) = catalog else {
+        return vec!["カタログを読めません".to_string()];
+    };
+    if catalog.get(b"GTS_PDFXVersion").is_err() {
+        out.push("カタログにGTS_PDFXVersionがありません".to_string());
+    }
+    let intents = match catalog.get(b"OutputIntents") {
+        Ok(lopdf::Object::Array(a)) => a.clone(),
+        _ => {
+            out.push("カタログにOutputIntentsがありません".to_string());
+            return out;
+        }
+    };
+    if intents.is_empty() {
+        out.push("OutputIntentsが空です".to_string());
+        return out;
+    }
+    let want_n: i64 = if cmyk { 4 } else { 3 };
+    let mut good = false;
+    for intent in &intents {
+        let dict = match intent {
+            lopdf::Object::Dictionary(d) => Some(d.clone()),
+            _ => intent
+                .as_reference()
+                .ok()
+                .and_then(|id| doc.get_object(id).ok())
+                .and_then(|o| match o {
+                    lopdf::Object::Dictionary(d) => Some(d.clone()),
+                    _ => None,
+                }),
+        };
+        let Some(dict) = dict else { continue };
+        if dict.get(b"OutputConditionIdentifier").is_err() {
+            continue;
+        }
+        let profile_n = dict
+            .get(b"DestOutputProfile")
+            .ok()
+            .and_then(|r| r.as_reference().ok())
+            .and_then(|id| doc.get_object(id).ok())
+            .and_then(|o| match o {
+                lopdf::Object::Stream(s) => Some(s.dict.get(b"N").ok()?.clone()),
+                _ => None,
+            })
+            .and_then(|n| match n {
+                lopdf::Object::Integer(n) => Some(n),
+                _ => None,
+            });
+        if profile_n == Some(want_n) {
+            good = true;
+            break;
+        }
+    }
+    if !good {
+        out.push(format!(
+            "OutputIntentにチャンネル数{want_n}の埋込プロファイルがありません"
+        ));
+    }
+    out
+}
+
+fn pdf_rect(dict: &lopdf::Dictionary, key: &[u8]) -> Option<[f64; 4]> {
+    let arr = dict.get(key).ok()?.as_array().ok()?;
+    if arr.len() != 4 {
+        return None;
+    }
+    let mut v = [0.0f64; 4];
+    for (i, o) in arr.iter().enumerate() {
+        v[i] = match o {
+            lopdf::Object::Real(f) => *f as f64,
+            lopdf::Object::Integer(n) => *n as f64,
+            _ => return None,
+        };
+    }
+    Some(v)
+}
+
+fn rect_contains(outer: [f64; 4], inner: [f64; 4]) -> bool {
+    const EPS: f64 = 1e-6;
+    outer[0] <= inner[0] + EPS
+        && outer[1] <= inner[1] + EPS
+        && inner[2] <= outer[2] + EPS
+        && inner[3] <= outer[3] + EPS
+}
+
+/// Every page must carry Media/Crop/Bleed/Trim boxes that nest
+/// (Trim ⊆ Bleed ⊆ Media, Crop ⊆ Media) with positive area. Our gate writes
+/// all four; anything else means the file was hand-edited or truncated.
+fn validate_pdfx_boxes(doc: &lopdf::Document) -> Vec<String> {
+    let mut out = Vec::new();
+    let pages = doc.get_pages();
+    if pages.is_empty() {
+        return vec!["ページがありません".to_string()];
+    }
+    for (pageno, &id) in pages.iter() {
+        let Ok(lopdf::Object::Dictionary(page)) = doc.get_object(id) else {
+            out.push(format!("ページ{pageno}の辞書を読めません"));
+            continue;
+        };
+        let mut missing = Vec::new();
+        let media = pdf_rect(page, b"MediaBox");
+        let crop = pdf_rect(page, b"CropBox");
+        let bleed = pdf_rect(page, b"BleedBox");
+        let trim = pdf_rect(page, b"TrimBox");
+        for (name, b) in [
+            ("MediaBox", media),
+            ("CropBox", crop),
+            ("BleedBox", bleed),
+            ("TrimBox", trim),
+        ] {
+            if b.is_none() {
+                missing.push(name);
+            }
+        }
+        if !missing.is_empty() {
+            out.push(format!(
+                "ページ{pageno}に{}がありません",
+                missing.join("・")
+            ));
+            continue;
+        }
+        let (media, crop, bleed, trim) =
+            (media.unwrap(), crop.unwrap(), bleed.unwrap(), trim.unwrap());
+        for (name, b) in [
+            ("MediaBox", media),
+            ("CropBox", crop),
+            ("BleedBox", bleed),
+            ("TrimBox", trim),
+        ] {
+            if !(b[2] > b[0] && b[3] > b[1]) {
+                out.push(format!("ページ{pageno}の{name}に面積がありません"));
+            }
+        }
+        if !rect_contains(media, crop) {
+            out.push(format!(
+                "ページ{pageno}のCropBoxがMediaBoxをはみ出しています"
+            ));
+        }
+        if !rect_contains(media, bleed) {
+            out.push(format!(
+                "ページ{pageno}のBleedBoxがMediaBoxをはみ出しています"
+            ));
+        }
+        if !rect_contains(bleed, trim) {
+            out.push(format!(
+                "ページ{pageno}のTrimBoxがBleedBoxをはみ出しています"
+            ));
+        }
+    }
     out
 }
 
@@ -940,7 +1325,11 @@ const FLATTEN_MAX_PX: f32 = 8192.0;
 /// geometry box, and clipping them would show.
 const FLATTEN_PAD: f64 = 16.0;
 
-fn subtree_needs_flatten(obj: &Object) -> bool {
+fn subtree_needs_flatten(
+    doc: &Document,
+    obj: &Object,
+    alpha_cache: &mut std::collections::HashMap<usize, bool>,
+) -> bool {
     // Object-level transparency.
     if obj.opacity < 1.0
         || obj.blend_mode != BlendMode::Normal
@@ -975,11 +1364,39 @@ fn subtree_needs_flatten(obj: &Object) -> bool {
     if paint_alpha(obj) {
         return true;
     }
-    match &obj.object_type {
-        ObjectType::Group(children) | ObjectType::ClippingMask { children } => {
-            children.iter().any(subtree_needs_flatten)
+    let mut has_transparent_pixels = |png: &[u8]| {
+        if doc.color_mode == crate::core::document::ColorMode::Cmyk {
+            return false;
         }
-        _ => false,
+        // Per-export memo: the same embedded raster is referenced by many
+        // fills. Key by allocation address (doc outlives the export) so we
+        // decode each PNG once instead of O(N) times.
+        let key = png.as_ptr() as usize;
+        if let Some(&hit) = alpha_cache.get(&key) {
+            return hit;
+        }
+        let hit = image::load_from_memory(png)
+            .map(|decoded| decoded.to_rgba8().pixels().any(|pixel| pixel[3] < 255))
+            .unwrap_or(false);
+        alpha_cache.insert(key, hit);
+        hit
+    };
+    match &obj.object_type {
+        ObjectType::Group(children) | ObjectType::ClippingMask { children } => children
+            .iter()
+            .any(|child| subtree_needs_flatten(doc, child, alpha_cache)),
+        ObjectType::Image { png_bytes, .. } if has_transparent_pixels(png_bytes) => true,
+        _ => {
+            if let Some(FillType::Image(image_fill)) = obj.fill.as_ref().map(|f| &f.fill_type) {
+                return doc.find_object(&image_fill.image_id).is_some_and(|source| {
+                    match &source.object_type {
+                        ObjectType::Image { png_bytes, .. } => has_transparent_pixels(png_bytes),
+                        _ => false,
+                    }
+                });
+            }
+            false
+        }
     }
 }
 
@@ -995,12 +1412,24 @@ fn obj_flat_box(obj: &Object) -> Option<(f64, f64, f64, f64)> {
 }
 
 fn boxes_overlap(a: &(f64, f64, f64, f64), b: &(f64, f64, f64, f64)) -> bool {
-    a.0 <= b.2 && b.0 <= a.2 && a.1 <= b.3 && b.1 <= a.3
+    // Strict inequality: merely edge-touching boxes (the padded norm for
+    // tiled layouts) must NOT merge, or everything collapses into one
+    // page-size raster and trips the 16Mpx fallback.
+    const EPS: f64 = 1e-6;
+    a.0 < b.2 - EPS && b.0 < a.2 - EPS && a.1 < b.3 - EPS && b.1 < a.3 - EPS
 }
 
-fn region_contains(r: &FlatRegion, obj: &Object) -> bool {
+fn region_contains(doc: &Document, r: &FlatRegion, obj: &Object) -> bool {
     match obj_flat_box(obj) {
         Some((x0, y0, x1, y1)) => {
+            // Flat regions are clipped to the page bounds. Compare against
+            // the visible part of the padded object bounds, otherwise an
+            // object touching a page edge escapes the flatten and is drawn a
+            // second time with live transparency after its opaque raster.
+            let x0 = x0.max(0.0);
+            let y0 = y0.max(0.0);
+            let x1 = x1.min(doc.width.max(1.0));
+            let y1 = y1.min(doc.height.max(1.0));
             x0 >= r.x - 1e-6 && y0 >= r.y - 1e-6 && x1 <= r.x + r.w + 1e-6 && y1 <= r.y + r.h + 1e-6
         }
         None => false,
@@ -1019,6 +1448,7 @@ fn region_contains(r: &FlatRegion, obj: &Object) -> bool {
 fn flatten_regions(doc: &Document, ctx: &mut Ctx) -> Vec<FlatRegion> {
     let mut seeds: Vec<(f64, f64, f64, f64)> = Vec::new();
     let mut all: Vec<(f64, f64, f64, f64)> = Vec::new();
+    let mut alpha_cache: std::collections::HashMap<usize, bool> = std::collections::HashMap::new();
     for layer in &doc.layers {
         if !layer.visible {
             continue;
@@ -1031,13 +1461,57 @@ fn flatten_regions(doc: &Document, ctx: &mut Ctx) -> Vec<FlatRegion> {
                 continue;
             };
             all.push(b);
-            if subtree_needs_flatten(obj) {
+            if subtree_needs_flatten(doc, obj, &mut alpha_cache) {
                 seeds.push(b);
             }
         }
     }
     if seeds.is_empty() {
         return Vec::new();
+    }
+    // Honest print warning: anything inside a flattened region becomes
+    // raster, so a 特色 (spot) fill there LOSES its plate — the printer
+    // must know before the file goes to the RIP.
+    {
+        fn has_spot(obj: &Object) -> bool {
+            match &obj.object_type {
+                ObjectType::Group(children) | ObjectType::ClippingMask { children } => {
+                    children.iter().any(has_spot)
+                }
+                _ => obj
+                    .fill
+                    .as_ref()
+                    .and_then(|f| f.spot.clone())
+                    .or_else(|| obj.stroke.as_ref().and_then(|s| s.spot.clone()))
+                    .is_some(),
+            }
+        }
+        let mut spots_in_flatten: Vec<String> = Vec::new();
+        for layer in &doc.layers {
+            for obj in &layer.objects {
+                if !obj.visible || !has_spot(obj) {
+                    continue;
+                }
+                let Some(b) = obj_flat_box(obj) else { continue };
+                if seeds.iter().any(|r| boxes_overlap(r, &b)) {
+                    if let Some(name) = obj
+                        .fill
+                        .as_ref()
+                        .and_then(|f| f.spot.clone())
+                        .or_else(|| obj.stroke.as_ref().and_then(|s| s.spot.clone()))
+                    {
+                        if !spots_in_flatten.contains(&name) {
+                            spots_in_flatten.push(name);
+                        }
+                    }
+                }
+            }
+        }
+        for name in spots_in_flatten {
+            ctx.warnings.push(format!(
+                "特色「{name}」を含む透明オブジェクトをラスタ化したため、版は出ません（RIPで特色を別途指定してください）"
+            ));
+        }
     }
     // Absorb everything each seed touches, to fixpoint: regions always
     // contain whole objects, so skipping vector output inside them can
@@ -1137,7 +1611,7 @@ fn flatten_regions(doc: &Document, ctx: &mut Ctx) -> Vec<FlatRegion> {
         }
         let pw = cx1 - cx0;
         let ph = cy1 - cy0;
-        if pw * ph > 16_777_216 {
+        if pw as u64 * ph as u64 > MAX_INK_SCAN_PX {
             ctx.warn("flatten-huge", "領域が大きすぎるため一部をベクタ出力します");
             continue;
         }
@@ -1145,11 +1619,12 @@ fn flatten_regions(doc: &Document, ctx: &mut Ctx) -> Vec<FlatRegion> {
         let mut raw = Vec::with_capacity((pw * ph) as usize * 4);
         if ctx.cmyk {
             for p in crop.pixels() {
-                let c = crate::core::print::rgb_to_cmyk_ink(
+                let c = rgb_to_cmyk([
                     p[0] as f32 / 255.0,
                     p[1] as f32 / 255.0,
                     p[2] as f32 / 255.0,
-                );
+                    1.0,
+                ]);
                 raw.extend_from_slice(&[
                     (c[0] * 255.0) as u8,
                     (c[1] * 255.0) as u8,
@@ -1315,7 +1790,7 @@ mod embed {
             data,
             index,
             line,
-            style.ligatures,
+            &style.ot_feature_pairs(),
             &style.variations,
         )?;
         for g in &shaped {
@@ -1423,10 +1898,20 @@ mod embed {
 /// Strict gate for embedded-font text: anything exotic keeps outlines.
 /// Outlines already handle gradients, strokes, translucency, vertical and
 /// synthetic faces; embedding covers the common solid-fill case.
-fn embed_eligible(obj: &Object, style: &crate::core::document::TextStyle) -> bool {
+fn embed_eligible(
+    obj: &Object,
+    style: &crate::core::document::TextStyle,
+    outline_text: bool,
+) -> bool {
+    // Explicit "outline text" (press PDF) beats font embedding.
+    if outline_text {
+        return false;
+    }
     if style.vertical || !style.variations.is_empty() {
         return false;
     }
+    // Embedded Tj arrays express 和欧 gaps as TJ displacements (see
+    // emit_embedded_text), so boundary text stays embeddable.
     if obj.opacity < 1.0
         || obj.blend_mode != BlendMode::Normal
         || obj.shadow.is_some()
@@ -1461,12 +1946,11 @@ fn emit_embedded_text(
     };
     let paint = ctx.fill_paint(fill.color, &fill.spot);
     let gs = ctx.gs_for(fill.overprint, 1.0);
-    let s = style.font_size;
-    let tc = if s > 0.0 {
-        style.letter_spacing / s * 1000.0
-    } else {
-        0.0
-    };
+    // Hardened accessors: a hand-edited file may carry NaN sizes/spacing,
+    // which would serialize as literal "NaN" and corrupt the stream.
+    let s = style.effective_font_size();
+    let ls = style.effective_letter_spacing();
+    let tc = if s > 0.0 { ls / s * 1000.0 } else { 0.0 };
     let _ = writeln!(out, "q");
     let _ = writeln!(out, "{paint}");
     if !gs.is_empty() {
@@ -1483,12 +1967,33 @@ fn emit_embedded_text(
         if n == 0 {
             continue;
         }
-        // Anchor from shaped advances (same shaping as outlines).
+        // Anchor from shaped advances (same shaping as outlines); auto
+        // 和欧 spacing gaps are part of the line's advance.
+        // Per-boundary gaps (font units), aligned with TJ adjustments.
+        let gap_after: Vec<f64> = eline
+            .glyphs
+            .iter()
+            .enumerate()
+            .map(|(i, g)| {
+                if !style.auto_spacing || i + 1 >= eline.glyphs.len() {
+                    return 0.0;
+                }
+                let next = &eline.glyphs[i + 1];
+                let a = face.uni.get(&g.gid).and_then(|&u| char::from_u32(u));
+                let b = face.uni.get(&next.gid).and_then(|&u| char::from_u32(u));
+                match (a, b) {
+                    (Some(a), Some(b)) if crate::core::document::is_ja_latin_boundary(a, b) => {
+                        crate::core::document::ja_latin_gap_em(upem, style.auto_spacing_em as f64)
+                    }
+                    _ => 0.0,
+                }
+            })
+            .collect();
         let mut adv_sum = 0.0;
-        for g in &eline.glyphs {
-            adv_sum += g.x_advance as f64;
+        for (i, g) in eline.glyphs.iter().enumerate() {
+            adv_sum += g.x_advance as f64 + gap_after[i];
         }
-        let lw = adv_sum * scale + style.letter_spacing * (n as f64 - 1.0).max(0.0);
+        let lw = adv_sum * scale + ls * (n as f64 - 1.0).max(0.0);
         let (ox, _) = layout.origin;
         let col = layout.col_of_line.get(eline.li).copied().unwrap_or(0);
         let col_x = layout.col_x.get(col).copied().unwrap_or(ox);
@@ -1524,7 +2029,9 @@ fn emit_embedded_text(
             if i + 1 < n {
                 let nom = embed::gid_width_1000(face, g.gid) as f64 * upem / 1000.0;
                 let next = &eline.glyphs[i + 1];
-                let adj = (g.x_advance as f64 - nom) + (next.x_offset as f64 - g.x_offset as f64);
+                let adj = (g.x_advance as f64 - nom)
+                    + (next.x_offset as f64 - g.x_offset as f64)
+                    + gap_after[i];
                 let tjn = -adj * 1000.0 / upem;
                 if tjn.abs() >= 0.5 {
                     let _ = write!(tj, " {} ", tjn.round() as i32);
@@ -1646,12 +2153,21 @@ fn render_obj_embed(
                     }
                 };
                 let mut moved = ol;
-                moved.transform(&[1.0, 0.0, 0.0, 1.0, ax, layout.origin.1 + li as f64 * line_h]);
+                let line_y = if style.vertical {
+                    layout.origin.1
+                } else {
+                    layout.origin.1 + li as f64 * line_h
+                };
+                moved.transform(&[1.0, 0.0, 0.0, 1.0, ax, line_y]);
                 moved.transform(&world);
                 emit_painted_path(ctx, obj, &moved, scale, out);
             }
         }
-        ObjectType::Image { width, height, png_bytes } => {
+        ObjectType::Image {
+            width,
+            height,
+            png_bytes,
+        } => {
             emit_image(ctx, obj, *width, *height, png_bytes, &world, out);
         }
         ObjectType::GradientMesh(m) => {
@@ -1711,7 +2227,12 @@ fn emit_path_geom(path: &PathData, world: &[f64; 6], out: &mut String) {
                 let _ = writeln!(
                     out,
                     "{} {} {} {} {} {} c",
-                    f2(c1x), f2(c1y), f2(c2x), f2(c2y), f2(ex), f2(ey)
+                    f2(c1x),
+                    f2(c1y),
+                    f2(c2x),
+                    f2(c2y),
+                    f2(ex),
+                    f2(ey)
                 );
             }
             PathElement::ClosePath => {
@@ -1762,20 +2283,25 @@ fn emit_painted_path(ctx: &mut Ctx, obj: &Object, path: &PathData, scale: f64, o
                 }
                 return;
             }
-            // Pattern / image fills have no press equivalent here: the flat
-            // `color` field below is only a placeholder. Warn loudly instead
-            // of silently printing a black box.
-            FillType::Pattern(_) => {
-                ctx.warn(
-                    "pattern-fill",
-                    "パターン塗りは印刷PDFで単色近似されます — 効果を確認してください",
-                );
+            FillType::Pattern(pattern) => {
+                emit_pattern_fill(ctx, obj, path, fill, pattern, out);
+                let _ = writeln!(out, "Q");
+                if path.stroke.is_some() {
+                    let _ = writeln!(out, "q");
+                    emit_stroke_only(ctx, obj, path, scale, out);
+                    let _ = writeln!(out, "Q");
+                }
+                return;
             }
-            FillType::Image(_) => {
-                ctx.warn(
-                    "image-fill",
-                    "画像塗りは印刷PDFで単色近似されます — 効果を確認してください",
-                );
+            FillType::Image(image_fill) => {
+                emit_image_fill(ctx, obj, path, fill, image_fill, out);
+                let _ = writeln!(out, "Q");
+                if path.stroke.is_some() {
+                    let _ = writeln!(out, "q");
+                    emit_stroke_only(ctx, obj, path, scale, out);
+                    let _ = writeln!(out, "Q");
+                }
+                return;
             }
             _ => {}
         }
@@ -1818,13 +2344,203 @@ fn emit_painted_path(ctx: &mut Ctx, obj: &Object, path: &PathData, scale: f64, o
         .map(|f| f.rule == FillRule::EvenOdd)
         .unwrap_or(false);
     let op = match (path.fill.is_some(), has_stroke) {
-        (true, true) => if rule { "B*" } else { "B" },
-        (true, false) => if rule { "f*" } else { "f" },
+        (true, true) => {
+            if rule {
+                "B*"
+            } else {
+                "B"
+            }
+        }
+        (true, false) => {
+            if rule {
+                "f*"
+            } else {
+                "f"
+            }
+        }
         (false, true) => "S",
         (false, false) => "n",
     };
     let _ = writeln!(out, "{op}");
     let _ = writeln!(out, "Q");
+}
+
+fn path_bounds(path: &PathData) -> Option<(f64, f64, f64, f64)> {
+    let (min, max) = path.bounding_box()?;
+    Some((min.x, min.y, max.x, max.y))
+}
+
+/// Paints the same repeating solid tiles used by the canvas, clipped to the
+/// actual vector path. A strict tile budget protects export from tiny/hostile
+/// tile sizes that would otherwise generate an enormous PDF content stream.
+fn emit_pattern_fill(
+    ctx: &mut Ctx,
+    obj: &Object,
+    path: &PathData,
+    fill: &FillStyle,
+    pattern: &PatternFill,
+    out: &mut String,
+) {
+    let Some((x0, y0, x1, y1)) = path_bounds(path) else {
+        return;
+    };
+    let Some(primitives) = crate::core::path::pattern_primitives(pattern, (x0, y0, x1, y1)) else {
+        ctx.warn(
+            "pattern-budget",
+            "パターン寸法が不正か、図形数が上限を超えたため塗りを省略しました",
+        );
+        return;
+    };
+    let rule = fill.rule == FillRule::EvenOdd;
+    emit_path_geom(path, &[1.0, 0.0, 0.0, 1.0, 0.0, 0.0], out);
+    let _ = writeln!(out, "{}", if rule { "W* n" } else { "W n" });
+    let gs = ctx.gs_for(fill.overprint, obj.opacity * fill.color[3]);
+    if !gs.is_empty() {
+        let _ = writeln!(out, "{gs}");
+    }
+    let stroke_paint = ctx.stroke_paint(fill.color, &fill.spot);
+    let fill_paint = ctx.fill_paint(fill.color, &fill.spot);
+    let _ = writeln!(out, "{} 0.5 w", stroke_paint);
+    for primitive in primitives {
+        match primitive {
+            PatternPrimitive::Line(a, b) => {
+                let _ = writeln!(out, "{} {} m {} {} l S", f2(a.x), f2(a.y), f2(b.x), f2(b.y));
+            }
+            PatternPrimitive::Dot(center, radius) => {
+                let r = radius.max(0.01);
+                let k = r * 0.552_284_749_8;
+                let (x, y) = (center.x, center.y);
+                let _ = writeln!(out, "{fill_paint}");
+                let _ = writeln!(out, "{} {} m", f2(x + r), f2(y));
+                let _ = writeln!(
+                    out,
+                    "{} {} {} {} {} {} c",
+                    f2(x + r),
+                    f2(y + k),
+                    f2(x + k),
+                    f2(y + r),
+                    f2(x),
+                    f2(y + r)
+                );
+                let _ = writeln!(
+                    out,
+                    "{} {} {} {} {} {} c",
+                    f2(x - k),
+                    f2(y + r),
+                    f2(x - r),
+                    f2(y + k),
+                    f2(x - r),
+                    f2(y)
+                );
+                let _ = writeln!(
+                    out,
+                    "{} {} {} {} {} {} c",
+                    f2(x - r),
+                    f2(y - k),
+                    f2(x - k),
+                    f2(y - r),
+                    f2(x),
+                    f2(y - r)
+                );
+                let _ = writeln!(
+                    out,
+                    "{} {} {} {} {} {} c f",
+                    f2(x + k),
+                    f2(y - r),
+                    f2(x + r),
+                    f2(y - k),
+                    f2(x + r),
+                    f2(y)
+                );
+                let _ = writeln!(out, "{stroke_paint} 0.5 w");
+            }
+        }
+    }
+}
+
+fn emit_image_fill(
+    ctx: &mut Ctx,
+    obj: &Object,
+    path: &PathData,
+    fill: &FillStyle,
+    image_fill: &ImageFill,
+    out: &mut String,
+) {
+    let Some((x0, y0, x1, y1)) = path_bounds(path) else {
+        return;
+    };
+    let (bw, bh) = (x1 - x0, y1 - y0);
+    if !(bw.is_finite() && bh.is_finite() && bw > 0.0 && bh > 0.0) {
+        return;
+    }
+    let Some(source_png) = ctx.doc.all_objects().find_map(|(_, candidate)| {
+        if candidate.id != image_fill.image_id {
+            return None;
+        }
+        match &candidate.object_type {
+            ObjectType::Image { png_bytes, .. } => Some(png_bytes.clone()),
+            _ => None,
+        }
+    }) else {
+        ctx.warn(
+            "image-fill-missing",
+            "画像塗りの参照画像が見つからず塗りを省略しました",
+        );
+        return;
+    };
+    let Some((image_no, iw, ih)) = register_image(ctx, &source_png, image_fill.crop_rect) else {
+        return;
+    };
+    let (iw, ih) = (iw as f64, ih as f64);
+    let placements = match image_fill.tile_mode {
+        ImageTileMode::Tile => {
+            let cols = (bw / iw).ceil().max(1.0) as u64;
+            let rows = (bh / ih).ceil().max(1.0) as u64;
+            if cols.saturating_mul(rows) > 100_000 {
+                ctx.warn(
+                    "image-fill-budget",
+                    "画像塗りのタイル数が上限を超えたため塗りを省略しました",
+                );
+                return;
+            }
+            let mut placements = Vec::with_capacity((cols * rows) as usize);
+            for row in 0..rows {
+                for col in 0..cols {
+                    placements.push((x0 + col as f64 * iw, y0 + row as f64 * ih, iw, ih));
+                }
+            }
+            placements
+        }
+        ImageTileMode::Fit => vec![(x0, y0, bw, bh)],
+        mode @ (ImageTileMode::Cover | ImageTileMode::Contain) => {
+            let sx = bw / iw;
+            let sy = bh / ih;
+            let scale = if mode == ImageTileMode::Cover {
+                sx.max(sy)
+            } else {
+                sx.min(sy)
+            };
+            let (w, h) = (iw * scale, ih * scale);
+            vec![(x0 + (bw - w) * 0.5, y0 + (bh - h) * 0.5, w, h)]
+        }
+    };
+    let rule = fill.rule == FillRule::EvenOdd;
+    emit_path_geom(path, &[1.0, 0.0, 0.0, 1.0, 0.0, 0.0], out);
+    let _ = writeln!(out, "{}", if rule { "W* n" } else { "W n" });
+    let gs = ctx.gs_for(fill.overprint, obj.opacity * fill.color[3]);
+    if !gs.is_empty() {
+        let _ = writeln!(out, "{gs}");
+    }
+    for (x, y, w, h) in placements {
+        let _ = writeln!(
+            out,
+            "q {} 0 0 {} {} {} cm /Im{image_no} Do Q",
+            f2(w),
+            f2(-h),
+            f2(x),
+            f2(y + h)
+        );
+    }
 }
 
 fn emit_stroke_only(ctx: &mut Ctx, obj: &Object, path: &PathData, scale: f64, out: &mut String) {
@@ -1865,7 +2581,10 @@ fn gradient_colors(
 fn shading_function(colors: &[(f32, [f32; 4])]) -> String {
     // Stitching (Type 3) over exponential (Type 2) segments.
     if colors.len() < 2 {
-        let c = colors.first().map(|(_, c)| *c).unwrap_or([0.0, 0.0, 0.0, 1.0]);
+        let c = colors
+            .first()
+            .map(|(_, c)| *c)
+            .unwrap_or([0.0, 0.0, 0.0, 1.0]);
         let v: Vec<String> = c.iter().map(|v| f3(*v)).collect();
         return format!(
             "<< /FunctionType 2 /Domain [0 1] /C0 [{}] /C1 [{}] /N 1 >>",
@@ -1889,17 +2608,16 @@ fn shading_function(colors: &[(f32, [f32; 4])]) -> String {
     format!(
         "<< /FunctionType 3 /Domain [0 1] /Functions [{}] /Bounds [{}] /Encode [{}] >>",
         funcs,
-        colors[1..colors.len() - 1].iter().map(|(o, _)| f3(*o)).collect::<Vec<_>>().join(" "),
+        colors[1..colors.len() - 1]
+            .iter()
+            .map(|(o, _)| f3(*o))
+            .collect::<Vec<_>>()
+            .join(" "),
         encode
     )
 }
 
-fn emit_shading_fill(
-    ctx: &mut Ctx,
-    path: &PathData,
-    grad: &LinearGradient,
-    out: &mut String,
-) {
+fn emit_shading_fill(ctx: &mut Ctx, path: &PathData, grad: &LinearGradient, out: &mut String) {
     // Device-space bbox of the baked path drives objectBoundingBox mapping.
     let mut xs = Vec::new();
     let mut ys = Vec::new();
@@ -1932,7 +2650,11 @@ fn emit_shading_fill(
     if colors.len() < 2 {
         return;
     }
-    let space = if ctx.cmyk { "/DeviceCMYK" } else { "/DeviceRGB" };
+    let space = if ctx.cmyk {
+        "/DeviceCMYK"
+    } else {
+        "/DeviceRGB"
+    };
     let x1 = bx0 + grad.start_x as f64 * bw;
     let y1 = by0 + grad.start_y as f64 * bh;
     let x2 = bx0 + grad.end_x as f64 * bw;
@@ -1993,7 +2715,11 @@ fn emit_radial_shading_fill(
     if colors.len() < 2 {
         return;
     }
-    let space = if ctx.cmyk { "/DeviceCMYK" } else { "/DeviceRGB" };
+    let space = if ctx.cmyk {
+        "/DeviceCMYK"
+    } else {
+        "/DeviceRGB"
+    };
     // Circular approximation of the (possibly elliptical) model: outer
     // center at the declared center, inner pinhole at the focus.
     let cx = bx0 + grad.center_x as f64 * bw;
@@ -2028,17 +2754,77 @@ fn emit_image(
     world: &[f64; 6],
     out: &mut String,
 ) {
-    let img = match image::load_from_memory(png_bytes) {
+    let Some((n, _, _)) = register_image(ctx, png_bytes, None) else {
+        return;
+    };
+    // Axis bbox of the transformed rect (rotation bakes approximately).
+    let corners = [
+        apply_world(world, 0.0, 0.0),
+        apply_world(world, w, 0.0),
+        apply_world(world, w, h),
+        apply_world(world, 0.0, h),
+    ];
+    let (lx, rx) = corners.iter().fold((f64::MAX, f64::MIN), |(a, b), (x, _)| {
+        (a.min(*x), b.max(*x))
+    });
+    let (ty, by) = corners.iter().fold((f64::MAX, f64::MIN), |(a, b), (_, y)| {
+        (a.min(*y), b.max(*y))
+    });
+    let (bw, bh) = ((rx - lx).max(1.0), (by - ty).max(1.0));
+    let g = ctx.gs_for(false, obj.opacity);
+    let _ = writeln!(out, "q");
+    if !g.is_empty() {
+        let _ = writeln!(out, "{g}");
+    }
+    // y-flipped placement so row 0 lands on top.
+    let _ = writeln!(
+        out,
+        "{} 0 0 {} {} {} cm /Im{n} Do",
+        f2(bw),
+        f2(-bh),
+        f2(lx),
+        f2(ty + bh)
+    );
+    let _ = writeln!(out, "Q");
+}
+
+fn register_image(
+    ctx: &mut Ctx,
+    png_bytes: &[u8],
+    crop_rect: Option<[f32; 4]>,
+) -> Option<(usize, u32, u32)> {
+    let mut img = match image::load_from_memory(png_bytes) {
         Ok(i) => i.to_rgba8(),
         Err(_) => {
             ctx.warn("image-decode", "配置画像のデコードに失敗しスキップしました");
-            return;
+            return None;
         }
     };
+    if let Some([x, y, w, h]) = crop_rect {
+        if ![x, y, w, h].iter().all(|v| v.is_finite()) {
+            ctx.warn(
+                "image-fill-crop",
+                "画像塗りの切り抜き範囲が不正なため塗りを省略しました",
+            );
+            return None;
+        }
+        let x0 = (x.clamp(0.0, 1.0) * img.width() as f32).floor() as u32;
+        let y0 = (y.clamp(0.0, 1.0) * img.height() as f32).floor() as u32;
+        let x1 = ((x + w).clamp(0.0, 1.0) * img.width() as f32).ceil() as u32;
+        let y1 = ((y + h).clamp(0.0, 1.0) * img.height() as f32).ceil() as u32;
+        if x1 <= x0 || y1 <= y0 {
+            ctx.warn(
+                "image-fill-crop",
+                "画像塗りの切り抜き範囲が空のため塗りを省略しました",
+            );
+            return None;
+        }
+        img = image::imageops::crop_imm(&img, x0, y0, x1 - x0, y1 - y0).to_image();
+    }
     let (iw, ih) = (img.width(), img.height());
-    if iw == 0 || ih == 0 || iw * ih > 16_777_216 {
+    if iw == 0 || ih == 0 || iw as u64 * ih as u64 > MAX_INK_SCAN_PX {
         ctx.warn("image-size", "異常なサイズの画像をスキップしました");
-        return;
+        return None;
     }
     // RGB JPEG + gray SMask when alpha is used. CMYK documents get opaque
     // Flate CMYK instead (DCT has no CMYK path here, and SMask would break
@@ -2057,13 +2843,13 @@ fn emit_image(
     let (jpeg, mask, cmyk_flate) = if ctx.cmyk {
         let mut cmyk = Vec::with_capacity((iw * ih) as usize * 4);
         for p in img.pixels() {
-            // Opaque-paper composite, then naive-UCR ink (same model as
-            // preflight/flatten, so plates agree with the report).
+            // Opaque-paper composite, then the shared ICC conversion (same
+            // as preflight/flatten, so plates agree with the report).
             let a = p[3] as f32 / 255.0;
             let r = (p[0] as f32 / 255.0) * a + (1.0 - a);
             let g = (p[1] as f32 / 255.0) * a + (1.0 - a);
             let b = (p[2] as f32 / 255.0) * a + (1.0 - a);
-            let c = crate::core::print::rgb_to_cmyk_ink(r, g, b);
+            let c = rgb_to_cmyk([r, g, b, 1.0]);
             cmyk.extend_from_slice(&[
                 (c[0] * 255.0) as u8,
                 (c[1] * 255.0) as u8,
@@ -2083,7 +2869,7 @@ fn emit_image(
                 .is_err()
             {
                 ctx.warn("image-encode", "JPEG変換に失敗しスキップしました");
-                return;
+                return None;
             }
         }
         let mask = if has_alpha {
@@ -2101,35 +2887,7 @@ fn emit_image(
         h: ih,
     });
     let n = ctx.images.len();
-    // Axis bbox of the transformed rect (rotation bakes approximately).
-    let corners = [
-        apply_world(world, 0.0, 0.0),
-        apply_world(world, w, 0.0),
-        apply_world(world, w, h),
-        apply_world(world, 0.0, h),
-    ];
-    let (lx, rx) = corners
-        .iter()
-        .fold((f64::MAX, f64::MIN), |(a, b), (x, _)| (a.min(*x), b.max(*x)));
-    let (ty, by) = corners
-        .iter()
-        .fold((f64::MAX, f64::MIN), |(a, b), (_, y)| (a.min(*y), b.max(*y)));
-    let (bw, bh) = ((rx - lx).max(1.0), (by - ty).max(1.0));
-    let g = ctx.gs_for(false, obj.opacity);
-    let _ = writeln!(out, "q");
-    if !g.is_empty() {
-        let _ = writeln!(out, "{g}");
-    }
-    // y-flipped placement so row 0 lands on top.
-    let _ = writeln!(
-        out,
-        "{} 0 0 {} {} {} cm /Im{n} Do",
-        f2(bw),
-        f2(-bh),
-        f2(lx),
-        f2(ty + bh)
-    );
-    let _ = writeln!(out, "Q");
+    Some((n, iw, ih))
 }
 
 /// Crop + registration marks in the slug area (registration black).
@@ -2169,67 +2927,67 @@ fn render_marks(ctx: &mut Ctx, tw: f64, th: f64, ox: f64, oy: f64, out: &mut Str
         );
     }
     // Registration targets: left/right center in the slug.
-        // PDF has no `arc` operator — emit a 4-segment cubic circle instead
-        // (kappa = 0.5522847498). The old `… 4.5 0 360 arc S` was invalid.
-        let k = 4.5_f64 * 0.552_284_749_8;
-        for (rx, ry) in [(ox - 9.0, oy + th / 2.0), (ox + tw + 9.0, oy + th / 2.0)] {
-            let _ = writeln!(
-                out,
-                "{} {} m {} {} l S",
-                f2(rx - 6.0),
-                f2(ry),
-                f2(rx + 6.0),
-                f2(ry)
-            );
-            let _ = writeln!(
-                out,
-                "{} {} m {} {} l S",
-                f2(rx),
-                f2(ry - 6.0),
-                f2(rx),
-                f2(ry + 6.0)
-            );
-            let _ = writeln!(out, "{} {} m", f2(rx), f2(ry + 4.5));
-            let _ = writeln!(
-                out,
-                "{} {} {} {} {} {} c",
-                f2(rx + k),
-                f2(ry + 4.5),
-                f2(rx + 4.5),
-                f2(ry + k),
-                f2(rx + 4.5),
-                f2(ry)
-            );
-            let _ = writeln!(
-                out,
-                "{} {} {} {} {} {} c",
-                f2(rx + 4.5),
-                f2(ry - k),
-                f2(rx + k),
-                f2(ry - 4.5),
-                f2(rx),
-                f2(ry - 4.5)
-            );
-            let _ = writeln!(
-                out,
-                "{} {} {} {} {} {} c",
-                f2(rx - k),
-                f2(ry - 4.5),
-                f2(rx - 4.5),
-                f2(ry - k),
-                f2(rx - 4.5),
-                f2(ry)
-            );
-            let _ = writeln!(
-                out,
-                "{} {} {} {} {} {} c S",
-                f2(rx - 4.5),
-                f2(ry + k),
-                f2(rx - k),
-                f2(ry + 4.5),
-                f2(rx),
-                f2(ry + 4.5)
-            );
-        }
+    // PDF has no `arc` operator — emit a 4-segment cubic circle instead
+    // (kappa = 0.5522847498). The old `… 4.5 0 360 arc S` was invalid.
+    let k = 4.5_f64 * 0.552_284_749_8;
+    for (rx, ry) in [(ox - 9.0, oy + th / 2.0), (ox + tw + 9.0, oy + th / 2.0)] {
+        let _ = writeln!(
+            out,
+            "{} {} m {} {} l S",
+            f2(rx - 6.0),
+            f2(ry),
+            f2(rx + 6.0),
+            f2(ry)
+        );
+        let _ = writeln!(
+            out,
+            "{} {} m {} {} l S",
+            f2(rx),
+            f2(ry - 6.0),
+            f2(rx),
+            f2(ry + 6.0)
+        );
+        let _ = writeln!(out, "{} {} m", f2(rx), f2(ry + 4.5));
+        let _ = writeln!(
+            out,
+            "{} {} {} {} {} {} c",
+            f2(rx + k),
+            f2(ry + 4.5),
+            f2(rx + 4.5),
+            f2(ry + k),
+            f2(rx + 4.5),
+            f2(ry)
+        );
+        let _ = writeln!(
+            out,
+            "{} {} {} {} {} {} c",
+            f2(rx + 4.5),
+            f2(ry - k),
+            f2(rx + k),
+            f2(ry - 4.5),
+            f2(rx),
+            f2(ry - 4.5)
+        );
+        let _ = writeln!(
+            out,
+            "{} {} {} {} {} {} c",
+            f2(rx - k),
+            f2(ry - 4.5),
+            f2(rx - 4.5),
+            f2(ry - k),
+            f2(rx - 4.5),
+            f2(ry)
+        );
+        let _ = writeln!(
+            out,
+            "{} {} {} {} {} {} c S",
+            f2(rx - 4.5),
+            f2(ry + k),
+            f2(rx - k),
+            f2(ry + 4.5),
+            f2(rx),
+            f2(ry + 4.5)
+        );
+    }
     let _ = writeln!(out, "Q");
 }

@@ -227,7 +227,11 @@ pub fn color_adjust_matrix(adj: &ColorAdjustEffect) -> Option<[f32; 20]> {
     };
     let sat = clamp_f(sat);
     let contrast = clamp_f(contrast);
-    let bright = if bright.is_finite() { bright.clamp(-1.0, 1.0) } else { 0.0 };
+    let bright = if bright.is_finite() {
+        bright.clamp(-1.0, 1.0)
+    } else {
+        0.0
+    };
 
     // --- Hue-rotate (SVG 1.1 feColorMatrix "hueRotate" definition) ---
     // | a00 a01 a02 |   | 0.213+0.787c-0.213s, 0.715-0.715c-0.715s, 0.072-0.072c+0.928s |

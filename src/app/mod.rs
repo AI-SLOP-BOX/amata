@@ -58,7 +58,10 @@ fn is_project_file(path: &std::path::Path) -> bool {
     )
 }
 
-fn parse_watched_doc(path: &std::path::Path, content: &str) -> Option<crate::core::document::Document> {
+fn parse_watched_doc(
+    path: &std::path::Path,
+    content: &str,
+) -> Option<crate::core::document::Document> {
     if is_project_file(path) {
         serde_json::from_str(content).ok().map(|mut doc| {
             crate::core::document::Document::normalize(&mut doc);
@@ -87,9 +90,8 @@ impl IrasuApp {
     /// previous file with a blank document).
     pub fn create_new_document(&mut self, req: crate::ui::NewDocRequest) {
         if self.state.is_dirty() {
-            self.state.notify_error(
-                "未保存の変更があります。先に保存してください".to_string(),
-            );
+            self.state
+                .notify_error("未保存の変更があります。先に保存してください".to_string());
             return;
         }
         let mut doc = crate::core::document::Document {
@@ -245,7 +247,7 @@ impl eframe::App for IrasuApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // Theme + UI scale follow the preferences, reapplied every frame so a
         // change made inside the open dialog takes effect immediately.
-        apply_adobe_theme(ctx, &self.state.prefs.color_theme);
+        apply_adobe_theme(ctx, self.state.prefs.color_theme);
         let scale = self.state.prefs.ui_scale_factor();
         if (ctx.zoom_factor() - scale).abs() > 0.001 {
             ctx.set_zoom_factor(scale);
@@ -320,23 +322,25 @@ impl eframe::App for IrasuApp {
                         );
                         let is_conflict = self.state.is_dirty();
 
-                        self.external_change_dialog.set_notice(
-                            crate::ui::ExternalChangeNotice {
+                        self.external_change_dialog
+                            .set_notice(crate::ui::ExternalChangeNotice {
                                 file_path: watcher.file_path.clone(),
                                 external_svg,
                                 external_doc,
                                 diff,
                                 is_conflict,
                                 pre_edit_svg,
-                            },
-                        );
+                            });
                     }
                 }
             }
         }
 
         // Handle External Change Dialog actions
-        if let Some(action) = self.external_change_dialog.show(ctx) {
+        if let Some(action) = self
+            .external_change_dialog
+            .show(ctx, &self.state.prefs.language)
+        {
             match action {
                 crate::ui::ExternalChangeAction::Compare => {
                     if let Some(notice) = &self.external_change_dialog.notice {
@@ -416,14 +420,14 @@ impl eframe::App for IrasuApp {
                         let Some(current_content) =
                             serialize_watched_doc(&self.state.document, &notice.file_path)
                         else {
-                            self.state.notify_error("保存データの生成に失敗しました".to_string());
+                            self.state
+                                .notify_error("保存データの生成に失敗しました".to_string());
                             self.external_change_dialog.set_notice(notice);
                             return;
                         };
-                        if let Err(e) = crate::io::atomic::atomic_write_str(
-                            &notice.file_path,
-                            &current_content,
-                        ) {
+                        if let Err(e) =
+                            crate::io::atomic::atomic_write_str(&notice.file_path, &current_content)
+                        {
                             self.state.notify_error(format!("保存に失敗しました: {e}"));
                         } else {
                             self.state.undo_manager.mark_saved();
@@ -487,8 +491,7 @@ impl eframe::App for IrasuApp {
             self.autosave_last = std::time::Instant::now();
             self.state.sync_doc_extras();
             let original = self.file_watcher.as_ref().map(|w| w.file_path.clone());
-            if crate::io::project::save_recovery(&self.state.document, original.as_deref())
-                .is_ok()
+            if crate::io::project::save_recovery(&self.state.document, original.as_deref()).is_ok()
             {
                 log::info!("autosaved recovery snapshot");
             }
@@ -505,6 +508,34 @@ impl eframe::App for IrasuApp {
             );
             match home_action {
                 Some(crate::ui::home_view::HomeAction::OpenFile(p)) => self.open_path_in_editor(p),
+                // Bundled templates: clone the embedded document in.
+                Some(crate::ui::home_view::HomeAction::OpenTemplate(id)) => {
+                    match crate::io::library::template_by_id(&id) {
+                        Some(template) => {
+                            self.state.flush_pending_edits();
+                            self.state.document = template.document;
+                            self.state.adopt_doc_extras();
+                            self.state.zoom_to_fit();
+                            self.state.clear_history();
+                            self.state.undo_manager.mark_dirty();
+                            self.state.selected_ids.clear();
+                            self.state.exit_isolation();
+                            self.file_watcher = None;
+                            self.home_view.is_open = false;
+                            self.state.notify_success(crate::ui::i18n::format(
+                                &self.state.prefs.language,
+                                "home.template_opened",
+                                &[("name", &template.title)],
+                            ));
+                        }
+                        None => {
+                            self.state.notify_error(crate::ui::i18n::text(
+                                &self.state.prefs.language,
+                                "home.template_missing",
+                            ));
+                        }
+                    }
+                }
                 Some(crate::ui::home_view::HomeAction::RestoreRecovery) => {
                     if let Some((original, doc)) = crate::io::project::load_recovery() {
                         self.state.flush_pending_edits();
@@ -517,8 +548,7 @@ impl eframe::App for IrasuApp {
                         self.state.exit_isolation();
                         if let Some(path) = original.filter(|p| p.exists()) {
                             self.version_history_panel.refresh_history(&path);
-                            let watcher =
-                                crate::core::watcher::FileWatcher::new(path.clone());
+                            let watcher = crate::core::watcher::FileWatcher::new(path.clone());
                             self.file_watcher = Some(watcher);
                             crate::io::recent::push_recent(
                                 &path,
@@ -549,7 +579,7 @@ impl eframe::App for IrasuApp {
             if let Some(req) = self.new_doc_modal.show(ctx, &mut self.state) {
                 self.create_new_document(req);
             }
-            self.about_modal.show(ctx);
+            self.about_modal.show(ctx, &self.state.prefs.language);
             self.shortcuts_modal.show(ctx, &mut self.state);
             return;
         }
@@ -581,7 +611,7 @@ impl eframe::App for IrasuApp {
         if let Some(req) = self.new_doc_modal.show(ctx, &mut self.state) {
             self.create_new_document(req);
         }
-        self.about_modal.show(ctx);
+        self.about_modal.show(ctx, &self.state.prefs.language);
         self.shortcuts_modal.show(ctx, &mut self.state);
 
         // Floating Toast Notification

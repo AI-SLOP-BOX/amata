@@ -7,7 +7,7 @@ pub struct NewDocModal {
     pub doc_name: String,
     pub width: f64,
     pub height: f64,
-    pub unit: String,
+    pub unit: crate::core::unit::LengthUnit,
     pub orientation: Orientation,
     pub artboard_count: usize,
     pub bleed_top: f64,
@@ -43,7 +43,7 @@ impl Default for NewDocModal {
             doc_name: "名称未設定-2".to_string(),
             width: 210.0,
             height: 297.0,
-            unit: "ミリメートル".to_string(),
+            unit: crate::core::unit::LengthUnit::Mm,
             orientation: Orientation::Portrait,
             artboard_count: 1,
             bleed_top: 3.0,
@@ -73,30 +73,21 @@ impl NewDocModal {
     /// Unit conversion applied on create (previously the unit selector was
     /// decorative: 210mm produced a 210px canvas).
     fn dims_to_px(&self) -> (f64, f64) {
-        const PX_PER_INCH: f64 = 96.0;
-        let factor = match self.unit.as_str() {
-            "ミリメートル" => PX_PER_INCH / 25.4,
-            "インチ" => PX_PER_INCH,
-            "ポイント" => PX_PER_INCH / 72.0,
-            _ => 1.0,
-        };
+        let factor = self.unit.px_per_unit();
         (
             (self.width * factor).clamp(10.0, 16384.0),
             (self.height * factor).clamp(10.0, 16384.0),
         )
     }
 
-    pub fn show(
-        &mut self,
-        ctx: &egui::Context,
-        state: &mut AppState,
-    ) -> Option<NewDocRequest> {
+    pub fn show(&mut self, ctx: &egui::Context, state: &mut AppState) -> Option<NewDocRequest> {
+        let locale = state.prefs.language.clone();
         if !self.is_open {
             // While closed, keep the preselected unit on the preference
             // default. Home-screen presets write `unit` immediately before
             // opening, and this runs on every frame *before* that, so a
             // preset still wins for the preset it picked.
-            self.unit = state.prefs.default_doc_unit.label().to_string();
+            self.unit = state.prefs.default_doc_unit;
             return None;
         }
         // "新規ドキュメントを作成するときに設定ダイアログを表示" is off: the
@@ -111,12 +102,9 @@ impl NewDocModal {
 
         let mut is_open = self.is_open;
         let screen = ctx.screen_rect();
-        let (size, min_size, pos) = crate::ui::window_defaults(
-            screen,
-            Vec2::new(720.0, 580.0),
-            Vec2::new(320.0, 320.0),
-        );
-        egui::Window::new("新規ドキュメント")
+        let (size, min_size, pos) =
+            crate::ui::window_defaults(screen, Vec2::new(720.0, 580.0), Vec2::new(320.0, 320.0));
+        egui::Window::new(crate::ui::i18n::text(&locale, "new_doc.title"))
             .open(&mut is_open)
             .collapsible(false)
             .resizable(true)
@@ -133,7 +121,10 @@ impl NewDocModal {
                         let cancel_w = ((avail - gap) * 0.35).max(80.0);
                         let create_w = (avail - gap - cancel_w).max(90.0);
                         if ui
-                            .add(egui::Button::new("キャンセル").min_size(Vec2::new(cancel_w, btn_h)))
+                            .add(
+                                egui::Button::new(crate::ui::i18n::text(&locale, "new_doc.cancel"))
+                                    .min_size(Vec2::new(cancel_w, btn_h)),
+                            )
                             .clicked()
                         {
                             close_clicked = true;
@@ -141,7 +132,9 @@ impl NewDocModal {
                         if ui
                             .add(
                                 egui::Button::new(
-                                    RichText::new("作成").strong().color(Color32::WHITE),
+                                    RichText::new(crate::ui::i18n::text(&locale, "new_doc.create"))
+                                        .strong()
+                                        .color(Color32::WHITE),
                                 )
                                 .fill(Color32::from_rgb(20, 115, 230))
                                 .min_size(Vec2::new(create_w, btn_h)),
@@ -154,11 +147,11 @@ impl NewDocModal {
                         return;
                     }
                     ui.set_width(total_w);
-                    self.show_presets(ui, total_w);
+                    self.show_presets(ui, total_w, &locale);
                     ui.add_space(8.0);
                     ui.separator();
                     ui.add_space(4.0);
-                    self.show_details(ui, total_w);
+                    self.show_details(ui, total_w, &locale);
                 });
             });
         // A submitted request always closes the modal (the old code
@@ -201,17 +194,32 @@ impl NewDocModal {
         }
     }
 
-    fn show_presets(&mut self, ui: &mut Ui, left_w: f32) {
+    fn show_presets(&mut self, ui: &mut Ui, left_w: f32, locale: &str) {
         ui.set_width(left_w);
 
         // Category Tabs: 印刷 | Web | モバイル | ソーシャル | カスタム
         ui.horizontal_wrapped(|ui| {
             let tabs = [
-                (NewDocCategory::Print, "印刷"),
-                (NewDocCategory::Web, "Web"),
-                (NewDocCategory::Mobile, "モバイル"),
-                (NewDocCategory::Social, "ソーシャル"),
-                (NewDocCategory::Custom, "カスタム"),
+                (
+                    NewDocCategory::Print,
+                    crate::ui::i18n::text(locale, "new_doc.category.print"),
+                ),
+                (
+                    NewDocCategory::Web,
+                    crate::ui::i18n::text(locale, "new_doc.category.web"),
+                ),
+                (
+                    NewDocCategory::Mobile,
+                    crate::ui::i18n::text(locale, "new_doc.category.mobile"),
+                ),
+                (
+                    NewDocCategory::Social,
+                    crate::ui::i18n::text(locale, "new_doc.category.social"),
+                ),
+                (
+                    NewDocCategory::Custom,
+                    crate::ui::i18n::text(locale, "new_doc.category.custom"),
+                ),
             ];
             for (cat, name) in tabs {
                 let is_active = self.active_tab == cat;
@@ -233,7 +241,7 @@ impl NewDocModal {
 
         ui.add_space(8.0);
         ui.label(
-            RichText::new("空白のドキュメントプリセット")
+            RichText::new(crate::ui::i18n::text(locale, "new_doc.blank_presets"))
                 .strong()
                 .size(11.5)
                 .color(Color32::from_rgb(200, 200, 200)),
@@ -241,18 +249,53 @@ impl NewDocModal {
         ui.add_space(6.0);
 
         let presets = [
-            ("doc", "A4", "210 × 297 mm", 210.0, 297.0, "ミリメートル"),
-            ("doc", "A3", "297 × 420 mm", 297.0, 420.0, "ミリメートル"),
-            ("doc", "A5", "148 × 210 mm", 148.0, 210.0, "ミリメートル"),
-            ("doc", "B5", "182 × 257 mm", 182.0, 257.0, "ミリメートル"),
-            ("doc", "US レター", "8.5 × 11 in", 612.0, 792.0, "ポイント"),
+            (
+                "doc",
+                "A4",
+                "210 × 297 mm",
+                210.0,
+                297.0,
+                crate::core::unit::LengthUnit::Mm,
+            ),
+            (
+                "doc",
+                "A3",
+                "297 × 420 mm",
+                297.0,
+                420.0,
+                crate::core::unit::LengthUnit::Mm,
+            ),
+            (
+                "doc",
+                "A5",
+                "148 × 210 mm",
+                148.0,
+                210.0,
+                crate::core::unit::LengthUnit::Mm,
+            ),
+            (
+                "doc",
+                "B5",
+                "182 × 257 mm",
+                182.0,
+                257.0,
+                crate::core::unit::LengthUnit::Mm,
+            ),
+            (
+                "doc",
+                "US レター",
+                "8.5 × 11 in",
+                612.0,
+                792.0,
+                crate::core::unit::LengthUnit::Pt,
+            ),
             (
                 "doc",
                 "US リーガル",
                 "8.5 × 14 in",
                 612.0,
                 1008.0,
-                "ポイント",
+                crate::core::unit::LengthUnit::Pt,
             ),
             (
                 "desktop",
@@ -260,7 +303,7 @@ impl NewDocModal {
                 "1920 × 1080 px",
                 1920.0,
                 1080.0,
-                "ピクセル",
+                crate::core::unit::LengthUnit::Px,
             ),
             (
                 "desktop",
@@ -268,7 +311,7 @@ impl NewDocModal {
                 "1080 × 1080 px",
                 1080.0,
                 1080.0,
-                "ピクセル",
+                crate::core::unit::LengthUnit::Px,
             ),
             (
                 "phone",
@@ -276,7 +319,7 @@ impl NewDocModal {
                 "1179 × 2556 px",
                 1179.0,
                 2556.0,
-                "ピクセル",
+                crate::core::unit::LengthUnit::Px,
             ),
             (
                 "camera",
@@ -284,7 +327,7 @@ impl NewDocModal {
                 "1080 × 1080 px",
                 1080.0,
                 1080.0,
-                "ピクセル",
+                crate::core::unit::LengthUnit::Px,
             ),
             (
                 "camera",
@@ -292,7 +335,7 @@ impl NewDocModal {
                 "1080 × 1920 px",
                 1080.0,
                 1920.0,
-                "ピクセル",
+                crate::core::unit::LengthUnit::Px,
             ),
             (
                 "more",
@@ -300,20 +343,40 @@ impl NewDocModal {
                 "カスタム",
                 800.0,
                 600.0,
-                "ピクセル",
+                crate::core::unit::LengthUnit::Px,
             ),
         ];
 
         // Card grid: column count and card width follow the pane width.
         let cols = (((left_w - 10.0) / 155.0).floor() as usize).clamp(1, 4);
         let gap = 10.0;
-        let card_w = (((left_w - gap * (cols as f32 - 1.0)) / cols as f32).clamp(110.0, 160.0))
-            .floor();
+        let card_w =
+            (((left_w - gap * (cols as f32 - 1.0)) / cols as f32).clamp(110.0, 160.0)).floor();
 
         egui::Grid::new("new_doc_presets_grid")
             .spacing(Vec2::new(gap, gap))
             .show(ui, |ui| {
                 for (idx, (icon_type, name, dim, w, h, u)) in presets.iter().enumerate() {
+                    let preset_key = match idx {
+                        4 => "new_doc.preset.letter",
+                        5 => "new_doc.preset.legal",
+                        6 => "new_doc.preset.web_landscape",
+                        7 => "new_doc.preset.web_square",
+                        9 => "new_doc.preset.instagram_post",
+                        10 => "new_doc.preset.instagram_story",
+                        11 => "new_doc.preset.other",
+                        _ => "",
+                    };
+                    let display_name = if preset_key.is_empty() {
+                        std::borrow::Cow::Borrowed(*name)
+                    } else {
+                        crate::ui::i18n::text(locale, preset_key)
+                    };
+                    let display_dim = if idx == 11 {
+                        crate::ui::i18n::text(locale, "new_doc.preset.custom")
+                    } else {
+                        std::borrow::Cow::Borrowed(*dim)
+                    };
                     let is_sel = self.width == *w && self.height == *h;
                     let (rect, resp) =
                         ui.allocate_exact_size(Vec2::new(card_w, 100.0), egui::Sense::click());
@@ -344,8 +407,10 @@ impl NewDocModal {
                     );
 
                     // Draw crisp vector preset icon
-                    let icon_box =
-                        Rect::from_center_size(Pos2::new(rect.center().x, rect.min.y + 24.0), Vec2::splat(26.0));
+                    let icon_box = Rect::from_center_size(
+                        Pos2::new(rect.center().x, rect.min.y + 24.0),
+                        Vec2::splat(26.0),
+                    );
                     let icon_col = if is_sel {
                         Color32::from_rgb(20, 115, 230)
                     } else if hovered {
@@ -359,7 +424,9 @@ impl NewDocModal {
                             crate::app::icons::icon_desktop(ui.painter(), icon_box, icon_col)
                         }
                         "phone" => crate::app::icons::icon_phone(ui.painter(), icon_box, icon_col),
-                        "camera" => crate::app::icons::icon_camera(ui.painter(), icon_box, icon_col),
+                        "camera" => {
+                            crate::app::icons::icon_camera(ui.painter(), icon_box, icon_col)
+                        }
                         _ => crate::app::icons::icon_more_dots(ui.painter(), icon_box, icon_col),
                     }
 
@@ -367,7 +434,7 @@ impl NewDocModal {
                     ui.painter().text(
                         Pos2::new(rect.center().x, rect.min.y + 58.0),
                         egui::Align2::CENTER_CENTER,
-                        *name,
+                        display_name,
                         egui::FontId::proportional(11.0),
                         Color32::WHITE,
                     );
@@ -375,7 +442,7 @@ impl NewDocModal {
                     ui.painter().text(
                         Pos2::new(rect.center().x, rect.min.y + 78.0),
                         egui::Align2::CENTER_CENTER,
-                        *dim,
+                        display_dim,
                         egui::FontId::proportional(9.5),
                         Color32::from_rgb(140, 140, 140),
                     );
@@ -383,7 +450,7 @@ impl NewDocModal {
                     if resp.clicked() {
                         self.width = *w;
                         self.height = *h;
-                        self.unit = u.to_string();
+                        self.unit = *u;
                     }
 
                     if (idx + 1) % cols == 0 {
@@ -395,13 +462,13 @@ impl NewDocModal {
         ui.add_space(14.0);
         ui.horizontal(|ui| {
             ui.label(
-                RichText::new("🔍 他のテンプレートを検索")
+                RichText::new(crate::ui::i18n::text(locale, "new_doc.search_templates"))
                     .size(11.0)
                     .color(Color32::from_rgb(160, 160, 160)),
             );
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.label(
-                    RichText::new("ストック素材を探す ➔")
+                    RichText::new(crate::ui::i18n::text(locale, "new_doc.stock_assets"))
                         .size(11.0)
                         .color(Color32::from_rgb(20, 115, 230)),
                 );
@@ -409,10 +476,10 @@ impl NewDocModal {
         });
     }
 
-    fn show_details(&mut self, ui: &mut Ui, right_w: f32) {
+    fn show_details(&mut self, ui: &mut Ui, right_w: f32, locale: &str) {
         ui.set_width(right_w);
         ui.label(
-            RichText::new("ドキュメントの詳細")
+            RichText::new(crate::ui::i18n::text(locale, "new_doc.details"))
                 .strong()
                 .size(12.5)
                 .color(Color32::WHITE),
@@ -420,7 +487,7 @@ impl NewDocModal {
         ui.add_space(8.0);
 
         ui.label(
-            RichText::new("名前 (N)")
+            RichText::new(crate::ui::i18n::text(locale, "new_doc.name"))
                 .size(10.5)
                 .color(Color32::from_rgb(170, 170, 170)),
         );
@@ -432,7 +499,7 @@ impl NewDocModal {
             ui.vertical(|ui| {
                 ui.set_width(half_w);
                 ui.label(
-                    RichText::new("幅 (W)")
+                    RichText::new(crate::ui::i18n::text(locale, "new_doc.width"))
                         .size(10.5)
                         .color(Color32::from_rgb(170, 170, 170)),
                 );
@@ -445,18 +512,41 @@ impl NewDocModal {
             ui.vertical(|ui| {
                 ui.set_width(half_w);
                 ui.label(
-                    RichText::new("単位")
+                    RichText::new(crate::ui::i18n::text(locale, "new_doc.unit"))
                         .size(10.5)
                         .color(Color32::from_rgb(170, 170, 170)),
                 );
+                use crate::core::unit::LengthUnit;
+                let display_unit = match self.unit {
+                    LengthUnit::Mm => crate::ui::i18n::text(locale, "home.unit.millimeters"),
+                    LengthUnit::Px => crate::ui::i18n::text(locale, "home.unit.pixels"),
+                    LengthUnit::Pt => crate::ui::i18n::text(locale, "home.unit.points"),
+                    LengthUnit::In => crate::ui::i18n::text(locale, "new_doc.unit.inches"),
+                };
                 egui::ComboBox::from_id_salt("doc_unit")
-                    .selected_text(&self.unit)
+                    .selected_text(display_unit)
                     .width((half_w - 10.0).max(80.0))
                     .show_ui(ui, |ui| {
-                        ui.selectable_value(&mut self.unit, "ミリメートル".into(), "ミリメートル");
-                        ui.selectable_value(&mut self.unit, "ピクセル".into(), "ピクセル");
-                        ui.selectable_value(&mut self.unit, "ポイント".into(), "ポイント");
-                        ui.selectable_value(&mut self.unit, "インチ".into(), "インチ");
+                        ui.selectable_value(
+                            &mut self.unit,
+                            LengthUnit::Mm,
+                            crate::ui::i18n::text(locale, "home.unit.millimeters"),
+                        );
+                        ui.selectable_value(
+                            &mut self.unit,
+                            LengthUnit::Px,
+                            crate::ui::i18n::text(locale, "home.unit.pixels"),
+                        );
+                        ui.selectable_value(
+                            &mut self.unit,
+                            LengthUnit::Pt,
+                            crate::ui::i18n::text(locale, "home.unit.points"),
+                        );
+                        ui.selectable_value(
+                            &mut self.unit,
+                            LengthUnit::In,
+                            crate::ui::i18n::text(locale, "new_doc.unit.inches"),
+                        );
                     });
             });
         });
@@ -466,7 +556,7 @@ impl NewDocModal {
             ui.vertical(|ui| {
                 ui.set_width(half_w);
                 ui.label(
-                    RichText::new("高さ (H)")
+                    RichText::new(crate::ui::i18n::text(locale, "new_doc.height"))
                         .size(10.5)
                         .color(Color32::from_rgb(170, 170, 170)),
                 );
@@ -479,20 +569,26 @@ impl NewDocModal {
             ui.vertical(|ui| {
                 ui.set_width(half_w);
                 ui.label(
-                    RichText::new("方向")
+                    RichText::new(crate::ui::i18n::text(locale, "new_doc.direction"))
                         .size(10.5)
                         .color(Color32::from_rgb(170, 170, 170)),
                 );
                 ui.horizontal(|ui| {
                     let p_sel = self.orientation == Orientation::Portrait;
-                    if ui.selectable_label(p_sel, "▯ 縦").clicked() {
+                    if ui
+                        .selectable_label(p_sel, crate::ui::i18n::text(locale, "new_doc.portrait"))
+                        .clicked()
+                    {
                         self.orientation = Orientation::Portrait;
                         if self.width > self.height {
                             std::mem::swap(&mut self.width, &mut self.height);
                         }
                     }
                     let l_sel = self.orientation == Orientation::Landscape;
-                    if ui.selectable_label(l_sel, "▭ 横").clicked() {
+                    if ui
+                        .selectable_label(l_sel, crate::ui::i18n::text(locale, "new_doc.landscape"))
+                        .clicked()
+                    {
                         self.orientation = Orientation::Landscape;
                         if self.height > self.width {
                             std::mem::swap(&mut self.width, &mut self.height);
@@ -504,7 +600,9 @@ impl NewDocModal {
 
         ui.add_space(6.0);
         ui.horizontal_wrapped(|ui| {
-            ui.label(RichText::new("アートボード数 (A):").size(10.5));
+            ui.label(
+                RichText::new(crate::ui::i18n::text(locale, "new_doc.artboard_count")).size(10.5),
+            );
             ui.add(egui::DragValue::new(&mut self.artboard_count).range(1..=100));
         });
 
@@ -515,7 +613,7 @@ impl NewDocModal {
         // 塗り足し (Bleed)
         ui.horizontal(|ui| {
             ui.label(
-                RichText::new("塗り足し (B)")
+                RichText::new(crate::ui::i18n::text(locale, "new_doc.bleed"))
                     .size(10.5)
                     .color(Color32::from_rgb(170, 170, 170)),
             );
@@ -528,7 +626,7 @@ impl NewDocModal {
         });
 
         ui.horizontal_wrapped(|ui| {
-            ui.label(RichText::new("上:").size(10.0));
+            ui.label(RichText::new(crate::ui::i18n::text(locale, "new_doc.top")).size(10.0));
             if ui
                 .add(egui::DragValue::new(&mut self.bleed_top).speed(0.5))
                 .changed()
@@ -538,7 +636,7 @@ impl NewDocModal {
                 self.bleed_left = self.bleed_top;
                 self.bleed_right = self.bleed_top;
             }
-            ui.label(RichText::new("下:").size(10.0));
+            ui.label(RichText::new(crate::ui::i18n::text(locale, "new_doc.bottom")).size(10.0));
             if ui
                 .add(egui::DragValue::new(&mut self.bleed_bottom).speed(0.5))
                 .changed()
@@ -550,7 +648,7 @@ impl NewDocModal {
             }
         });
         ui.horizontal_wrapped(|ui| {
-            ui.label(RichText::new("左:").size(10.0));
+            ui.label(RichText::new(crate::ui::i18n::text(locale, "new_doc.left")).size(10.0));
             if ui
                 .add(egui::DragValue::new(&mut self.bleed_left).speed(0.5))
                 .changed()
@@ -560,7 +658,7 @@ impl NewDocModal {
                 self.bleed_bottom = self.bleed_left;
                 self.bleed_right = self.bleed_left;
             }
-            ui.label(RichText::new("右:").size(10.0));
+            ui.label(RichText::new(crate::ui::i18n::text(locale, "new_doc.right")).size(10.0));
             if ui
                 .add(egui::DragValue::new(&mut self.bleed_right).speed(0.5))
                 .changed()
@@ -578,39 +676,57 @@ impl NewDocModal {
 
         // Color mode & Raster effects
         ui.label(
-            RichText::new("カラーモード (C)")
+            RichText::new(crate::ui::i18n::text(locale, "new_doc.color_mode"))
                 .size(10.5)
                 .color(Color32::from_rgb(170, 170, 170)),
         );
         let mode_w = ui.available_width().max(160.0);
+        let display_color_mode = if self.color_mode.contains("CMYK") {
+            crate::ui::i18n::text(locale, "new_doc.cmyk")
+        } else {
+            crate::ui::i18n::text(locale, "new_doc.rgb")
+        };
         egui::ComboBox::from_id_salt("doc_color_mode")
-            .selected_text(&self.color_mode)
+            .selected_text(display_color_mode)
             .width(mode_w.min(320.0))
             .show_ui(ui, |ui| {
-                ui.selectable_value(&mut self.color_mode, "RGB カラー".into(), "RGB カラー (sRGB)");
-                ui.selectable_value(&mut self.color_mode, "CMYK カラー".into(), "CMYK カラー (印刷用)");
+                ui.selectable_value(
+                    &mut self.color_mode,
+                    "RGB カラー".into(),
+                    crate::ui::i18n::text(locale, "new_doc.rgb"),
+                );
+                ui.selectable_value(
+                    &mut self.color_mode,
+                    "CMYK カラー".into(),
+                    crate::ui::i18n::text(locale, "new_doc.cmyk"),
+                );
             });
 
         ui.add_space(4.0);
         ui.label(
-            RichText::new("ラスタライズ効果 (R)")
+            RichText::new(crate::ui::i18n::text(locale, "new_doc.raster_effects"))
                 .size(10.5)
                 .color(Color32::from_rgb(170, 170, 170)),
         );
         let dpi_w = ui.available_width().max(160.0);
+        let display_dpi = if self.raster_dpi.contains("72") {
+            crate::ui::i18n::text(locale, "new_doc.screen_dpi")
+        } else {
+            crate::ui::i18n::text(locale, "new_doc.high_dpi")
+        };
         egui::ComboBox::from_id_salt("doc_raster_dpi")
-            .selected_text(&self.raster_dpi)
+            .selected_text(display_dpi)
             .width(dpi_w.min(320.0))
             .show_ui(ui, |ui| {
                 ui.selectable_value(
                     &mut self.raster_dpi,
                     "高解像度 (300 ppi)".into(),
-                    "高解像度 (300 ppi)",
+                    crate::ui::i18n::text(locale, "new_doc.high_dpi"),
                 );
                 ui.selectable_value(
                     &mut self.raster_dpi,
                     "スクリーン (72 ppi)".into(),
-                    "スクリーン (72 ppi)",
+                    crate::ui::i18n::text(locale, "new_doc.screen_dpi"),
                 );
             });
     }

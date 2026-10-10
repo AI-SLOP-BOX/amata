@@ -9,10 +9,11 @@ pub struct TextPanel;
 
 /// Build a TOC text object from headings and append it (undoable).
 fn generate_toc(state: &mut AppState) {
+    let locale = state.prefs.language.clone();
     use crate::core::document::{collect_toc_entries, render_toc_text, Object, TextStyle};
     let entries = collect_toc_entries(&state.document, state.document.toc_threshold);
     if entries.is_empty() {
-        state.notify_info("見出しがありません（閾値サイズ以上のテキストが必要）".to_string());
+        state.notify_info(crate::ui::i18n::text(&locale, "type.no_headings").to_string());
         return;
     }
     let style = TextStyle {
@@ -20,19 +21,30 @@ fn generate_toc(state: &mut AppState) {
         ..Default::default()
     };
     let body = render_toc_text(&entries, &style, state.document.width - 40.0);
-    let mut obj = Object::new_text("目次", &body, 20.0, 20.0, 12.0);
+    let mut obj = Object::new_text(
+        crate::ui::i18n::text(&locale, "type.toc").as_ref(),
+        &body,
+        20.0,
+        20.0,
+        12.0,
+    );
     if let crate::core::document::ObjectType::Text { style: s, .. } = &mut obj.object_type {
         *s = style;
     }
     let cmd = Box::new(crate::core::history::AddObjectCommand::new(obj));
     state.undo_manager.execute(cmd, &mut state.document);
-    state.notify_success(format!("目次を生成しました（{}項目）", entries.len()));
+    state.notify_success(crate::ui::i18n::format(
+        &locale,
+        "type.toc_created",
+        &[("count", &entries.len().to_string())],
+    ));
 }
 
 impl TextPanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
+        let locale = state.prefs.language.clone();
         if state.selected_ids.is_empty() {
-            ui.label(RichText::new("テキストオブジェクトを選択してください").weak());
+            ui.label(RichText::new(crate::ui::i18n::text(&locale, "type.select_text")).weak());
             return;
         }
 
@@ -78,7 +90,7 @@ impl TextPanel {
             }
         }
         if let Some((top_text, top_style, mut top_offset, mut top_side)) = top {
-            ui.label("パス上テキスト:");
+            ui.label(crate::ui::i18n::text(&locale, "type.text_on_path"));
             let mut te = top_text.clone();
             let te_resp = ui.text_edit_singleline(&mut te);
             if te_resp.lost_focus() && te != top_text {
@@ -91,7 +103,7 @@ impl TextPanel {
                 state.commit_object_edits("Edit Text on Path");
             }
             ui.horizontal(|ui| {
-                ui.label("サイズ:");
+                ui.label(crate::ui::i18n::text(&locale, "type.size"));
                 let mut fs = top_style.font_size;
                 let fs_resp = ui.add(
                     egui::DragValue::new(&mut fs)
@@ -111,7 +123,7 @@ impl TextPanel {
                 }
             });
             ui.horizontal(|ui| {
-                ui.label("開始位置:");
+                ui.label(crate::ui::i18n::text(&locale, "type.start_position"));
                 let off_resp = ui.add(
                     egui::DragValue::new(&mut top_offset)
                         .speed(1.0)
@@ -133,17 +145,25 @@ impl TextPanel {
                 }
             });
             ui.horizontal(|ui| {
-                ui.label("側:");
+                ui.label(crate::ui::i18n::text(&locale, "type.side"));
                 let side_before = top_side;
                 let mut sel_top = top_side == crate::core::document::TextPathSide::Top;
                 if ui
-                    .selectable_value(&mut sel_top, true, "上")
+                    .selectable_value(
+                        &mut sel_top,
+                        true,
+                        crate::ui::i18n::text(&locale, "type.top"),
+                    )
                     .clicked()
                 {
                     top_side = crate::core::document::TextPathSide::Top;
                 }
                 if ui
-                    .selectable_value(&mut sel_top, false, "下")
+                    .selectable_value(
+                        &mut sel_top,
+                        false,
+                        crate::ui::i18n::text(&locale, "type.bottom"),
+                    )
                     .clicked()
                 {
                     top_side = crate::core::document::TextPathSide::Bottom;
@@ -163,7 +183,7 @@ impl TextPanel {
         }
 
         if !found {
-            ui.label(RichText::new("選択中の要素はテキストではありません").weak());
+            ui.label(RichText::new(crate::ui::i18n::text(&locale, "type.not_text")).weak());
             return;
         }
 
@@ -174,16 +194,17 @@ impl TextPanel {
         if !is_avail {
             ui.horizontal(|ui| {
                 ui.label(
-                    RichText::new(format!(
-                        "⚠️ 未インストール: \"{}\"",
-                        current_style.font_family
+                    RichText::new(crate::ui::i18n::format(
+                        &locale,
+                        "type.font_missing",
+                        &[("font", &current_style.font_family)],
                     ))
                     .color(Color32::from_rgb(255, 160, 40))
                     .small(),
                 );
             });
             ui.label(
-                RichText::new("（キャンバスでは代替フォントで描画中。保存・出力時は元のフォント名を保持します）")
+                RichText::new(crate::ui::i18n::text(&locale, "type.fallback_font"))
                     .weak()
                     .small(),
             );
@@ -191,7 +212,7 @@ impl TextPanel {
         }
 
         // 1. Text Content
-        ui.label("テキスト内容:");
+        ui.label(crate::ui::i18n::text(&locale, "type.content"));
         let mut text_edit = current_text.clone();
         let text_response = ui.text_edit_multiline(&mut text_edit);
         if text_response.lost_focus() && text_edit != current_text {
@@ -209,7 +230,7 @@ impl TextPanel {
         ui.add_space(6.0);
 
         // 2. Font Family Picker
-        ui.label("フォントファミリー:");
+        ui.label(crate::ui::i18n::text(&locale, "type.font_family"));
         let mut selected_family = current_style.font_family.clone();
         let display_family = if is_avail {
             selected_family.clone()
@@ -231,7 +252,11 @@ impl TextPanel {
                     "Yu Mincho",
                     "Monospace",
                 ];
-                ui.label(RichText::new("--- おすすめ ---").weak().small());
+                ui.label(
+                    RichText::new(crate::ui::i18n::text(&locale, "type.recommended"))
+                        .weak()
+                        .small(),
+                );
                 for fam in curated {
                     if ui.selectable_label(selected_family == fam, fam).clicked() {
                         selected_family = fam.to_string();
@@ -240,7 +265,7 @@ impl TextPanel {
 
                 ui.separator();
                 ui.label(
-                    RichText::new("--- システム / 同梱フォント ---")
+                    RichText::new(crate::ui::i18n::text(&locale, "type.system_fonts"))
                         .weak()
                         .small(),
                 );
@@ -276,7 +301,7 @@ impl TextPanel {
         // 3. Font Size & Quick Sizes (drag coalesced to one undo step;
         // previously every drag frame pushed its own ModifyTextCommand).
         ui.horizontal(|ui| {
-            ui.label("サイズ:");
+            ui.label(crate::ui::i18n::text(&locale, "type.size"));
             let mut fs = current_style.font_size;
             let fs_resp = ui.add(
                 egui::DragValue::new(&mut fs)
@@ -325,7 +350,7 @@ impl TextPanel {
 
         // 4. Font Weight & Font Style
         ui.horizontal(|ui| {
-            ui.label("ウェイト:");
+            ui.label(crate::ui::i18n::text(&locale, "type.weight"));
             let weights = [
                 (100, "Thin (100)"),
                 (300, "Light (300)"),
@@ -368,7 +393,10 @@ impl TextPanel {
 
             // Italic toggle
             let is_italic = current_style.font_style == FontStyle::Italic;
-            if ui.selectable_label(is_italic, "斜体 (I)").clicked() {
+            if ui
+                .selectable_label(is_italic, crate::ui::i18n::text(&locale, "type.italic"))
+                .clicked()
+            {
                 let next_style = if is_italic {
                     FontStyle::Normal
                 } else {
@@ -397,7 +425,11 @@ impl TextPanel {
             current_style.font_style,
         );
         if !axes.is_empty() {
-            ui.label(RichText::new("可変フォント軸").strong().size(11.0));
+            ui.label(
+                RichText::new(crate::ui::i18n::text(&locale, "type.variable_axes"))
+                    .strong()
+                    .size(11.0),
+            );
             for axis in axes {
                 let current = current_style
                     .variation(&axis.tag)
@@ -439,12 +471,21 @@ impl TextPanel {
         ui.add_space(6.0);
 
         // 5. Alignment (TextAnchor)
-        ui.label("行揃え (Text Anchor):");
+        ui.label(crate::ui::i18n::text(&locale, "type.anchor"));
         ui.horizontal(|ui| {
             for (anchor, label) in [
-                (TextAnchor::Start, "左揃え (Start)"),
-                (TextAnchor::Middle, "中央 (Middle)"),
-                (TextAnchor::End, "右揃え (End)"),
+                (
+                    TextAnchor::Start,
+                    crate::ui::i18n::text(&locale, "type.align_start"),
+                ),
+                (
+                    TextAnchor::Middle,
+                    crate::ui::i18n::text(&locale, "type.align_middle"),
+                ),
+                (
+                    TextAnchor::End,
+                    crate::ui::i18n::text(&locale, "type.align_end"),
+                ),
             ] {
                 if ui
                     .selectable_label(current_style.text_anchor == anchor, label)
@@ -468,12 +509,21 @@ impl TextPanel {
         ui.add_space(6.0);
 
         // 5b. List style (DTP): none / bullet / auto-numbered.
-        ui.label("箇条書き:");
+        ui.label(crate::ui::i18n::text(&locale, "type.list"));
         ui.horizontal(|ui| {
             for (list, label) in [
-                (ListStyle::None, "なし"),
-                (ListStyle::Bullet, "• 箇条書き"),
-                (ListStyle::Numbered, "1. 番号付き"),
+                (
+                    ListStyle::None,
+                    crate::ui::i18n::text(&locale, "type.list_none"),
+                ),
+                (
+                    ListStyle::Bullet,
+                    crate::ui::i18n::text(&locale, "type.bullet"),
+                ),
+                (
+                    ListStyle::Numbered,
+                    crate::ui::i18n::text(&locale, "type.numbered"),
+                ),
             ] {
                 if ui
                     .selectable_label(current_style.list == list, label)
@@ -498,9 +548,13 @@ impl TextPanel {
 
         // Writing direction (横/縦) + ligatures
         ui.horizontal(|ui| {
-            ui.label("組み:");
+            ui.label(crate::ui::i18n::text(&locale, "type.writing_mode"));
             let vert = current_style.vertical;
-            if ui.selectable_label(!vert, "横組み").clicked() && vert {
+            if ui
+                .selectable_label(!vert, crate::ui::i18n::text(&locale, "type.horizontal"))
+                .clicked()
+                && vert
+            {
                 state.ensure_object_snapshot(&id);
                 if let Some(o) = state.document.find_object_mut(&id) {
                     if let ObjectType::Text { style, .. } = &mut o.object_type {
@@ -510,7 +564,11 @@ impl TextPanel {
                 state.commit_object_edits("Horizontal Text");
                 current_style.vertical = false;
             }
-            if ui.selectable_label(vert, "縦組み").clicked() && !vert {
+            if ui
+                .selectable_label(vert, crate::ui::i18n::text(&locale, "type.vertical"))
+                .clicked()
+                && !vert
+            {
                 state.ensure_object_snapshot(&id);
                 if let Some(o) = state.document.find_object_mut(&id) {
                     if let ObjectType::Text { style, .. } = &mut o.object_type {
@@ -522,7 +580,7 @@ impl TextPanel {
             }
         });
         ui.horizontal(|ui| {
-            ui.label("合字 (liga):");
+            ui.label(crate::ui::i18n::text(&locale, "type.ligatures"));
             let lig = current_style.ligatures;
             if ui.selectable_label(lig, "ON").clicked() && !lig {
                 state.ensure_object_snapshot(&id);
@@ -546,11 +604,85 @@ impl TextPanel {
             }
         });
 
+        // 和欧間 auto spacing (on/off + amount in em)
+        ui.horizontal(|ui| {
+            ui.label(crate::ui::i18n::text(&locale, "type.auto_spacing"));
+            let on = current_style.auto_spacing;
+            if ui.selectable_label(on, "ON").clicked() && !on {
+                state.ensure_object_snapshot(&id);
+                if let Some(o) = state.document.find_object_mut(&id) {
+                    if let ObjectType::Text { style, .. } = &mut o.object_type {
+                        style.auto_spacing = true;
+                    }
+                }
+                state.commit_object_edits("Enable Auto Spacing");
+                current_style.auto_spacing = true;
+            }
+            if ui.selectable_label(!on, "OFF").clicked() && on {
+                state.ensure_object_snapshot(&id);
+                if let Some(o) = state.document.find_object_mut(&id) {
+                    if let ObjectType::Text { style, .. } = &mut o.object_type {
+                        style.auto_spacing = false;
+                    }
+                }
+                state.commit_object_edits("Disable Auto Spacing");
+                current_style.auto_spacing = false;
+            }
+        });
+        if current_style.auto_spacing {
+            ui.horizontal(|ui| {
+                ui.label(crate::ui::i18n::text(&locale, "type.auto_spacing_size"));
+                for (em, label) in [
+                    (0.125_f32, "1/8em"),
+                    (0.25_f32, "1/4em"),
+                    (0.5_f32, "1/2em"),
+                ] {
+                    let selected = (current_style.auto_spacing_em - em).abs() < 1e-3;
+                    if ui.selectable_label(selected, label).clicked() && !selected {
+                        state.ensure_object_snapshot(&id);
+                        if let Some(o) = state.document.find_object_mut(&id) {
+                            if let ObjectType::Text { style, .. } = &mut o.object_type {
+                                style.auto_spacing_em = em;
+                            }
+                        }
+                        state.commit_object_edits("Set Auto Spacing Size");
+                        current_style.auto_spacing_em = em;
+                    }
+                }
+            });
+        }
+
+        // ぶら下げ（hanging punctuation）: 行末の閉じ約物が Ink 分だけmarginへ
+        ui.horizontal(|ui| {
+            ui.label(crate::ui::i18n::text(&locale, "type.burasage"));
+            let on = current_style.burasage;
+            if ui.selectable_label(on, "ON").clicked() && !on {
+                state.ensure_object_snapshot(&id);
+                if let Some(o) = state.document.find_object_mut(&id) {
+                    if let ObjectType::Text { style, .. } = &mut o.object_type {
+                        style.burasage = true;
+                    }
+                }
+                state.commit_object_edits("Enable Hanging Punctuation");
+                current_style.burasage = true;
+            }
+            if ui.selectable_label(!on, "OFF").clicked() && on {
+                state.ensure_object_snapshot(&id);
+                if let Some(o) = state.document.find_object_mut(&id) {
+                    if let ObjectType::Text { style, .. } = &mut o.object_type {
+                        style.burasage = false;
+                    }
+                }
+                state.commit_object_edits("Disable Hanging Punctuation");
+                current_style.burasage = false;
+            }
+        });
+
         ui.add_space(6.0);
 
         // 6. Letter Spacing (字間)
         ui.horizontal(|ui| {
-            ui.label("字間 (Letter Spacing):");
+            ui.label(crate::ui::i18n::text(&locale, "type.letter_spacing"));
             let mut ls = current_style.letter_spacing;
             let ls_resp = ui.add(
                 egui::DragValue::new(&mut ls)
@@ -573,15 +705,142 @@ impl TextPanel {
 
         ui.add_space(6.0);
 
+        // 6b. OpenType features: which ones the resolved face offers,
+        // plus explicit on/off overrides for the Japanese-typography set
+        // HarfBuzz leaves off by default.
+        ui.label(
+            RichText::new(crate::ui::i18n::text(&locale, "type.opentype"))
+                .strong()
+                .size(11.0),
+        );
+        {
+            let face_tags = crate::core::font::FontRegistry::global().face_open_type_features(
+                &current_style.font_family,
+                current_style.font_weight,
+                current_style.font_style,
+            );
+            let tags: Vec<&str> = face_tags.iter().map(|(t, _)| t.as_str()).collect();
+            ui.label(
+                RichText::new(crate::ui::i18n::format(
+                    &locale,
+                    "type.ot_supported",
+                    &[("tags", &tags.join(", "))],
+                ))
+                .weak()
+                .size(10.0),
+            );
+            let curated: [(&str, &str); 7] = [
+                ("liga", "type.ot_liga"),
+                ("kern", "type.ot_kern"),
+                ("palt", "type.ot_palt"),
+                ("halt", "type.ot_halt"),
+                ("vert", "type.ot_vert"),
+                ("vrt2", "type.ot_vrt2"),
+                ("ruby", "type.ot_ruby"),
+            ];
+            ui.horizontal_wrapped(|ui| {
+                for (tag, label_key) in curated {
+                    let on = current_style
+                        .ot_feature_state(tag)
+                        .unwrap_or(matches!(tag, "liga" | "kern"));
+                    let supported = tags.contains(&tag);
+                    let label = crate::ui::i18n::text(&locale, label_key);
+                    let resp = ui.add_enabled(supported, egui::Button::new(label).selected(on));
+                    if resp.clicked() {
+                        let next = !on;
+                        state.ensure_object_snapshot(&id);
+                        if let Some(o) = state.document.find_object_mut(&id) {
+                            if let ObjectType::Text { style, .. } = &mut o.object_type {
+                                style.set_ot_feature(tag, next);
+                            }
+                        }
+                        state.commit_object_edits(if next {
+                            "Enable OpenType Feature"
+                        } else {
+                            "Disable OpenType Feature"
+                        });
+                        current_style.set_ot_feature(tag, next);
+                    }
+                }
+            });
+            // Every feature the face actually ships (GSUB + GPOS), so power
+            // users can reach jp90/nlck/ccmp/zero/tnum … without a preset.
+            egui::CollapsingHeader::new(crate::ui::i18n::text(&locale, "type.ot_all"))
+                .id_salt("ot_all_features")
+                .show(ui, |ui| {
+                    if ui
+                        .button(crate::ui::i18n::text(&locale, "type.ot_reset"))
+                        .clicked()
+                    {
+                        state.ensure_object_snapshot(&id);
+                        if let Some(o) = state.document.find_object_mut(&id) {
+                            if let ObjectType::Text { style, .. } = &mut o.object_type {
+                                style.ot_features.clear();
+                            }
+                        }
+                        state.commit_object_edits("Reset OpenType Features");
+                        current_style.ot_features.clear();
+                    }
+                    egui::ScrollArea::vertical()
+                        .max_height(180.0)
+                        .show(ui, |ui| {
+                            for (tag, table) in &face_tags {
+                                ui.horizontal(|ui| {
+                                    let explicit = current_style.ot_feature_state(tag);
+                                    let on = explicit.unwrap_or(false);
+                                    let label = format!("{tag}  [{table}]");
+                                    let resp =
+                                        ui.add_enabled(true, egui::Button::new(label).selected(on));
+                                    if resp.clicked() {
+                                        let next = !on;
+                                        state.ensure_object_snapshot(&id);
+                                        if let Some(o) = state.document.find_object_mut(&id) {
+                                            if let ObjectType::Text { style, .. } =
+                                                &mut o.object_type
+                                            {
+                                                style.set_ot_feature(tag.clone(), next);
+                                            }
+                                        }
+                                        state.commit_object_edits(if next {
+                                            "Enable OpenType Feature"
+                                        } else {
+                                            "Disable OpenType Feature"
+                                        });
+                                        current_style.set_ot_feature(tag.clone(), next);
+                                    }
+                                    // Explicit entries get an × to fall back
+                                    // to the shaper default for that tag.
+                                    if explicit.is_some() && ui.small_button("×").clicked() {
+                                        state.ensure_object_snapshot(&id);
+                                        if let Some(o) = state.document.find_object_mut(&id) {
+                                            if let ObjectType::Text { style, .. } =
+                                                &mut o.object_type
+                                            {
+                                                style.clear_ot_feature(tag);
+                                            }
+                                        }
+                                        state.commit_object_edits("Reset OpenType Feature");
+                                        current_style.clear_ot_feature(tag);
+                                    }
+                                });
+                            }
+                        });
+                });
+        }
+
+        ui.add_space(6.0);
+
         // 7. Text Layout (Line Height / Wrap / Max Width)
-        ui.label(RichText::new("レイアウト").strong().size(11.0));
+        ui.label(
+            RichText::new(crate::ui::i18n::text(&locale, "type.layout"))
+                .strong()
+                .size(11.0),
+        );
 
         // Line Height
         ui.horizontal(|ui| {
-            ui.label("行間:");
-            let mut lh = current_style
-                .line_height
-                .unwrap_or(1.2_f64);
+            ui.label(crate::ui::i18n::text(&locale, "type.line_spacing"));
+            let mut lh = current_style.line_height.unwrap_or(1.2_f64);
             let lh_resp = ui.add(
                 egui::DragValue::new(&mut lh)
                     .speed(0.1)
@@ -607,7 +866,7 @@ impl TextPanel {
         // Word Wrap + Max Width
         let wrap_on = current_style.word_wrap;
         if ui
-            .selectable_label(wrap_on, "折り返し (W)")
+            .selectable_label(wrap_on, crate::ui::i18n::text(&locale, "type.wrap"))
             .clicked()
         {
             state.ensure_object_snapshot(&id);
@@ -642,7 +901,7 @@ impl TextPanel {
         // Paragraph styles (DTP): named presets, apply to selection.
         ui.add_space(4.0);
         ui.separator();
-        ui.label(RichText::new("段落スタイル").strong());
+        ui.label(RichText::new(crate::ui::i18n::text(&locale, "type.paragraph_styles")).strong());
         let mut apply_idx: Option<usize> = None;
         let mut delete_idx: Option<usize> = None;
         // Display borrows the live list (no per-frame clone); values are
@@ -652,10 +911,17 @@ impl TextPanel {
             let ps = &state.document.paragraph_styles[i];
             ui.horizontal(|ui| {
                 ui.label(format!("{} ({:.0}pt)", ps.name, ps.style.font_size));
-                if ui.small_button("適用").clicked() {
+                if ui
+                    .small_button(crate::ui::i18n::text(&locale, "type.apply"))
+                    .clicked()
+                {
                     apply_idx = Some(i);
                 }
-                if ui.small_button("×").on_hover_text("スタイル削除").clicked() {
+                if ui
+                    .small_button("×")
+                    .on_hover_text(crate::ui::i18n::text(&locale, "type.delete_style"))
+                    .clicked()
+                {
                     delete_idx = Some(i);
                 }
             });
@@ -664,7 +930,11 @@ impl TextPanel {
             if let Some(ps) = state.document.paragraph_styles.get(i) {
                 let name = ps.name.clone();
                 state.document.paragraph_styles.remove(i);
-                state.notify_info(format!("段落スタイル「{name}」を削除しました"));
+                state.notify_info(crate::ui::i18n::format(
+                    &locale,
+                    "type.style_deleted",
+                    &[("name", &name)],
+                ));
             }
         }
         if let Some(i) = apply_idx {
@@ -694,21 +964,34 @@ impl TextPanel {
                 }
                 if applied > 0 {
                     state.commit_object_edits("Apply Paragraph Style");
-                    state.notify_success(format!("段落スタイルを{applied}件に適用しました"));
+                    state.notify_success(crate::ui::i18n::format(
+                        &locale,
+                        "type.styles_applied",
+                        &[("count", &applied.to_string())],
+                    ));
                 }
             }
         }
         ui.horizontal(|ui| {
-            if ui.button("選択の書式をスタイル登録").clicked() {
+            if ui
+                .button(crate::ui::i18n::text(&locale, "type.register_selection"))
+                .clicked()
+            {
                 let n = state.document.paragraph_styles.len() + 1;
                 state
                     .document
                     .paragraph_styles
                     .push(crate::core::document::ParagraphStyle {
-                        name: format!("スタイル{n}"),
+                        name: crate::ui::i18n::format(
+                            &locale,
+                            "type.style_name",
+                            &[("count", &n.to_string())],
+                        ),
                         style: current_style.clone(),
                     });
-                state.notify_success("段落スタイルを登録しました".to_string());
+                state.notify_success(
+                    crate::ui::i18n::text(&locale, "type.style_registered").to_string(),
+                );
             }
         });
 
@@ -716,9 +999,9 @@ impl TextPanel {
         // dot leaders + artboard page numbers in a new text object.
         ui.add_space(4.0);
         ui.separator();
-        ui.label(RichText::new("目次").strong());
+        ui.label(RichText::new(crate::ui::i18n::text(&locale, "type.toc")).strong());
         ui.horizontal(|ui| {
-            ui.label("見出し閾値:");
+            ui.label(crate::ui::i18n::text(&locale, "type.heading_threshold"));
             let mut thresh = state.document.toc_threshold;
             let resp = ui.add(
                 egui::DragValue::new(&mut thresh)
@@ -729,7 +1012,10 @@ impl TextPanel {
             if resp.changed() {
                 state.document.toc_threshold = thresh.clamp(6.0, 144.0);
             }
-            if ui.button("目次を生成").clicked() {
+            if ui
+                .button(crate::ui::i18n::text(&locale, "type.generate_toc"))
+                .clicked()
+            {
                 generate_toc(state);
             }
         });
@@ -737,10 +1023,13 @@ impl TextPanel {
         // Area text (rect container with overflow).
         ui.add_space(4.0);
         ui.separator();
-        ui.label(RichText::new("エリアテキスト").strong());
+        ui.label(RichText::new(crate::ui::i18n::text(&locale, "type.area_text")).strong());
         match current_area {
             None => {
-                if ui.button("ポイントテキストをエリア化").clicked() {
+                if ui
+                    .button(crate::ui::i18n::text(&locale, "type.point_to_area"))
+                    .clicked()
+                {
                     state.ensure_object_snapshot(&id);
                     if let Some(o) = state.document.find_object_mut(&id) {
                         if let ObjectType::Text {
@@ -749,10 +1038,9 @@ impl TextPanel {
                         {
                             // Box the measured block so nothing visibly moves:
                             // first baseline stays at y=0.
-                            let (w, h) =
-                                crate::core::document::object::text_block_size_with_style(
-                                    text, style,
-                                );
+                            let (w, h) = crate::core::document::object::text_block_size_with_style(
+                                text, style,
+                            );
                             *area = Some(TextArea::new(
                                 0.0,
                                 -style.font_size,
@@ -765,19 +1053,24 @@ impl TextPanel {
                 }
             }
             Some(a) => {
-                let overflow = crate::core::document::layout_text(
-                    &current_text,
-                    &current_style,
-                    Some(a),
-                )
-                .overflow();
+                let overflow =
+                    crate::core::document::layout_text(&current_text, &current_style, Some(a))
+                        .overflow();
                 if overflow > 0 {
                     ui.label(
-                        RichText::new(format!("⚠ {overflow}行あふれています"))
-                            .color(Color32::from_rgb(255, 160, 40)),
+                        RichText::new(crate::ui::i18n::format(
+                            &locale,
+                            "type.overflow",
+                            &[("count", &overflow.to_string())],
+                        ))
+                        .color(Color32::from_rgb(255, 160, 40)),
                     );
                 } else {
-                    ui.label(RichText::new("ボックスに収まっています").weak().size(11.0));
+                    ui.label(
+                        RichText::new(crate::ui::i18n::text(&locale, "type.fits"))
+                            .weak()
+                            .size(11.0),
+                    );
                 }
                 let mut box_vals = [a.x, a.y, a.width, a.height];
                 let labels = ["X", "Y", "W", "H"];
@@ -785,11 +1078,13 @@ impl TextPanel {
                 ui.horizontal(|ui| {
                     for (i, lab) in labels.iter().enumerate() {
                         ui.label(*lab);
-                        let resp = ui.add(
-                            egui::DragValue::new(&mut box_vals[i])
-                                .speed(1.0)
-                                .range(if i < 2 { -5000.0..=5000.0 } else { 1.0..=5000.0 }),
-                        );
+                        let resp = ui.add(egui::DragValue::new(&mut box_vals[i]).speed(1.0).range(
+                            if i < 2 {
+                                -5000.0..=5000.0
+                            } else {
+                                1.0..=5000.0
+                            },
+                        ));
                         if resp.changed() {
                             state.object_edit(&id, &resp, |o| {
                                 if let ObjectType::Text { area, .. } = &mut o.object_type {
@@ -819,12 +1114,12 @@ impl TextPanel {
                     let mut col_dragging = false;
                     let mut col_stopped = false;
                     ui.horizontal(|ui| {
-                        ui.label("段組み:");
+                        ui.label(crate::ui::i18n::text(&locale, "type.columns"));
                         let r = ui.add(egui::DragValue::new(&mut cols).speed(0.2).range(1..=4));
                         col_changed |= r.changed();
                         col_dragging |= r.dragged();
                         col_stopped |= r.drag_stopped();
-                        ui.label("間隔:");
+                        ui.label(crate::ui::i18n::text(&locale, "type.gap"));
                         let g = ui.add(
                             egui::DragValue::new(&mut gutter)
                                 .speed(0.5)
@@ -857,7 +1152,10 @@ impl TextPanel {
                     // Drags coalesce into one undo step on release.
                     state.commit_object_edits("Edit Text Area");
                 }
-                if ui.button("エリアを解除（ポイントに戻す）").clicked() {
+                if ui
+                    .button(crate::ui::i18n::text(&locale, "type.release_area"))
+                    .clicked()
+                {
                     state.ensure_object_snapshot(&id);
                     if let Some(o) = state.document.find_object_mut(&id) {
                         if let ObjectType::Text { area, .. } = &mut o.object_type {
@@ -871,20 +1169,17 @@ impl TextPanel {
                 if state.selected_ids.len() >= 2 {
                     let a_id = state.selected_ids[0].clone();
                     let b_id = state.selected_ids[1].clone();
-                    if ui.button("次のエリアにテキストを流し込む（スレッド）").clicked() {
+                    if ui
+                        .button(crate::ui::i18n::text(&locale, "type.flow_next"))
+                        .clicked()
+                    {
                         let mut ok = false;
                         if let (Some(oa), Some(ob)) = (
                             state.document.find_object(&a_id),
                             state.document.find_object(&b_id),
                         ) {
                             let is_area = |o: &crate::core::document::Object| {
-                                matches!(
-                                    o.object_type,
-                                    ObjectType::Text {
-                                        area: Some(_),
-                                        ..
-                                    }
-                                )
+                                matches!(o.object_type, ObjectType::Text { area: Some(_), .. })
                             };
                             ok = is_area(oa) && is_area(ob) && oa.id != ob.id;
                         }
@@ -898,7 +1193,10 @@ impl TextPanel {
                             state.commit_object_edits("Link Text Thread");
                         }
                     }
-                    if ui.button("スレッド解除").clicked() {
+                    if ui
+                        .button(crate::ui::i18n::text(&locale, "type.unlink_thread"))
+                        .clicked()
+                    {
                         state.ensure_object_snapshot(&a_id);
                         if let Some(o) = state.document.find_object_mut(&a_id) {
                             if let ObjectType::Text { next_frame, .. } = &mut o.object_type {
@@ -929,19 +1227,27 @@ pub struct SymbolsPanel;
 
 impl SymbolsPanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
-        ui.heading(RichText::new("Symbols").strong());
+        let locale = state.prefs.language.clone();
+        ui.heading(RichText::new(crate::ui::i18n::text(&locale, "type.symbols")).strong());
         ui.add_space(4.0);
 
         // Save selected as symbol
         let has_sel = !state.selected_ids.is_empty();
         if ui
-            .add_enabled(has_sel, egui::Button::new("Save Selection as Symbol"))
+            .add_enabled(
+                has_sel,
+                egui::Button::new(crate::ui::i18n::text(&locale, "type.save_symbol")),
+            )
             .clicked()
         {
             if let Some(id) = state.selected_ids.first() {
                 if let Some((_, obj)) = state.document.all_objects().find(|(_, o)| &o.id == id) {
                     let sym = crate::core::document::Symbol::new(
-                        &format!("Symbol {}", state.symbols.len() + 1),
+                        &crate::ui::i18n::format(
+                            &locale,
+                            "type.symbol_name",
+                            &[("count", &(state.symbols.len() + 1).to_string())],
+                        ),
                         obj.clone(),
                     );
                     state.symbols.push(sym);
@@ -954,14 +1260,15 @@ impl SymbolsPanel {
 
         // Symbol library
         if state.symbols.is_empty() {
-            ui.label(RichText::new("登録されたアセット・シンボルはありません").weak());
+            ui.label(RichText::new(crate::ui::i18n::text(&locale, "type.no_assets")).weak());
             return;
         }
 
         ui.label(
-            RichText::new(format!(
-                "アセットライブラリ ({} 個のプリセット)",
-                state.symbols.len()
+            RichText::new(crate::ui::i18n::format(
+                &locale,
+                "type.asset_library",
+                &[("count", &state.symbols.len().to_string())],
             ))
             .strong()
             .color(Color32::WHITE),
@@ -1003,19 +1310,29 @@ impl SymbolsPanel {
                             .color(Color32::WHITE),
                     );
                     ui.label(
-                        RichText::new(format!("配置回数: {} 回", sym.use_count))
-                            .weak()
-                            .size(9.5),
+                        RichText::new(crate::ui::i18n::format(
+                            &locale,
+                            "type.placement_count",
+                            &[("count", &sym.use_count.to_string())],
+                        ))
+                        .weak()
+                        .size(9.5),
                     );
                 });
 
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui.small_button("×").on_hover_text("削除").clicked() {
+                    if ui
+                        .small_button("×")
+                        .on_hover_text(crate::ui::i18n::text(&locale, "type.delete"))
+                        .clicked()
+                    {
                         to_remove = Some(i);
                     }
                     if ui
-                        .button(RichText::new("＋ 配置").size(10.5))
-                        .on_hover_text("キャンバスに配置")
+                        .button(
+                            RichText::new(crate::ui::i18n::text(&locale, "type.place")).size(10.5),
+                        )
+                        .on_hover_text(crate::ui::i18n::text(&locale, "type.place_canvas"))
                         .clicked()
                     {
                         let mut new_obj = sym.object.clone();
@@ -1047,8 +1364,9 @@ pub struct WidthToolPanel;
 
 impl WidthToolPanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
+        let locale = state.prefs.language.clone();
         if state.selected_ids.is_empty() {
-            ui.label(RichText::new("Select a stroked object").weak());
+            ui.label(RichText::new(crate::ui::i18n::text(&locale, "type.select_stroke")).weak());
             return;
         }
 
@@ -1063,11 +1381,11 @@ impl WidthToolPanel {
             }
         });
         let Some(ref mut profile) = width_profile else {
-            ui.label(RichText::new("Object has no stroke").weak());
+            ui.label(RichText::new(crate::ui::i18n::text(&locale, "type.no_stroke")).weak());
             return;
         };
 
-        ui.label("ストロークパスに線幅ポイントを追加:");
+        ui.label(crate::ui::i18n::text(&locale, "type.width_points_help"));
         ui.add_space(4.0);
 
         // Any widget interaction snapshots once; drags commit on stop so a
@@ -1124,7 +1442,10 @@ impl WidthToolPanel {
             prof_changed = true;
         }
 
-        if ui.button("線幅ポイントを追加").clicked() {
+        if ui
+            .button(crate::ui::i18n::text(&locale, "type.add_width_point"))
+            .clicked()
+        {
             let last_pos = profile.points.last().map(|p| p.position).unwrap_or(0.5);
             profile.points.push(crate::core::document::WidthPoint {
                 position: (last_pos + 0.5).min(1.0),
@@ -1139,7 +1460,10 @@ impl WidthToolPanel {
         }
 
         // Reset profile
-        if ui.button("プロファイルをリセット").clicked() {
+        if ui
+            .button(crate::ui::i18n::text(&locale, "type.reset_profile"))
+            .clicked()
+        {
             *profile = crate::core::document::WidthProfile::default();
             prof_changed = true;
         }
@@ -1167,15 +1491,16 @@ pub struct PatternPanel;
 
 impl PatternPanel {
     pub fn show(ui: &mut Ui, state: &mut AppState) {
+        let locale = state.prefs.language.clone();
         if state.selected_ids.is_empty() {
-            ui.label(RichText::new("Select an object to apply pattern").weak());
+            ui.label(RichText::new(crate::ui::i18n::text(&locale, "type.select_pattern")).weak());
             return;
         }
 
         let id = state.selected_ids[0].clone();
 
         // Pattern type selector
-        ui.label("パターンタイプ:");
+        ui.label(crate::ui::i18n::text(&locale, "type.pattern_type"));
         let mut pattern = crate::core::path::PatternFill::default();
 
         ui.horizontal_wrapped(|ui| {
@@ -1198,7 +1523,7 @@ impl PatternPanel {
 
         // Tile size
         ui.horizontal(|ui| {
-            ui.label("タイル幅:");
+            ui.label(crate::ui::i18n::text(&locale, "type.tile_width"));
             ui.add(
                 egui::DragValue::new(&mut pattern.tile_width)
                     .speed(1.0)
@@ -1214,13 +1539,13 @@ impl PatternPanel {
 
         // Scale
         ui.horizontal(|ui| {
-            ui.label("スケール:");
+            ui.label(crate::ui::i18n::text(&locale, "type.scale"));
             ui.add(egui::Slider::new(&mut pattern.scale, 0.1..=5.0).show_value(true));
         });
 
         // Rotation
         ui.horizontal(|ui| {
-            ui.label("回転:");
+            ui.label(crate::ui::i18n::text(&locale, "type.rotation"));
             ui.add(
                 egui::DragValue::new(&mut pattern.rotation)
                     .speed(1.0)
@@ -1232,7 +1557,10 @@ impl PatternPanel {
         ui.add_space(4.0);
 
         // Apply pattern
-        if ui.button("パターンを適用").clicked() {
+        if ui
+            .button(crate::ui::i18n::text(&locale, "type.apply_pattern"))
+            .clicked()
+        {
             let fill = FillStyle {
                 color: state.fill_color,
                 fill_type: FillType::Pattern(pattern.clone()),
@@ -1249,7 +1577,11 @@ impl PatternPanel {
 
         // Preset patterns
         ui.separator();
-        ui.label(RichText::new("Presets").strong().size(11.0));
+        ui.label(
+            RichText::new(crate::ui::i18n::text(&locale, "utility.presets"))
+                .strong()
+                .size(11.0),
+        );
         ui.horizontal_wrapped(|ui| {
             for (name, pw, ph, ptype) in [
                 (

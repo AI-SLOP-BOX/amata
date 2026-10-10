@@ -103,7 +103,10 @@ fn test_pixel_png_export_keeps_hard_edges() {
     // A full 4x4 block deep inside the diagonal is uniformly red.
     for (x, y) in [(13, 13), (14, 14), (15, 15)] {
         let px = img.get_pixel(x, y).0;
-        assert!(px[0] > 200 && px[1] < 80 && px[3] == 255, "block pixel {x},{y}: {px:?}");
+        assert!(
+            px[0] > 200 && px[1] < 80 && px[3] == 255,
+            "block pixel {x},{y}: {px:?}"
+        );
     }
     // Off-diagonal stays transparent.
     assert_eq!(img.get_pixel(2, 28).0[3], 0);

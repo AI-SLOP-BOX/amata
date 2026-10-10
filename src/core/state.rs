@@ -1,5 +1,7 @@
 use super::document::{Document, Layer, Object};
-use super::history::{BatchCommand, Command, LayerCommand, ObjectCommand, TransformCommand, UndoManager};
+use super::history::{
+    BatchCommand, Command, LayerCommand, ObjectCommand, TransformCommand, UndoManager,
+};
 use super::prefs::Prefs;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -179,6 +181,9 @@ pub struct AppState {
     pub export_transparent: bool,
     pub export_svg_viewbox: bool,
     pub export_svg_embed_fonts: bool,
+    /// Export text as glyph outlines (honours OpenType features in
+    /// SVG/PNG, which the raster engine otherwise ignores).
+    pub export_outline_text: bool,
     pub export_scope: String,
     pub export_path: Option<String>,
     pub pending_export: bool,
@@ -253,6 +258,10 @@ pub struct AppState {
     /// Inline rename in the layer tree: (object id, text buffer).
     pub tree_rename: Option<(String, String)>,
     pub tree_rename_focused: bool,
+    /// Print panel: Pantone lookup buffer ("Pantone 185 C"/"185 C").
+    pub spot_kit_query: String,
+    /// Print panel: last Pantone lookup result (for "not in kit" hints).
+    pub spot_kit_last_hit: Option<&'static str>,
 }
 
 #[derive(Debug, Clone)]
@@ -368,6 +377,7 @@ impl Default for AppState {
             export_transparent: false,
             export_svg_viewbox: true,
             export_svg_embed_fonts: true,
+            export_outline_text: false,
             export_scope: "All".into(),
             export_path: None,
             pending_export: false,
@@ -415,6 +425,8 @@ impl Default for AppState {
             tree_collapsed: std::collections::HashSet::new(),
             tree_rename: None,
             tree_rename_focused: false,
+            spot_kit_query: String::new(),
+            spot_kit_last_hit: None,
         }
     }
 }
@@ -483,10 +495,7 @@ impl AppState {
     pub fn isolated_group(&self) -> Option<&crate::core::document::Object> {
         let gid = self.isolated_group_id.as_ref()?;
         let (_, obj) = self.document.all_objects().find(|(_, o)| &o.id == gid)?;
-        if matches!(
-            obj.object_type,
-            crate::core::document::ObjectType::Group(_)
-        ) {
+        if matches!(obj.object_type, crate::core::document::ObjectType::Group(_)) {
             Some(obj)
         } else {
             None
@@ -564,12 +573,7 @@ impl AppState {
     /// (immediately for keyboard/click edits, on drag-stop for drags).
     /// Callers must additionally call `commit_object_edits` when
     /// `resp.drag_stopped()` fires outside a `changed()` frame.
-    pub fn object_edit(
-        &mut self,
-        id: &str,
-        resp: &egui::Response,
-        f: impl FnOnce(&mut Object),
-    ) {
+    pub fn object_edit(&mut self, id: &str, resp: &egui::Response, f: impl FnOnce(&mut Object)) {
         self.ensure_object_snapshot(id);
         if let Some(o) = self.document.find_object_mut(id) {
             f(o);
@@ -619,15 +623,12 @@ impl AppState {
             if let Some(layer) = self.document.layers.get(li) {
                 if let Some(new_pos) = layer.objects.iter().position(|o| o.id == id) {
                     if new_pos != old_pos {
-                        cmds.push(Box::new(
-                            crate::core::history::ReorderObjectCommand {
-                                object_id: id,
-                                layer_idx: li,
-                                old_position: old_pos,
-                                new_position: new_pos,
-                            },
-                        )
-                            as Box<dyn Command>);
+                        cmds.push(Box::new(crate::core::history::ReorderObjectCommand {
+                            object_id: id,
+                            layer_idx: li,
+                            old_position: old_pos,
+                            new_position: new_pos,
+                        }) as Box<dyn Command>);
                     }
                 }
             }
@@ -636,16 +637,19 @@ impl AppState {
             let cmd = cmds.pop().unwrap();
             self.undo_manager.execute(cmd, &mut self.document);
         } else if !cmds.is_empty() {
-            self.undo_manager.execute(
-                Box::new(BatchCommand::new(label, cmds)),
-                &mut self.document,
-            );
+            self.undo_manager
+                .execute(Box::new(BatchCommand::new(label, cmds)), &mut self.document);
         }
     }
 
     /// Snapshot objects before a non-drag document mutation (batch flips,
     /// stroke presets, etc.) then record as one undo step.
-    pub fn undoable_snapshot(&mut self, label: &str, ids: &[String], f: impl FnOnce(&mut Document)) {
+    pub fn undoable_snapshot(
+        &mut self,
+        label: &str,
+        ids: &[String],
+        f: impl FnOnce(&mut Document),
+    ) {
         for id in ids {
             self.ensure_object_snapshot(id);
         }
@@ -764,10 +768,8 @@ impl AppState {
             let cmd = cmds.pop().unwrap();
             self.undo_manager.execute(cmd, &mut self.document);
         } else if !cmds.is_empty() {
-            self.undo_manager.execute(
-                Box::new(BatchCommand::new(label, cmds)),
-                &mut self.document,
-            );
+            self.undo_manager
+                .execute(Box::new(BatchCommand::new(label, cmds)), &mut self.document);
         }
     }
 
@@ -779,10 +781,8 @@ impl AppState {
         label: &str,
         build: impl FnOnce(Vec<Object>) -> Option<(Vec<Object>, Vec<String>)>,
     ) {
-        let removed = crate::core::history::collect_located_objects(
-            &self.document,
-            &self.selected_ids,
-        );
+        let removed =
+            crate::core::history::collect_located_objects(&self.document, &self.selected_ids);
         if removed.is_empty() {
             return;
         }
@@ -1079,6 +1079,42 @@ impl AppState {
         }
     }
 
+    /// Navigate the viewport to one artboard (status-bar first/previous/
+    /// next/last controls). The old controls changed only the index, leaving
+    /// the user looking at the previous board on multi-artboard documents.
+    pub fn zoom_to_artboard(&mut self, index: usize) -> bool {
+        let Some(board) = self.document.effective_artboards().get(index).cloned() else {
+            return false;
+        };
+        if !board.width.is_finite()
+            || !board.height.is_finite()
+            || !(board.width as f32).is_finite()
+            || !(board.height as f32).is_finite()
+            || board.width <= 0.0
+            || board.height <= 0.0
+        {
+            return false;
+        }
+        let zoom = ((self.canvas_width / board.width as f32)
+            .min(self.canvas_height / board.height as f32)
+            * 0.9)
+            .clamp(0.01, 100.0);
+        let center_x = board.x + board.width / 2.0;
+        let center_y = board.y + board.height / 2.0;
+        if !center_x.is_finite() || !center_y.is_finite() {
+            return false;
+        }
+        self.start_zoom = self.zoom;
+        self.start_pan_x = self.pan_x;
+        self.start_pan_y = self.pan_y;
+        self.active_artboard_idx = index;
+        self.target_zoom = zoom;
+        self.target_pan_x = -(center_x as f32) * zoom;
+        self.target_pan_y = -(center_y as f32) * zoom;
+        self.zoom_animation_progress = 0.0;
+        true
+    }
+
     pub fn is_dirty(&self) -> bool {
         self.undo_manager.is_dirty()
             || !self.pending_transforms.is_empty()
@@ -1094,12 +1130,70 @@ impl AppState {
     pub fn undo_step(&mut self) {
         self.flush_pending_edits();
         self.undo_manager.undo(&mut self.document);
+        self.prune_stale_selection();
     }
 
     /// Redo one step (flushes pending gestures first, symmetric to undo).
     pub fn redo_step(&mut self) {
         self.flush_pending_edits();
         self.undo_manager.redo(&mut self.document);
+        self.prune_stale_selection();
+    }
+
+    /// Replace selection with deduped, document-ordered IDs. Missing IDs
+    /// are dropped so delete/undo can never leave stale selection behind.
+    pub fn set_selected_ids(&mut self, ids: Vec<String>) {
+        use std::collections::HashSet;
+        let mut seen = HashSet::new();
+        let mut unique: Vec<String> = ids
+            .into_iter()
+            .filter(|id| seen.insert(id.clone()))
+            .collect();
+        unique.retain(|id| self.document.find_object(id).is_some());
+        // Document order keeps batch ops and panels predictable.
+        // Deep walk (groups included): flat `all_objects()` misses nested
+        // children and would pin them to usize::MAX.
+        let mut order: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+        fn walk(
+            objs: &[crate::core::document::Object],
+            order: &mut std::collections::HashMap<String, usize>,
+        ) {
+            for o in objs {
+                if !order.contains_key(&o.id) {
+                    order.insert(o.id.clone(), order.len());
+                }
+                match &o.object_type {
+                    crate::core::document::ObjectType::Group(children)
+                    | crate::core::document::ObjectType::ClippingMask { children } => {
+                        walk(children, order)
+                    }
+                    _ => {}
+                }
+            }
+        }
+        for layer in &self.document.layers {
+            walk(&layer.objects, &mut order);
+        }
+        unique.sort_by_key(|id| order.get(id).copied().unwrap_or(usize::MAX));
+        self.selected_ids = unique;
+    }
+
+    /// Shift-click style toggle that never duplicates entries.
+    pub fn toggle_selection(&mut self, id: &str) {
+        if self.selected_ids.iter().any(|s| s == id) {
+            self.selected_ids.retain(|s| s != id);
+        } else if self.document.find_object(id).is_some() {
+            self.selected_ids.push(id.to_string());
+            self.prune_stale_selection();
+        }
+    }
+
+    /// Drop missing/duplicate IDs in place (undo/redo/layer removal path).
+    pub fn prune_stale_selection(&mut self) {
+        use std::collections::HashSet;
+        let mut seen = HashSet::new();
+        self.selected_ids
+            .retain(|id| seen.insert(id.clone()) && self.document.find_object(id).is_some());
     }
 
     /// Clear history. Flushes first so in-progress edits become a real
@@ -1140,5 +1234,86 @@ impl AppState {
 
     pub fn mark_saved(&mut self) {
         self.undo_manager.mark_saved();
+    }
+}
+
+#[cfg(test)]
+mod selection_tests {
+    use super::*;
+    use crate::core::document::Object;
+
+    fn state_with_two() -> (AppState, String, String) {
+        let mut state = AppState::default();
+        let a = Object::new_rect("A", 0.0, 0.0, 10.0, 10.0, 0.0);
+        let b = Object::new_rect("B", 20.0, 0.0, 10.0, 10.0, 0.0);
+        let (aid, bid) = (a.id.clone(), b.id.clone());
+        state.document.add_object(a);
+        state.document.add_object(b);
+        (state, aid, bid)
+    }
+
+    #[test]
+    fn set_selected_dedups_orders_and_drops_missing() {
+        let (mut state, aid, bid) = state_with_two();
+        state.set_selected_ids(vec![bid.clone(), aid.clone(), bid.clone(), "gone".into()]);
+        assert_eq!(state.selected_ids, vec![aid, bid]);
+    }
+
+    #[test]
+    fn toggle_never_duplicates_and_ignores_missing() {
+        let (mut state, aid, _) = state_with_two();
+        state.toggle_selection(&aid);
+        state.toggle_selection(&aid);
+        assert!(state.selected_ids.is_empty());
+        state.toggle_selection("gone");
+        assert!(state.selected_ids.is_empty());
+    }
+
+    #[test]
+    fn undo_prunes_selection_of_undone_add() {
+        use crate::core::history::AddObjectCommand;
+        let mut state = AppState::default();
+        let obj = Object::new_rect("A", 0.0, 0.0, 10.0, 10.0, 0.0);
+        let id = obj.id.clone();
+        state
+            .undo_manager
+            .execute(Box::new(AddObjectCommand::new(obj)), &mut state.document);
+        state.set_selected_ids(vec![id]);
+        assert_eq!(state.selected_ids.len(), 1);
+        state.undo_step();
+        assert!(state.selected_ids.is_empty());
+    }
+}
+
+#[cfg(test)]
+mod artboard_navigation_tests {
+    use super::*;
+    use crate::core::document::Artboard;
+
+    #[test]
+    fn zoom_to_artboard_centers_and_fits_board_with_animation() {
+        let mut state = AppState {
+            canvas_width: 800.0,
+            canvas_height: 600.0,
+            ..AppState::default()
+        };
+        state.document.artboards = vec![Artboard::new("A", 100.0, 200.0, 400.0, 200.0)];
+
+        assert!(state.zoom_to_artboard(0));
+        assert_eq!(state.active_artboard_idx, 0);
+        assert!((state.target_zoom - 1.8).abs() < 0.001);
+        assert!((state.target_pan_x + 540.0).abs() < 0.001);
+        assert!((state.target_pan_y + 540.0).abs() < 0.001);
+        assert_eq!(state.zoom_animation_progress, 0.0);
+    }
+
+    #[test]
+    fn zoom_to_artboard_rejects_invalid_index_without_changing_selection() {
+        let mut state = AppState::default();
+        state.document.artboards = vec![Artboard::new("A", 0.0, 0.0, 100.0, 100.0)];
+        state.active_artboard_idx = 4;
+
+        assert!(!state.zoom_to_artboard(1));
+        assert_eq!(state.active_artboard_idx, 4);
     }
 }

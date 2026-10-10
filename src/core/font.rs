@@ -177,6 +177,106 @@ impl FontRegistry {
         None
     }
 
+    /// OpenType features the resolved face actually provides, as
+    /// `(tag, table)` pairs — `table` is `"GSUB"` or `"GPOS"`. Used by the
+    /// Typography panel to show which Japanese-typography features
+    /// (`palt`, `vert`, `vrt2`, `ruby`, `kern`, `vkrn`, `halt`, …) the
+    /// current family can honour. Tags are deduplicated and sorted.
+    pub fn face_open_type_features(
+        &self,
+        family: &str,
+        weight: u16,
+        style: FontStyle,
+    ) -> Vec<(String, &'static str)> {
+        self.query_face_data(family, weight, style, |data, index| {
+            let mut out: Vec<(String, &'static str)> = Vec::new();
+            let Ok(face) = ttf_parser::Face::parse(data, index) else {
+                return out;
+            };
+            let tables = face.tables();
+            if let Some(gsub) = tables.gsub.as_ref() {
+                for feature in gsub.features {
+                    out.push((feature.tag.to_string(), "GSUB"));
+                }
+            }
+            if let Some(gpos) = tables.gpos.as_ref() {
+                for feature in gpos.features {
+                    out.push((feature.tag.to_string(), "GPOS"));
+                }
+            }
+            out.sort();
+            out.dedup();
+            out
+        })
+        .unwrap_or_default()
+    }
+
+    /// Find the first installed face whose cmap covers `ch`, regardless of
+    /// family — the per-glyph fallback used for emoji and other characters
+    /// the primary family lacks. Returns an owned closure result like
+    /// [`Self::query_face_data`].
+    pub fn query_fallback_face_data_for<R, F: FnOnce(&[u8], u32) -> R>(
+        &self,
+        ch: char,
+        weight: u16,
+        style: FontStyle,
+        f: F,
+    ) -> Option<R> {
+        let weight_val = fontdb::Weight(weight);
+        let style_val = match style {
+            FontStyle::Normal => fontdb::Style::Normal,
+            FontStyle::Italic => fontdb::Style::Italic,
+            FontStyle::Oblique => fontdb::Style::Oblique,
+        };
+        // Prefer slanted faces only when a slanted one is requested, so
+        // punctuation fallback doesn't silently italicize.
+        let mut candidates: Vec<fontdb::FaceInfo> = self
+            .db
+            .faces()
+            .filter(|info| {
+                info.weight.0 >= weight_val.0.saturating_sub(400)
+                    && info.weight.0 <= weight_val.0 + 400
+            })
+            .cloned()
+            .collect();
+        candidates.sort_by_key(|info| {
+            let (w, s) = (
+                info.weight.0 as i64,
+                match info.style {
+                    fontdb::Style::Normal => 0i64,
+                    fontdb::Style::Italic | fontdb::Style::Oblique => 1,
+                },
+            );
+            (w - weight_val.0 as i64).abs() * 10
+                + if s == 0 && style_val == fontdb::Style::Normal {
+                    0
+                } else {
+                    1
+                }
+        });
+        let mut found: Option<(Vec<u8>, u32)> = None;
+        for info in candidates {
+            let hit = self
+                .db
+                .with_face_data(info.id, |data, index| {
+                    let ok = ttf_parser::Face::parse(data, index)
+                        .map(|face| face.glyph_index(ch).is_some())
+                        .unwrap_or(false);
+                    if ok {
+                        Some((data.to_vec(), index))
+                    } else {
+                        None
+                    }
+                })
+                .flatten();
+            if hit.is_some() {
+                found = hit;
+                break;
+            }
+        }
+        found.map(|(data, index)| f(&data, index))
+    }
+
     /// True when no installed face matches the requested style, i.e. the
     /// style must be *synthesized* (faux italic/oblique) instead of taken
     /// from a real face. fontdb always returns the closest face, so a query
@@ -206,7 +306,12 @@ impl FontRegistry {
                 style: wanted,
                 stretch: fontdb::Stretch::Normal,
             })?;
-            Some(self.db.face(id).map(|face| !is_slanted(face.style)).unwrap_or(true))
+            Some(
+                self.db
+                    .face(id)
+                    .map(|face| !is_slanted(face.style))
+                    .unwrap_or(true),
+            )
         };
         fn is_generic(name: &str) -> bool {
             name.eq_ignore_ascii_case("sans-serif")
@@ -292,7 +397,7 @@ impl FontRegistry {
     /// renders at default coordinates).
     pub fn apply_variations(face: &mut ttf_parser::Face<'_>, variations: &[VariationSetting]) {
         for v in variations {
-            if v.axis.len() != 4 {
+            if v.axis.len() != 4 || !v.value.is_finite() {
                 continue;
             }
             let mut tag = [0u8; 4];

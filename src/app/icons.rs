@@ -697,11 +697,24 @@ pub fn paint_focus_ring(ui: &egui::Ui, response: &egui::Response, rect: Rect) {
 
 /// Icon-only toggle button: accent fill while `is_active`, hover highlight and
 /// a keyboard focus ring, matching [`toggle_icon_button`] callers in panels.
+/// Screen readers get the button role plus `accessible_label`; pass the same
+/// string used for `on_hover_text` at the call site.
 pub fn toggle_icon_button(
     ui: &mut egui::Ui,
     size: Vec2,
     is_active: bool,
     painter_fn: impl FnOnce(&Painter, Rect, Color32),
+) -> egui::Response {
+    toggle_icon_button_labeled(ui, size, is_active, painter_fn, "")
+}
+
+/// Labeled variant of [`toggle_icon_button`].
+pub fn toggle_icon_button_labeled(
+    ui: &mut egui::Ui,
+    size: Vec2,
+    is_active: bool,
+    painter_fn: impl FnOnce(&Painter, Rect, Color32),
+    accessible_label: impl ToString,
 ) -> egui::Response {
     let (rect, response) = ui.allocate_exact_size(size, egui::Sense::click());
     let bg = if is_active {
@@ -720,6 +733,17 @@ pub fn toggle_icon_button(
         };
         painter_fn(ui.painter(), rect, color);
         paint_focus_ring(ui, &response, rect);
+    }
+    let accessible_label = accessible_label.to_string();
+    if !accessible_label.is_empty() {
+        response.widget_info(|| {
+            egui::WidgetInfo::selected(
+                egui::WidgetType::Checkbox,
+                true,
+                is_active,
+                &accessible_label,
+            )
+        });
     }
     response.on_hover_cursor(egui::CursorIcon::PointingHand)
 }
@@ -1546,6 +1570,14 @@ pub fn tool_icon_button(
         paint_focus_ring(ui, &response, rect);
     }
 
+    response.widget_info(|| {
+        egui::WidgetInfo::selected(
+            egui::WidgetType::RadioButton,
+            true,
+            is_active,
+            format!("{:?}", tool),
+        )
+    });
     response.on_hover_cursor(egui::CursorIcon::PointingHand)
 }
 
@@ -1554,6 +1586,18 @@ pub fn icon_button(
     ui: &mut egui::Ui,
     size: Vec2,
     painter_fn: impl FnOnce(&Painter, Rect, Color32),
+) -> egui::Response {
+    icon_button_labeled(ui, size, painter_fn, "")
+}
+
+/// Labeled variant of [`icon_button`]: registers the button role plus
+/// label with AccessKit so screen readers announce it. `hover_text`
+/// alone is not exposed to assistive tech.
+pub fn icon_button_labeled(
+    ui: &mut egui::Ui,
+    size: Vec2,
+    painter_fn: impl FnOnce(&Painter, Rect, Color32),
+    accessible_label: impl ToString,
 ) -> egui::Response {
     let (rect, response) = ui.allocate_exact_size(size, egui::Sense::click());
     let bg = if response.hovered() {
@@ -1571,6 +1615,12 @@ pub fn icon_button(
         };
         painter_fn(ui.painter(), rect, color);
         paint_focus_ring(ui, &response, rect);
+    }
+    let accessible_label = accessible_label.to_string();
+    if !accessible_label.is_empty() {
+        response.widget_info(|| {
+            egui::WidgetInfo::labeled(egui::WidgetType::Button, true, &accessible_label)
+        });
     }
     response.on_hover_cursor(egui::CursorIcon::PointingHand)
 }

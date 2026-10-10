@@ -21,10 +21,12 @@ fn test_tspan_text_imported() {
         })
         .collect();
     assert_eq!(texts.len(), 1, "tspan content must survive import");
-    if let irasu_illustrator::core::document::ObjectType::Text { text, .. } =
-        &texts[0].object_type
+    if let irasu_illustrator::core::document::ObjectType::Text { text, .. } = &texts[0].object_type
     {
-        assert!(text.contains("hello") && text.contains("world"), "got: {text}");
+        assert!(
+            text.contains("hello") && text.contains("world"),
+            "got: {text}"
+        );
     }
 }
 
@@ -39,7 +41,10 @@ fn test_svg_convert_scale_applies() {
     let out = dir.join("scaled.svg");
     save_any_document_scaled(&doc, &out, 2.0).unwrap();
     let content = std::fs::read_to_string(&out).unwrap();
-    assert!(content.contains("width=\"200\""), "canvas must scale:\n{content}");
+    assert!(
+        content.contains("width=\"200\""),
+        "canvas must scale:\n{content}"
+    );
     let doc2 = parse_svg_document(&content);
     let rect = doc2
         .all_objects()
@@ -96,9 +101,8 @@ fn test_nested_child_removable_by_id() {
 fn test_generative_inputs_are_bounded() {
     // Would hang/OOM before caps: 100k symmetry folds, giant spirograph.
     let motif = Object::new_rect("M", 0.0, 0.0, 10.0, 10.0, 0.0);
-    let syms = irasu_illustrator::core::symmetry::create_radial_symmetry(
-        &motif, 0.0, 0.0, 100_000, true,
-    );
+    let syms =
+        irasu_illustrator::core::symmetry::create_radial_symmetry(&motif, 0.0, 0.0, 100_000, true);
     assert!(syms.len() <= 1440);
     let spiral = irasu_illustrator::core::formula::FormulaCurves::spirograph(
         0.0, 0.0, 50.0, 20.0, 5.0, 100_000, 100_000,
@@ -122,8 +126,7 @@ fn test_knife_slice_uses_world_space() {
     let mid_y = (min.y + max.y) * 0.5;
     let p1 = AnchorPoint::new(min.x - 10.0, mid_y);
     let p2 = AnchorPoint::new(max.x + 10.0, mid_y);
-    let (a, b) =
-        irasu_illustrator::core::knife::slice_object_with_line(&doc_rect, p1, p2).unwrap();
+    let (a, b) = irasu_illustrator::core::knife::slice_object_with_line(&doc_rect, p1, p2).unwrap();
     for part in [&a, &b] {
         let (pmin, pmax) = part.bounding_box().unwrap();
         // Each half must lie inside the original world rect.
@@ -141,8 +144,7 @@ fn test_simplify_preserves_bezier_curves() {
     path.push_line_to(20.0, 0.0);
     path.push_line_to(30.0, 0.0);
     path.push_cubic_curve_to(40.0, 0.0, 50.0, 10.0, 60.0, 10.0);
-    let simplified =
-        irasu_illustrator::core::simplify::simplify_path_visvalingam(&path, 5.0);
+    let simplified = irasu_illustrator::core::simplify::simplify_path_visvalingam(&path, 5.0);
     let curves = simplified
         .elements
         .iter()
@@ -190,7 +192,9 @@ fn test_nan_gradient_offset_sanitized() {
 fn test_transform_gesture_coalesces_to_one_undo_step() {
     use irasu_illustrator::core::state::AppState;
     let mut state = AppState::default();
-    state.document.add_object(Object::new_rect("R", 10.0, 20.0, 30.0, 40.0, 0.0));
+    state
+        .document
+        .add_object(Object::new_rect("R", 10.0, 20.0, 30.0, 40.0, 0.0));
     let id = state.document.all_objects().next().unwrap().1.id.clone();
 
     // Simulate a drag gesture: many live mutations, one commit.
@@ -300,8 +304,12 @@ fn test_counter_scaled_resize_undoes_transform_and_attributes_together() {
 fn test_object_gesture_coalesces_to_one_undo_step() {
     use irasu_illustrator::core::state::AppState;
     let mut state = AppState::default();
-    state.document.add_object(Object::new_rect("R", 0.0, 0.0, 10.0, 10.0, 0.0));
-    state.document.add_object(Object::new_rect("S", 50.0, 50.0, 10.0, 10.0, 0.0));
+    state
+        .document
+        .add_object(Object::new_rect("R", 0.0, 0.0, 10.0, 10.0, 0.0));
+    state
+        .document
+        .add_object(Object::new_rect("S", 50.0, 50.0, 10.0, 10.0, 0.0));
     let ids: Vec<String> = state
         .document
         .all_objects()
@@ -330,7 +338,9 @@ fn test_object_gesture_coalesces_to_one_undo_step() {
     // Whole-object undo also restores nested children.
     let inner = Object::new_rect("Inner", 0.0, 0.0, 5.0, 5.0, 0.0);
     let inner_id = inner.id.clone();
-    state.document.add_object(Object::new_group("G", vec![inner]));
+    state
+        .document
+        .add_object(Object::new_group("G", vec![inner]));
     state.ensure_object_snapshot(&inner_id);
     if let Some(o) = state.document.find_object_mut(&inner_id) {
         o.opacity = 0.25;
@@ -423,8 +433,12 @@ fn test_layer_add_delete_reorder_undo() {
     assert_eq!(doc.layers[1].objects.len(), victim.objects.len());
 
     // Object reorder within a layer.
-    doc.layers[1].objects.push(Object::new_rect("A", 0.0, 0.0, 1.0, 1.0, 0.0));
-    doc.layers[1].objects.push(Object::new_rect("B", 0.0, 0.0, 1.0, 1.0, 0.0));
+    doc.layers[1]
+        .objects
+        .push(Object::new_rect("A", 0.0, 0.0, 1.0, 1.0, 0.0));
+    doc.layers[1]
+        .objects
+        .push(Object::new_rect("B", 0.0, 0.0, 1.0, 1.0, 0.0));
     let oo: Vec<String> = doc.layers[1].objects.iter().map(|o| o.id.clone()).collect();
     doc.move_object_up(1, 0);
     let no: Vec<String> = doc.layers[1].objects.iter().map(|o| o.id.clone()).collect();
@@ -581,8 +595,7 @@ fn test_multiline_text_round_trip() {
         assert_eq!(text, "hello\nworld", "got: {text:?}");
     }
     // Metrics cover both lines.
-    let (w, h) =
-        irasu_illustrator::core::document::object::text_block_size("hello\nworld", 16.0);
+    let (w, h) = irasu_illustrator::core::document::object::text_block_size("hello\nworld", 16.0);
     assert!(w > 0.0 && h > 16.0);
 }
 
@@ -622,7 +635,10 @@ fn test_isolated_drag_delta_conversion() {
     state.isolated_group_id = Some(gid);
     let (lx, ly) = SelectState::parent_delta(&state, 10.0, 0.0);
     // R(90°): world (10,0) -> local (0,-10).
-    assert!((lx - 0.0).abs() < 1e-6 && (ly + 10.0).abs() < 1e-6, "got ({lx},{ly})");
+    assert!(
+        (lx - 0.0).abs() < 1e-6 && (ly + 10.0).abs() < 1e-6,
+        "got ({lx},{ly})"
+    );
 }
 
 #[test]
@@ -651,7 +667,9 @@ fn test_timeline_playback_commits_one_undo_step() {
     use irasu_illustrator::core::state::AppState;
     use irasu_illustrator::core::timeline::{AnimProperty, Timeline};
     let mut state = AppState::default();
-    state.document.add_object(Object::new_rect("R", 0.0, 0.0, 10.0, 10.0, 0.0));
+    state
+        .document
+        .add_object(Object::new_rect("R", 0.0, 0.0, 10.0, 10.0, 0.0));
     let id = state.document.all_objects().next().unwrap().1.id.clone();
 
     // Simulate app/mod.rs playback start: snapshot once.
@@ -749,10 +767,7 @@ fn test_cut_paste_batch_semantics() {
     let mut cmds: Vec<Box<dyn Command>> = Vec::new();
     for (_, o) in doc.all_objects() {
         cmds.push(Box::new(
-            irasu_illustrator::core::history::RemoveObjectCommand::located(
-                o.clone(),
-                &doc,
-            ),
+            irasu_illustrator::core::history::RemoveObjectCommand::located(o.clone(), &doc),
         ));
     }
     mgr.execute(Box::new(BatchCommand::new("Cut Objects", cmds)), &mut doc);
@@ -766,7 +781,9 @@ fn test_shape_to_path_conversion_undoable() {
     use irasu_illustrator::core::document::ObjectType;
     use irasu_illustrator::core::state::AppState;
     let mut state = AppState::default();
-    state.document.add_object(Object::new_rect("R", 0.0, 0.0, 10.0, 20.0, 0.0));
+    state
+        .document
+        .add_object(Object::new_rect("R", 0.0, 0.0, 10.0, 20.0, 0.0));
     let id = state.document.all_objects().next().unwrap().1.id.clone();
     // Mirror the node-tool conversion path.
     state.ensure_object_snapshot(&id);
@@ -791,7 +808,9 @@ fn test_arrange_reorder_single_undo_step() {
     use irasu_illustrator::core::state::AppState;
     let mut state = AppState::default();
     for name in ["A", "B", "C"] {
-        state.document.add_object(Object::new_rect(name, 0.0, 0.0, 10.0, 10.0, 0.0));
+        state
+            .document
+            .add_object(Object::new_rect(name, 0.0, 0.0, 10.0, 10.0, 0.0));
     }
     let order_before: Vec<String> = state
         .document
@@ -859,7 +878,10 @@ fn test_layer_opacity_and_blend_export() {
     obj.blend_mode = irasu_illustrator::core::document::BlendMode::Multiply;
     doc.add_object(obj);
     let svg = irasu_illustrator::io::svg::export_svg(&doc);
-    assert!(svg.contains("<g opacity="), "layer group must carry opacity");
+    assert!(
+        svg.contains("<g opacity="),
+        "layer group must carry opacity"
+    );
     assert!(
         svg.contains("mix-blend-mode=\"multiply\""),
         "blend mode must export"
@@ -925,11 +947,8 @@ fn tiny_test_png() -> Vec<u8> {
         *px = image::Rgba([v, 128, 64, 255]);
     }
     let mut buf = Vec::new();
-    img.write_to(
-        &mut std::io::Cursor::new(&mut buf),
-        image::ImageFormat::Png,
-    )
-    .unwrap();
+    img.write_to(&mut std::io::Cursor::new(&mut buf), image::ImageFormat::Png)
+        .unwrap();
     buf
 }
 
@@ -987,8 +1006,11 @@ fn test_pathfinder_apply_is_atomic() {
             irasu_illustrator::core::history::RemoveObjectCommand::located(o.clone(), &doc),
         ) as Box<dyn Command>);
     }
-    cmds.push(Box::new(irasu_illustrator::core::history::AddObjectCommand::new(result))
-        as Box<dyn Command>);
+    cmds.push(
+        Box::new(irasu_illustrator::core::history::AddObjectCommand::new(
+            result,
+        )) as Box<dyn Command>,
+    );
     mgr.execute(Box::new(BatchCommand::new("Pathfinder", cmds)), &mut doc);
     assert_eq!(doc.all_objects().count(), 1);
     mgr.undo(&mut doc);
@@ -1021,9 +1043,7 @@ fn test_group_ungroup_atomic_undo() {
             irasu_illustrator::core::history::RemoveObjectCommand::located(o.clone(), &doc),
         ) as Box<dyn Command>);
     }
-    cmds.push(
-        Box::new(AddObjectCommand::new(group)) as Box<dyn Command>
-    );
+    cmds.push(Box::new(AddObjectCommand::new(group)) as Box<dyn Command>);
     mgr.execute(Box::new(BatchCommand::new("Group", cmds)), &mut doc);
     assert_eq!(doc.all_objects().count(), 1);
     mgr.undo(&mut doc);
@@ -1057,7 +1077,9 @@ fn test_timeline_and_guides_survive_save_reload() {
     let mut doc = Document::default();
     doc.add_object(Object::new_rect("R", 0.0, 0.0, 10.0, 10.0, 0.0));
     let id = doc.all_objects().next().unwrap().1.id.clone();
-    let track = doc.timeline.add_or_get_track_mut(&id, AnimProperty::PositionX);
+    let track = doc
+        .timeline
+        .add_or_get_track_mut(&id, AnimProperty::PositionX);
     track.add_keyframe(0, 0.0, EaseType::Linear);
     track.add_keyframe(10, 50.0, EaseType::Linear);
     doc.guides.push(Guide {
@@ -1104,18 +1126,13 @@ fn test_selected_only_export_filters() {
 
 #[test]
 fn replace_objects_undo_restores_original_order() {
-    use irasu_illustrator::core::history::{
-        collect_located_objects, ReplaceObjectsCommand,
-    };
+    use irasu_illustrator::core::history::{collect_located_objects, ReplaceObjectsCommand};
     let mut doc = Document::default();
     for name in ["A", "B", "C"] {
         doc.add_object(Object::new_rect(name, 0.0, 0.0, 10.0, 10.0, 0.0));
     }
     let mut mgr = irasu_illustrator::core::history::UndoManager::new();
-    let before: Vec<String> = doc
-        .all_objects()
-        .map(|(_, o)| o.name.clone())
-        .collect();
+    let before: Vec<String> = doc.all_objects().map(|(_, o)| o.name.clone()).collect();
     assert_eq!(before, vec!["A", "B", "C"]);
 
     // Group A and B (out of the 3), then undo: exact order must return.
@@ -1129,19 +1146,12 @@ fn replace_objects_undo_restores_original_order() {
     let objects: Vec<Object> = removed.iter().map(|i| i.object.clone()).collect();
     let group = Object::new_group("G", objects);
     mgr.execute(
-        Box::new(ReplaceObjectsCommand::new(
-            "Group",
-            removed,
-            vec![group],
-        )),
+        Box::new(ReplaceObjectsCommand::new("Group", removed, vec![group])),
         &mut doc,
     );
     assert_eq!(doc.all_objects().count(), 2);
     mgr.undo(&mut doc);
-    let back: Vec<String> = doc
-        .all_objects()
-        .map(|(_, o)| o.name.clone())
-        .collect();
+    let back: Vec<String> = doc.all_objects().map(|(_, o)| o.name.clone()).collect();
     assert_eq!(back, vec!["A", "B", "C"]);
 }
 
@@ -1233,9 +1243,15 @@ fn test_cmyk_round_trip() {
 #[test]
 fn test_document_cmyk_color_mode() {
     let mut doc = irasu_illustrator::core::document::Document::default();
-    assert_eq!(doc.color_mode, irasu_illustrator::core::document::ColorMode::Rgb);
+    assert_eq!(
+        doc.color_mode,
+        irasu_illustrator::core::document::ColorMode::Rgb
+    );
     doc.color_mode = irasu_illustrator::core::document::ColorMode::Cmyk;
-    assert_eq!(doc.color_mode, irasu_illustrator::core::document::ColorMode::Cmyk);
+    assert_eq!(
+        doc.color_mode,
+        irasu_illustrator::core::document::ColorMode::Cmyk
+    );
 }
 
 #[test]
@@ -1247,8 +1263,14 @@ fn test_artboards_effective_list() {
     assert_eq!(eff[0].name, "Artboard 1");
     assert!((eff[0].width - doc.width).abs() < 0.01);
     // With explicit artboards, they are returned as-is
-    doc.artboards.push(irasu_illustrator::core::document::Artboard::new("A", 0.0, 0.0, 800.0, 600.0));
-    doc.artboards.push(irasu_illustrator::core::document::Artboard::new("B", 0.0, 600.0, 800.0, 600.0));
+    doc.artboards
+        .push(irasu_illustrator::core::document::Artboard::new(
+            "A", 0.0, 0.0, 800.0, 600.0,
+        ));
+    doc.artboards
+        .push(irasu_illustrator::core::document::Artboard::new(
+            "B", 0.0, 600.0, 800.0, 600.0,
+        ));
     let eff = doc.effective_artboards();
     assert_eq!(eff.len(), 2);
     assert_eq!(eff[1].y, 600.0);
@@ -1264,7 +1286,10 @@ fn test_text_style_word_wrap() {
         ..Default::default()
     };
     let lines = compute_wrapped_lines("This is a long sentence that should wrap", &style, 100.0);
-    assert!(lines.len() > 1, "long text should wrap into multiple lines, got {lines:?}");
+    assert!(
+        lines.len() > 1,
+        "long text should wrap into multiple lines, got {lines:?}"
+    );
     // Hard breaks always preserved
     let hard = compute_wrapped_lines("line1\nline2", &style, 100.0);
     assert!(hard.len() >= 2);
@@ -1292,7 +1317,10 @@ fn test_text_block_size_word_wrap() {
         ..Default::default()
     };
     let (_w, h) = text_block_size_with_style("word1 word2 word3 word4", &style);
-    assert!(h > 16.0, "wrapped text should be taller than single line, got {h}");
+    assert!(
+        h > 16.0,
+        "wrapped text should be taller than single line, got {h}"
+    );
 }
 
 #[test]
@@ -1300,8 +1328,12 @@ fn test_document_color_mode_roundtrip() {
     let mut doc = irasu_illustrator::core::document::Document::default();
     doc.color_mode = irasu_illustrator::core::document::ColorMode::Cmyk;
     let json = serde_json::to_string(&doc).unwrap();
-    let reloaded: irasu_illustrator::core::document::Document = serde_json::from_str(&json).unwrap();
-    assert_eq!(reloaded.color_mode, irasu_illustrator::core::document::ColorMode::Cmyk);
+    let reloaded: irasu_illustrator::core::document::Document =
+        serde_json::from_str(&json).unwrap();
+    assert_eq!(
+        reloaded.color_mode,
+        irasu_illustrator::core::document::ColorMode::Cmyk
+    );
 }
 
 #[test]

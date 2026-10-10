@@ -19,12 +19,10 @@ impl ShortcutsModal {
         let mut close_clicked = false;
 
         let screen = ctx.screen_rect();
-        let (size, min_size, pos) = crate::ui::window_defaults(
-            screen,
-            Vec2::new(460.0, 560.0),
-            Vec2::new(320.0, 300.0),
-        );
-        egui::Window::new("キーボードショートカット")
+        let (size, min_size, pos) =
+            crate::ui::window_defaults(screen, Vec2::new(460.0, 560.0), Vec2::new(320.0, 300.0));
+        let locale = state.prefs.language.clone();
+        egui::Window::new(crate::ui::i18n::text(&locale, "shortcuts.title"))
             .open(&mut is_open)
             .resizable(true)
             .collapsible(false)
@@ -39,7 +37,12 @@ impl ShortcutsModal {
                             if ui
                                 .add(
                                     egui::Button::new(
-                                        RichText::new("閉じる").strong().color(Color32::WHITE),
+                                        RichText::new(crate::ui::i18n::text(
+                                            &locale,
+                                            "common.close",
+                                        ))
+                                        .strong()
+                                        .color(Color32::WHITE),
                                     )
                                     .fill(Color32::from_rgb(20, 115, 230))
                                     .min_size(Vec2::new(96.0, 28.0)),

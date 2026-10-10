@@ -5,6 +5,7 @@ use egui::{self, Color32, Pos2, Rect, Stroke, Vec2};
 
 impl IrasuApp {
     pub(super) fn show_right_dock(&mut self, ctx: &egui::Context) {
+        let locale = self.state.prefs.language.clone();
         egui::SidePanel::right("properties")
             .resizable(true)
             .default_width(280.0)
@@ -20,15 +21,33 @@ impl IrasuApp {
                     |ui| {
                         ui.set_min_width(160.0);
                         for (label, variant) in &[
-                            ("パスファインダー", ActiveTab::Pathfinder),
-                            ("3D & VFX", ActiveTab::ThreeDAndVfx),
-                            ("ジェネレーティブ幾何学", ActiveTab::Generative),
-                            ("ドット絵", ActiveTab::PixelArt),
-                            ("アセット書き出し", ActiveTab::Export),
-                            ("スマートガイド設定", ActiveTab::Guides),
+                            (
+                                crate::ui::i18n::text(&locale, "dock.pathfinder").into_owned(),
+                                ActiveTab::Pathfinder,
+                            ),
+                            (
+                                crate::ui::i18n::text(&locale, "dock.three_d_vfx").into_owned(),
+                                ActiveTab::ThreeDAndVfx,
+                            ),
+                            (
+                                crate::ui::i18n::text(&locale, "dock.generative").into_owned(),
+                                ActiveTab::Generative,
+                            ),
+                            (
+                                crate::ui::i18n::text(&locale, "dock.pixel_art").into_owned(),
+                                ActiveTab::PixelArt,
+                            ),
+                            (
+                                crate::ui::i18n::text(&locale, "dock.export_assets").into_owned(),
+                                ActiveTab::Export,
+                            ),
+                            (
+                                crate::ui::i18n::text(&locale, "dock.smart_guides").into_owned(),
+                                ActiveTab::Guides,
+                            ),
                         ] {
                             if ui
-                                .selectable_label(self.active_tab == *variant, *label)
+                                .selectable_label(self.active_tab == *variant, label.as_str())
                                 .clicked()
                             {
                                 self.active_tab = *variant;
@@ -41,40 +60,40 @@ impl IrasuApp {
                 // ─── Panel Content ───────────────────────────────────────────
                 egui::ScrollArea::vertical().show(ui, |ui| match self.active_tab {
                     ActiveTab::Properties => {
-                        ui.collapsing("プロパティ", |ui| {
+                        ui.collapsing(crate::ui::i18n::text(&locale, "dock.properties"), |ui| {
                             PropertyPanel::show(ui, &mut self.state);
                         });
-                        ui.collapsing("整列", |ui| {
+                        ui.collapsing(crate::ui::i18n::text(&locale, "dock.align"), |ui| {
                             AlignPanel::show(ui, &mut self.state);
                         });
-                        ui.collapsing("線", |ui| {
+                        ui.collapsing(crate::ui::i18n::text(&locale, "dock.stroke"), |ui| {
                             StrokePanel::show(ui, &mut self.state);
                         });
-                        ui.collapsing("グラデーション", |ui| {
+                        ui.collapsing(crate::ui::i18n::text(&locale, "dock.gradient"), |ui| {
                             GradientPanel::show(ui, &mut self.state);
                         });
-                        ui.collapsing("合成モード", |ui| {
+                        ui.collapsing(crate::ui::i18n::text(&locale, "dock.blend_mode"), |ui| {
                             BlendModePanel::show(ui, &mut self.state);
                         });
-                        ui.collapsing("変形", |ui| {
+                        ui.collapsing(crate::ui::i18n::text(&locale, "dock.transform"), |ui| {
                             TransformPanel::show(ui, &mut self.state);
                         });
-                        ui.collapsing("アピアランス", |ui| {
+                        ui.collapsing(crate::ui::i18n::text(&locale, "dock.appearance"), |ui| {
                             AppearancePanel::show(ui, &mut self.state);
                         });
-                        ui.collapsing("テキスト", |ui| {
+                        ui.collapsing(crate::ui::i18n::text(&locale, "dock.text"), |ui| {
                             TextPanel::show(ui, &mut self.state);
                         });
-                        ui.collapsing("線幅ツール", |ui| {
+                        ui.collapsing(crate::ui::i18n::text(&locale, "dock.width_tool"), |ui| {
                             WidthToolPanel::show(ui, &mut self.state);
                         });
-                        ui.collapsing("パターン", |ui| {
+                        ui.collapsing(crate::ui::i18n::text(&locale, "dock.pattern"), |ui| {
                             PatternPanel::show(ui, &mut self.state);
                         });
-                        ui.collapsing("プリセット", |ui| {
+                        ui.collapsing(crate::ui::i18n::text(&locale, "dock.presets"), |ui| {
                             PresetPanel::show(ui, &mut self.state);
                         });
-                        ui.collapsing("カラーハーモニー", |ui| {
+                        ui.collapsing(crate::ui::i18n::text(&locale, "dock.color_harmony"), |ui| {
                             ColorHarmonyPanel::show(ui, &mut self.state);
                         });
                     }
@@ -216,11 +235,24 @@ impl IrasuApp {
             .rect_filled(strip_rect, 0.0, Color32::from_rgb(26, 26, 26));
 
         // Tab definitions: (label, ActiveTab variant)
-        let tabs: &[(&str, ActiveTab)] = &[
-            ("プロパティ", ActiveTab::Properties),
-            ("レイヤー", ActiveTab::Layers),
-            ("コンポーネント", ActiveTab::Components),
-            ("変更履歴", ActiveTab::VersionHistory),
+        let locale = self.state.prefs.language.clone();
+        let tabs = [
+            (
+                crate::ui::i18n::text(&locale, "dock.properties").into_owned(),
+                ActiveTab::Properties,
+            ),
+            (
+                crate::ui::i18n::text(&locale, "dock.layers").into_owned(),
+                ActiveTab::Layers,
+            ),
+            (
+                crate::ui::i18n::text(&locale, "dock.components").into_owned(),
+                ActiveTab::Components,
+            ),
+            (
+                crate::ui::i18n::text(&locale, "dock.history").into_owned(),
+                ActiveTab::VersionHistory,
+            ),
         ];
 
         let accent = Color32::from_rgb(20, 115, 230);
@@ -231,7 +263,7 @@ impl IrasuApp {
             .iter()
             .map(|(label, _)| {
                 let tw = ui.fonts(|f| {
-                    f.layout_no_wrap((*label).to_string(), tab_font.clone(), Color32::WHITE)
+                    f.layout_no_wrap(label.clone(), tab_font.clone(), Color32::WHITE)
                         .size()
                         .x
                 });
@@ -285,7 +317,7 @@ impl IrasuApp {
             ui.painter().text(
                 tab_rect.center(),
                 egui::Align2::CENTER_CENTER,
-                *label,
+                label,
                 tab_font.clone(),
                 text_color,
             );

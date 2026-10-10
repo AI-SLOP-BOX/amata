@@ -118,10 +118,7 @@ pub fn handle_slice(input: &Path, output: &Path) -> Result<bool, Box<dyn std::er
     Ok(false)
 }
 
-pub fn handle_outline(
-    input: &Path,
-    output: &Path,
-) -> Result<bool, Box<dyn std::error::Error>> {
+pub fn handle_outline(input: &Path, output: &Path) -> Result<bool, Box<dyn std::error::Error>> {
     println!("🔤 Creating Outlines from text in '{:?}'...", input);
     let doc = load_any_document(input)?;
     let mut out_doc = crate::core::document::Document {
@@ -214,10 +211,7 @@ pub fn handle_effect(
     Ok(false)
 }
 
-pub fn handle_shape_build(
-    input: &Path,
-    output: &Path,
-) -> Result<bool, Box<dyn std::error::Error>> {
+pub fn handle_shape_build(input: &Path, output: &Path) -> Result<bool, Box<dyn std::error::Error>> {
     println!(
         "⯐ Decomposing overlapping shapes into fragments from '{:?}'...",
         input
@@ -422,9 +416,7 @@ pub fn handle_plugins(info: Option<String>) -> Result<bool, Box<dyn std::error::
         let marker = if dir.is_dir() { "✓" } else { "·" };
         println!("     {marker} {}", dir.display());
     }
-    println!(
-        "   (override with AMATA_PLUGIN_DIR / IRASU_PLUGIN_DIR; plugins are *.rhai scripts)"
-    );
+    println!("   (override with AMATA_PLUGIN_DIR / IRASU_PLUGIN_DIR; plugins are *.rhai scripts)");
 
     if let Some(key) = info {
         let plugin = find_plugin(&plugins, &key).ok_or_else(|| {
@@ -432,7 +424,10 @@ pub fn handle_plugins(info: Option<String>) -> Result<bool, Box<dyn std::error::
             if available.is_empty() {
                 format!("Plugin '{key}' not found — no plugins discovered.")
             } else {
-                format!("Plugin '{key}' not found. Available: {}", available.join(", "))
+                format!(
+                    "Plugin '{key}' not found. Available: {}",
+                    available.join(", ")
+                )
             }
         })?;
 

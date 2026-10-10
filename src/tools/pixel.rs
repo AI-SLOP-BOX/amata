@@ -47,11 +47,7 @@ pub fn hit_pixel_object(state: &AppState, wx: f64, wy: f64) -> Option<String> {
         }
         let (lx, ly) = obj.transform.inverse_transform_point(wx, wy);
         if let crate::core::document::ObjectType::PixelArt(p) = &obj.object_type {
-            if lx >= 0.0
-                && ly >= 0.0
-                && lx < p.width as f64
-                && ly < p.height as f64
-            {
+            if lx >= 0.0 && ly >= 0.0 && lx < p.width as f64 && ly < p.height as f64 {
                 hit = Some(obj.id.clone());
             }
         }
